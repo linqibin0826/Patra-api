@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal 前后端集成：ExploreFeed 接入 catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/journal.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#architecture">整体架构</a></li>
+      <li><a href="#backend">后端 catalog 改动</a></li>
+      <li><a href="#frontend">前端 portal 改动</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>Portal 前后端集成：ExploreFeed 接入 catalog</h1>
+      <div class="meta-bar">
+        <span>📅 2026-05-25</span>
+        <span>🌿 feat/portal-backend-integration</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>把 portal 首页「文献流」(ExploreFeed) 从 mock 数据切换为 catalog 真实数据，<strong>本轮只连这一个区块</strong>（Journals / TopicCloud / 统计数字仍 mock）。不引入 BFF：由 catalog 新增一个面向 portal 的 driving adapter（六边形架构），response DTO 字段直接对齐前端 <code>Paper</code> 类型，前端零字段映射。Portal 用 Next.js RSC 在服务端直接 fetch gateway，切 tab 走 URL searchParam 触发 RSC 重渲，本版不使用 BFF route、不使用 TanStack Query。catalog 现有 publication/venue 全套查询接口是无客户端调用的 demo 代码，连同测试一并删除。<code>aiSummary</code>（AI 摘要）与 <code>estimatedReadMin</code>（原文阅读时长）后端暂无数据来源，返回 <code>null</code> 并标记 TODO，禁止用原始 abstract 冒充。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>v0.4 (PR #106) 已落地 portal 首页全部 6 个区块（TopNav / Hero / TopicCloud / Journals / ExploreFeed / Footer），但数据全部来自 <code>src/data/*</code> 的 mock（handoff 阶段的设计稿数据）。后端 <code>patra-catalog</code> 服务已有完整的 publication / venue / author / abstract / publication_type 等数据表（V1–V7 Flyway 迁移），以及一组 <code>PublicationController</code> / <code>VenueController</code> REST 接口——但经 grep 确认，这些接口<strong>没有任何业务客户端调用</strong>（portal 用 mock，monorepo 内零跨服务引用），属于早期演示性质的 demo 代码。</p>
+      <p>本次目标：让首页「文献流」展示来自 catalog 的真实文献。这是 portal 第一次真正接入后端，需要确立 portal ↔ 后端的<strong>接入范式</strong>（架构、字段契约、错误边界），为后续 Journals / 搜索 / 详情页接入打样板。</p>
+      <p>项目为单人维护的绿地项目，无历史包袱、无向后兼容约束：demo 代码直接删除而非保留并行，字段命名与类型按最终形态设计。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>catalog 新增面向 portal 的文献流接口 <code>GET /portal/publications?tab={recent|cited}</code></li>
+            <li>catalog 删除全部 demo 查询链路（publication/venue 的 adapter/app/domain/infra 四层 + 测试）</li>
+            <li>portal ExploreFeed 改为 RSC 服务端 fetch gateway，渲染真实文献</li>
+            <li>切 tab 走 URL searchParam（recent / cited 两个 tab）</li>
+            <li>前端类型 <code>Paper</code> 字段重命名与 null 化（<code>aiSummary</code> / <code>estimatedReadMin</code> / <code>kind</code>）</li>
+            <li>删除 mock <code>src/data/feed.ts</code></li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>Journals / TopicCloud / 首页统计数字（继续 mock）</li>
+            <li>Composer 真搜索（按回车仍 toast「功能即将上线」）</li>
+            <li>文献详情页、bookmarks 真实业务（按钮仍 disabled，bookmarks 恒为 0）</li>
+            <li>trending tab（本版删除，待后端有热度信号再加）</li>
+            <li>LLM 摘要生成、全文采集 / 阅读时长真实估算</li>
+            <li>用户系统 / 鉴权 / 限流 / 超时 / retry / 熔断 / 错误日志上报</li>
+            <li>TanStack Query（Provider 已接入但本版不调用）</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 整体架构</h2>
+      <p>浏览器只与 portal Next.js 服务通信，永远看不到 gateway / catalog 地址。Portal 服务端（Node 进程）直接 fetch gateway，gateway 经 Nacos 服务发现路由到 catalog。<strong>不引入 BFF route handler</strong>——单人项目无需 indirection，且字段映射已在后端 portal adapter 完成。</p>
+      <pre><code>浏览器
+  │  （只收到 SSR 渲染好的 HTML，看不到后端地址）
+  ▼
+Portal Next.js Server (Node 进程)
+  ├─ app/page.tsx (RSC) 读 URL ?tab=recent
+  │   └─ ExploreFeed (Server Component)
+  │        └─ fetch(GATEWAY + /patra-catalog/portal/publications?tab=...)
+  └─ explore-feed/tabs.tsx (Client)
+       └─ 切 tab → router.push('/?tab=cited') → Next.js 重渲上面 RSC 子树
+  │  （服务端进程内网调用）
+  ▼
+patra-gateway :9528  (Nacos LB)
+  ▼
+patra-catalog :6300
+  └─ adapter/rest/portal/  ← 本次新增的 driving adapter
+       PortalPublicationController → PortalPaperResponse[]（字段对齐前端 Paper）</code></pre>
+      <ul>
+        <li><strong>portal adapter = 六边形架构的 driving adapter</strong>，在 catalog 进程内，不是独立的 BFF 服务。</li>
+        <li><strong>前端零字段映射</strong>：<code>PortalPaperResponse</code> 的 JSON 直接就是 <code>Paper</code> 形态，<code>res.json()</code> 后类型断言即可。</li>
+        <li><strong>切 tab 走 URL 状态</strong>：tab 由 <code>?tab=</code> 表示，不用 Zustand / TanStack Query；好处是链接可分享、刷新保留、零客户端 fetch。代价是每次切 tab 触发一次服务端 RSC 重渲（streaming，无白屏）。</li>
+        <li><strong>环境变量</strong> <code>PATRA_GATEWAY_BASE_URL</code> 仅服务端读取（无 <code>NEXT_PUBLIC_</code> 前缀），浏览器拿不到。</li>
+        <li><strong>mock 不留 fallback</strong>：gateway/catalog 不通时 RSC fetch 失败 → 渲染「加载失败」占位，而非掩盖问题。</li>
+      </ul>
+    </section>
+
+    <section id="backend">
+      <h2>4. 后端 catalog 改动</h2>
+
+      <h3>4.1 删除（demo 清理）</h3>
+      <p>下列代码均无业务客户端调用，连同对应测试整链删除。经 grep 确认 monorepo 内零跨服务引用。</p>
+      <ul>
+        <li><strong>Adapter</strong>：<code>adapter/rest/publication/</code> 整包、<code>adapter/rest/venue/</code> 整包 + 对应 10 个 IT</li>
+        <li><strong>App</strong>：<code>app/usecase/publication/query/</code> 整包、<code>app/usecase/venue/query/</code> 整包 + 对应 5 个单测</li>
+        <li><strong>Domain</strong>：<code>domain/model/read/publication/</code> 整包、<code>domain/model/read/venue/</code> 整包、<code>domain/port/read/PublicationReadPort.java</code>、<code>domain/port/read/VenueReadPort.java</code> + 对应测试</li>
+        <li><strong>Infra</strong>：<code>infra/adapter/read/PublicationReadAdapter.java</code> + <code>PublicationReadModelMapper.java</code>、<code>infra/adapter/read/VenueReadAdapter.java</code> + 对应 IT</li>
+      </ul>
+      <aside class="callout info">
+        <span class="title">保留</span>
+        <p><code>VenueEnrichmentReadPort</code> + <code>VenueEnrichmentReadAdapter</code> + <code>domain/port/enrichment/VenueSnapshot</code>——这是 LetPub / Scopus 富化任务（<code>LetPubEnrichmentRunner</code> / <code>ScopusEnrichmentRunner</code>）内部使用的端口，<strong>不是</strong>面向客户端的查询接口，不删。</p>
+      </aside>
+
+      <h3>4.2 新增（Portal feed 链路）</h3>
+      <p><strong>Domain 层</strong>（纯 Java record / interface）：</p>
+      <pre><code>// domain/model/read/portal/PortalPaperReadModel.java
+public record PortalPaperReadModel(
+    Long id, String title, String venueName, Integer publicationYear,
+    List&lt;String&gt; authors,        // 全部作者，按 author_order asc
+    Integer citationCount, String doi, String pmid,
+    String provenanceCode,
+    String studyType,             // 第一个 cat_publication_type.type_value，可 null
+    Instant lastSyncedAt) {}
+
+// domain/model/read/portal/PortalFeedTab.java
+public enum PortalFeedTab { RECENT, CITED }
+
+// domain/model/read/portal/PortalFeedFilter.java
+public record PortalFeedFilter(PortalFeedTab tab) {}
+
+// domain/port/read/PortalFeedReadPort.java
+public interface PortalFeedReadPort {
+  PageResult&lt;PortalPaperReadModel&gt; findFeedPage(PagingParams paging, PortalFeedFilter filter);
+}</code></pre>
+
+      <p><strong>App 层</strong>：<code>app/usecase/portal/query/PortalFeedQueryService.java</code>（<code>@Service</code>，无 <code>@Transactional</code>，只读）+ <code>dto/PortalFeedQuery.java</code>（参数 ≤4，用 <code>of()</code> 工厂）。归一化 page / pageSize / tab 后委托 ReadPort。</p>
+
+      <p><strong>Adapter 层</strong>：<code>adapter/rest/portal/</code> 包，<code>@Tag(name = "Portal")</code> 与（已删的）admin 标签隔离。</p>
+      <pre><code>// adapter/rest/portal/response/PortalPaperResponse.java
+//   字段名/类型直接对齐前端 Paper，前端零映射
+public record PortalPaperResponse(
+    String id,            // Long.toString(id)，避免 JS 超 2^53 精度损失
+    String title,
+    String journal,       // ← venueName
+    Integer year,         // ← publicationYear
+    List&lt;String&gt; authors, // 全部作者（前端决定截多少）
+    Integer cites,        // ← citationCount
+    Integer bookmarks,    // 恒为 0（无用户系统）
+    String doi, String pmid,
+    String source,        // ← provenanceCode 硬码字典映射
+    String aiSummary,     // null + TODO（等 LLM 摘要）
+    Integer estimatedReadMin, // null + TODO（等原文采集/字数估算）
+    String kind,          // ← studyType，可 null
+    Integer minutesAgo) {}    // ← (now - lastSyncedAt).toMinutes()，可 null
+
+// adapter/rest/portal/request/PortalPublicationListRequest.java
+public record PortalPublicationListRequest(String tab, Integer page, Integer pageSize) {}</code></pre>
+      <p><code>PortalApiConverter</code> 关键转换：</p>
+      <ul>
+        <li><code>source</code>：硬码常量表 <code>PUBMED→"PubMed"</code> / <code>EPMC→"Europe PMC"</code> / <code>CROSSREF→"Crossref"</code>；字典外的 code 回退显示原值。<strong>加 TODO</strong>：后续接入 registry provenance 字典的规范方式。</li>
+        <li><code>aiSummary = null</code> + <code>// TODO(LLM-summary): 接入 LLM 摘要生成后填充</code></li>
+        <li><code>estimatedReadMin = null</code> + <code>// TODO(read-time): 接入原文采集/字数后估算原文阅读时长</code></li>
+        <li><code>minutesAgo</code>：<code>lastSyncedAt</code> 为 null 时返回 null，否则 <code>Duration.between(lastSyncedAt, Instant.now()).toMinutes()</code></li>
+        <li><code>id = Long.toString(model.id())</code></li>
+      </ul>
+
+      <p><strong>Infra 层</strong>：<code>infra/adapter/read/PortalFeedReadAdapter.java</code> 实现 <code>PortalFeedReadPort</code>。<strong>单次 SQL 查询</strong>（避免 N+1）join：<code>cat_publication</code> 主表 + LEFT JOIN <code>cat_venue</code>（venueName）+ 子查询 <code>array_agg(display_name ORDER BY author_order)</code>（作者全列表）+ 子查询 <code>cat_publication_type</code> 按 <code>type_order asc, id asc</code> 取第一个 <code>type_value</code>。排序：<code>RECENT → last_synced_at DESC NULLS LAST, id DESC</code>；<code>CITED → citation_count DESC NULLS LAST, id DESC</code>。具体实现（JPQL / 原生 SQL）由 plan 阶段定。</p>
+
+      <h3>4.3 API Contract</h3>
+      <pre><code>GET /portal/publications?tab=recent&amp;page=1&amp;pageSize=14
+→ 200 PageResult&lt;PortalPaperResponse&gt;
+
+tab      必填，枚举 { recent, cited }
+page     默认 1
+pageSize 默认 14（首页一屏视觉密度），最大 50
+400      tab 取值非法（沿用 catalog 错误归一化）</code></pre>
+    </section>
+
+    <section id="frontend">
+      <h2>5. 前端 portal 改动</h2>
+
+      <h3>5.1 类型与 mock 清理</h3>
+      <p><code>src/types/portal.ts</code>：<code>FeedTab</code> 去掉 <code>trending</code>（仅 <code>recent | cited</code>）；<code>Paper</code> 删除 <code>authorCount</code>，<code>ai</code> → <code>aiSummary: string | null</code>，<code>readMin</code> → <code>estimatedReadMin: number | null</code>，<code>kind: string | null</code>，<code>minutesAgo: number | null</code>。新增 <code>PageResult&lt;T&gt;</code> 类型对齐 catalog <code>dev.linqibin.commons.query.PageResult</code>（<code>content / page / pageSize / totalElements / totalPages</code>）。删除 <code>src/data/feed.ts</code>。</p>
+
+      <h3>5.2 服务端 fetch helper</h3>
+      <p><code>src/lib/portal-api/publications.ts</code>：<code>import "server-only"</code> 防止误入 client；读 <code>process.env.PATRA_GATEWAY_BASE_URL</code>；<code>fetch(url, { cache: "no-store" })</code>；非 2xx 抛错；返回 <code>PageResult&lt;Paper&gt;</code>（类型断言，零映射）。</p>
+
+      <h3>5.3 ExploreFeed 拆分（Server + Client）</h3>
+      <p>原 <code>src/components/portal/ExploreFeed.tsx</code> 删除，迁移到子目录 <code>src/components/portal/explore-feed/</code>：</p>
+      <ul>
+        <li><code>index.tsx</code>（Server）：接收 <code>tab</code> prop，<code>try/catch</code> 调 <code>fetchFeed</code>；失败渲染 <code>&lt;ExploreFeedEmpty reason="error"/&gt;</code>，空结果渲染 <code>reason="empty"</code>，否则 map <code>PaperCard</code>。</li>
+        <li><code>tabs.tsx</code>（Client）：<code>"use client"</code>，<code>useRouter</code> + <code>router.push('/?tab=cited', { scroll: false })</code>。</li>
+        <li><code>empty.tsx</code>：骨架占位 + 文案（「加载失败，请稍后重试」/「暂无数据」）。</li>
+      </ul>
+
+      <h3>5.4 页面与卡片改造</h3>
+      <ul>
+        <li><code>src/app/page.tsx</code>：改 async，读 <code>searchParams.tab</code>，归一化 <code>safeTab = tab === "cited" ? "cited" : "recent"</code>，传给 <code>&lt;ExploreFeed tab={safeTab}/&gt;</code>。</li>
+        <li><code>PaperCard.tsx</code>：<code>authors.length</code> 替代 <code>authorCount</code>；<code>kind</code> 为 null 不渲染标签；<code>aiSummary</code> 为 null 整块隐藏 <code>&lt;AISummaryBadge&gt;</code>。</li>
+        <li><code>AISummaryBadge.tsx</code>：props <code>summary→aiSummary</code>、<code>readMin→estimatedReadMin</code>；UI 文案保持「AI 速读」/「≈ N 分钟原文」。</li>
+      </ul>
+
+      <h3>5.5 环境变量</h3>
+      <p>新增 <code>.env.example</code>（提交 git）：<code>PATRA_GATEWAY_BASE_URL=http://localhost:9528</code>（注释说明仅服务端读取，禁加 <code>NEXT_PUBLIC_</code>）。本地自建 <code>.env.local</code>（已 gitignore）。</p>
+
+      <h3>5.6 测试</h3>
+      <ul>
+        <li>新增 <code>tests/lib/portal-api/publications.test.ts</code>：mock <code>fetch</code>，验证 URL 拼装 + 错误抛出。</li>
+        <li>改造 <code>tests/components/portal/PaperCard.test.tsx</code>：新字段命名 + null case（aiSummary/kind 为 null 的隐藏）。</li>
+        <li>改造 <code>tests/components/portal/AISummaryBadge.test.tsx</code>：props 重命名。</li>
+        <li>删除 <code>tests/components/portal/ExploreFeed.test.tsx</code>（Server Component，单测意义低，e2e 覆盖）。</li>
+        <li>改造 <code>tests/e2e/homepage.spec.ts</code>：默认 tab、切 tab URL 变化、空态文案。</li>
+        <li><code>tests/data/topics.test.ts</code> 及其它区块测试保留不动。</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>6. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：不引入 BFF，由后端 portal adapter 提供对齐前端的 response</h3>
+        <p>catalog 新增面向 portal 的 driving adapter，<code>PortalPaperResponse</code> 字段直接是 <code>Paper</code> 形态，前端零字段映射。</p>
+        <p class="alternatives"><strong>备选 A：</strong>Next.js BFF route handler 转发 + 字段映射 — 否决：单人项目无需 indirection，字段映射放后端只做一次（放浏览器则每用户一次）。<br>
+        <strong>备选 B：</strong>浏览器直连 gateway — 否决：暴露后端地址、需配 CORS、丧失 SSR 首屏。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：demo 查询链路直接删除，不保留并行</h3>
+        <p>现有 publication/venue 全套查询接口无客户端调用，连测试整链删除。</p>
+        <p class="alternatives"><strong>备选：</strong>保留 demo 与 portal adapter 并行 — 否决：绿地项目零客户端调用即死代码，违反「只维护当前版本」。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：切 tab 走 URL searchParam + RSC 重渲</h3>
+        <p>tab 状态由 <code>?tab=</code> 表示，client Tabs 触发 <code>router.push</code>，服务端重渲 ExploreFeed 子树。本版不使用 TanStack Query。</p>
+        <p class="alternatives"><strong>备选：</strong>client state + TanStack Query 客户端 fetch — 否决：本版无客户端 fetch 需求，URL 状态可分享/可刷新保留，更简单。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：aiSummary / estimatedReadMin 返回 null + TODO</h3>
+        <p>后端无 LLM 摘要、无原文长度数据，两字段返回 null 并各自标 TODO（理由不同）。前端 aiSummary 为 null 时隐藏整个 badge。</p>
+        <p class="alternatives"><strong>备选 A：</strong>用原始 abstract 冒充 aiSummary — 否决：语义错误（abstract ≠ AI 速读），用户明确禁止改逻辑。<br>
+        <strong>备选 B：</strong>砍掉这两个字段 — 否决：未来要做，字段契约先留位。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：provenance 映射硬码在 PortalApiConverter</h3>
+        <p>PUBMED/EPMC/CROSSREF → 展示名，常量表硬码，加 TODO 待规范处理。</p>
+        <p class="alternatives"><strong>备选：</strong>catalog 经 HTTP Interface 查 registry provenance 字典 — 否决：YAGNI，code 数量极少；后续有规范的字典驱动方式时再改（已留 TODO）。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 6：authors 全返回，删除 authorCount 字段</h3>
+        <p>后端返回完整作者列表，截断展示策略归前端（<code>authors.length</code> 即总数）。</p>
+        <p class="alternatives"><strong>备选：</strong>后端截前 3 人 + 返回 authorCount — 否决：截断属展示逻辑，不应固化在 API 契约里。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>7. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>catalog 数据库无 publication 数据，首页文献流为空，看不出连通</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>用户确认会有真实数据；plan 阶段把「publication 表非空」列为实施前置条件</td>
+          </tr>
+          <tr>
+            <td>删除范围误伤内部使用代码</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>已 grep 确认 VenueEnrichment 系列保留、monorepo 内零跨服务引用；删除后跑全量编译 + 测试验证</td>
+          </tr>
+          <tr>
+            <td>provenance_code / studyType 实际取值与假设不符，映射不全</td>
+            <td><span class="pill low">low</span></td>
+            <td>source 字典外回退显示原值；kind 为 null 隐藏标签；plan 阶段查实际数据核对取值</td>
+          </tr>
+          <tr>
+            <td>单查询 array_agg 子查询在大数据量下性能退化</td>
+            <td><span class="pill low">low</span></td>
+            <td>分页限制每页 ≤50；现有索引覆盖 join 键；本版数据量小，后续可优化为两段查询</td>
+          </tr>
+          <tr>
+            <td>RSC fetch 无超时，gateway/catalog 挂起会阻塞首页渲染</td>
+            <td><span class="pill low">low</span></td>
+            <td>本版接受（内网调用）；try/catch 兜底渲染「加载失败」占位，不阻断其它区块；超时配置列入后续</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>8. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>catalog-adapter/.../adapter/rest/publication/</code></td><td><span class="pill delete">delete</span></td><td>demo Controller + converter + request/response + IT</td></tr>
+          <tr><td>2</td><td><code>catalog-adapter/.../adapter/rest/venue/</code></td><td><span class="pill delete">delete</span></td><td>demo Controller + converter + request/response + IT</td></tr>
+          <tr><td>3</td><td><code>catalog-app/.../usecase/publication/query/</code></td><td><span class="pill delete">delete</span></td><td>demo QueryService + DTO + 单测</td></tr>
+          <tr><td>4</td><td><code>catalog-app/.../usecase/venue/query/</code></td><td><span class="pill delete">delete</span></td><td>demo QueryService + DTO + 单测</td></tr>
+          <tr><td>5</td><td><code>catalog-domain/.../model/read/publication/</code></td><td><span class="pill delete">delete</span></td><td>SummaryReadModel + DetailReadModel + Filter + 测试</td></tr>
+          <tr><td>6</td><td><code>catalog-domain/.../model/read/venue/</code></td><td><span class="pill delete">delete</span></td><td>5 个 venue read model</td></tr>
+          <tr><td>7</td><td><code>catalog-domain/.../port/read/PublicationReadPort.java</code></td><td><span class="pill delete">delete</span></td><td>仅 demo 引用</td></tr>
+          <tr><td>8</td><td><code>catalog-domain/.../port/read/VenueReadPort.java</code></td><td><span class="pill delete">delete</span></td><td>仅 demo 引用</td></tr>
+          <tr><td>9</td><td><code>catalog-infra/.../adapter/read/PublicationReadAdapter.java</code> + <code>PublicationReadModelMapper.java</code></td><td><span class="pill delete">delete</span></td><td>+ 对应 IT</td></tr>
+          <tr><td>10</td><td><code>catalog-infra/.../adapter/read/VenueReadAdapter.java</code></td><td><span class="pill delete">delete</span></td><td>+ 对应 IT</td></tr>
+          <tr><td>11</td><td><code>catalog-domain/.../model/read/portal/{PortalPaperReadModel,PortalFeedFilter,PortalFeedTab}.java</code></td><td><span class="pill create">create</span></td><td>portal 读模型 + tab 枚举</td></tr>
+          <tr><td>12</td><td><code>catalog-domain/.../port/read/PortalFeedReadPort.java</code></td><td><span class="pill create">create</span></td><td>portal read port</td></tr>
+          <tr><td>13</td><td><code>catalog-app/.../usecase/portal/query/PortalFeedQueryService.java</code> + <code>dto/PortalFeedQuery.java</code></td><td><span class="pill create">create</span></td><td>portal feed 查询服务</td></tr>
+          <tr><td>14</td><td><code>catalog-adapter/.../adapter/rest/portal/{Controller,request,response,mapper}</code></td><td><span class="pill create">create</span></td><td>portal driving adapter + IT</td></tr>
+          <tr><td>15</td><td><code>catalog-infra/.../adapter/read/PortalFeedReadAdapter.java</code></td><td><span class="pill create">create</span></td><td>单查询 join 实现 + IT</td></tr>
+          <tr><td>16</td><td><code>portal/src/types/portal.ts</code></td><td><span class="pill modify">modify</span></td><td>Paper 字段重命名/null 化 + PageResult 类型 + FeedTab 去 trending</td></tr>
+          <tr><td>17</td><td><code>portal/src/data/feed.ts</code></td><td><span class="pill delete">delete</span></td><td>mock 数据</td></tr>
+          <tr><td>18</td><td><code>portal/src/lib/portal-api/publications.ts</code></td><td><span class="pill create">create</span></td><td>服务端 fetch helper</td></tr>
+          <tr><td>19</td><td><code>portal/src/components/portal/explore-feed/{index,tabs,empty}.tsx</code></td><td><span class="pill create">create</span></td><td>Server + Client + 空态</td></tr>
+          <tr><td>20</td><td><code>portal/src/components/portal/ExploreFeed.tsx</code></td><td><span class="pill delete">delete</span></td><td>迁移到 explore-feed/</td></tr>
+          <tr><td>21</td><td><code>portal/src/components/portal/PaperCard.tsx</code></td><td><span class="pill modify">modify</span></td><td>null 防御 + authors.length</td></tr>
+          <tr><td>22</td><td><code>portal/src/components/portal/AISummaryBadge.tsx</code></td><td><span class="pill modify">modify</span></td><td>props 重命名</td></tr>
+          <tr><td>23</td><td><code>portal/src/app/page.tsx</code></td><td><span class="pill modify">modify</span></td><td>读 searchParams 传 tab</td></tr>
+          <tr><td>24</td><td><code>portal/.env.example</code></td><td><span class="pill create">create</span></td><td>PATRA_GATEWAY_BASE_URL 文档化</td></tr>
+          <tr><td>25</td><td><code>portal/tests/lib/portal-api/publications.test.ts</code></td><td><span class="pill create">create</span></td><td>fetch helper 单测</td></tr>
+          <tr><td>26</td><td><code>portal/tests/components/portal/{PaperCard,AISummaryBadge}.test.tsx</code></td><td><span class="pill modify">modify</span></td><td>适配新字段</td></tr>
+          <tr><td>27</td><td><code>portal/tests/components/portal/ExploreFeed.test.tsx</code></td><td><span class="pill delete">delete</span></td><td>改 e2e 覆盖</td></tr>
+          <tr><td>28</td><td><code>portal/tests/e2e/homepage.spec.ts</code></td><td><span class="pill modify">modify</span></td><td>默认 tab / 切 tab / 空态</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li><code>pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code> 三绿；catalog 全量编译 + 测试通过</li>
+        <li>本地起 infra + catalog + gateway + portal dev，访问 <code>http://localhost:3000</code>：ExploreFeed 显示真实文献；默认「最近更新」(recent)；切「高被引」(cited) → URL 变 <code>/?tab=cited</code> 且列表按引用数重排</li>
+        <li>PaperCard：aiSummary 为 null 不显示 AI 速读区块、kind 为 null 不显示标签</li>
+        <li>关掉 catalog → 首页其它区块正常，ExploreFeed 显示「加载失败」占位</li>
+        <li>catalog IT <code>PortalPublicationControllerIT</code> 覆盖 recent/cited + 空结果 + 分页边界</li>
+        <li>grep 不到 <code>PublicationController</code> / <code>VenueController</code> / <code>PublicationSummaryReadModel</code> 等任何残留引用</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：Implementation Notes（实施期由 Claude Code 维护）
+       ============================================================ -->
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 spec 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#sec-N">§ N 章节名</a>
+        </header>
+        <p>描述：spec 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+    </ol>
+
+    <p class="empty-state">no notes yet</p>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">0</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>
