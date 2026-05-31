@@ -47,6 +47,8 @@ spring:
                 - Path=/patra-ingest/**
               filters:
                 - StripPrefix=1
+                # 还原对外前缀，使下游 springdoc 的 servers 指向 Gateway 而非自身实例地址
+                - AddRequestHeader=X-Forwarded-Prefix, /patra-ingest
 
             # Registry Service Route
             # Example: /patra-registry/provenance -> lb://patra-registry/provenance
@@ -56,6 +58,8 @@ spring:
                 - Path=/patra-registry/**
               filters:
                 - StripPrefix=1
+                # 还原对外前缀，使下游 springdoc 的 servers 指向 Gateway 而非自身实例地址
+                - AddRequestHeader=X-Forwarded-Prefix, /patra-registry
 
             # Catalog Service Route
             # Example: /patra-catalog/venues -> lb://patra-catalog/venues
@@ -65,6 +69,8 @@ spring:
                 - Path=/patra-catalog/**
               filters:
                 - StripPrefix=1
+                # 还原对外前缀，使下游 springdoc 的 servers 指向 Gateway 而非自身实例地址
+                - AddRequestHeader=X-Forwarded-Prefix, /patra-catalog
 
 # ----------------------------------------------------------------------------
 # API Documentation Aggregation

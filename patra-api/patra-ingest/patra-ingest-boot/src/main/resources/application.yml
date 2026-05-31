@@ -1,5 +1,7 @@
 server:
   port: 6100
+  # 解析 Gateway 注入的 X-Forwarded-*（含 Prefix），使 springdoc 生成的 servers 指向对外网关地址
+  forward-headers-strategy: framework
 
 spring:
   application:
