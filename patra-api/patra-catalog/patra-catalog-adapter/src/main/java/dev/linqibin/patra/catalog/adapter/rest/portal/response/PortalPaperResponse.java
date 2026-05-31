@@ -36,4 +36,9 @@ public record PortalPaperResponse(
     String aiSummary,
     Integer estimatedReadMin,
     String kind,
-    Integer minutesAgo) {}
+    Integer minutesAgo) {
+
+  public PortalPaperResponse {
+    authors = authors != null ? List.copyOf(authors) : List.of();
+  }
+}

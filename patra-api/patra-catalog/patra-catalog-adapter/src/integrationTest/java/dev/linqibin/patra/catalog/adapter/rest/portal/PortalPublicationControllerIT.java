@@ -109,6 +109,6 @@ class PortalPublicationControllerIT {
         .uri("/portal/publications?tab=hottest")
         .exchange()
         .expectStatus()
-        .is4xxClientError();
+        .isEqualTo(422);
   }
 }

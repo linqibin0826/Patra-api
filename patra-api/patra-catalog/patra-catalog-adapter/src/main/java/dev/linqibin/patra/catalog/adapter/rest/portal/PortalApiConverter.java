@@ -2,9 +2,9 @@ package dev.linqibin.patra.catalog.adapter.rest.portal;
 
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperResponse;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
 import org.springframework.stereotype.Component;
 
 /// Portal 读模型 → 响应 DTO 转换器。
@@ -13,14 +13,6 @@ import org.springframework.stereotype.Component;
 /// @since 0.1.0
 @Component
 public class PortalApiConverter {
-
-  /// provenance code → 前端展示名。
-  /// TODO(provenance-dict)：后续接入 registry provenance 字典的规范方式替换硬码。
-  private static final Map<String, String> SOURCE_DISPLAY =
-      Map.of(
-          "PUBMED", "PubMed",
-          "EPMC", "Europe PMC",
-          "CROSSREF", "Crossref");
 
   /// 将读模型转为响应 DTO。
   ///
@@ -34,7 +26,7 @@ public class PortalApiConverter {
         model.publicationYear(),
         model.authors(),
         model.citationCount(),
-        0,
+        0, // bookmarks：无用户系统，恒为 0
         model.doi(),
         model.pmid(),
         toSource(model.provenanceCode()),
@@ -50,7 +42,11 @@ public class PortalApiConverter {
     if (provenanceCode == null) {
       return null;
     }
-    return SOURCE_DISPLAY.getOrDefault(provenanceCode, provenanceCode);
+    try {
+      return ProvenanceCode.parse(provenanceCode).getDescription();
+    } catch (IllegalArgumentException e) {
+      return provenanceCode;
+    }
   }
 
   private Integer toMinutesAgo(Instant lastSyncedAt) {
