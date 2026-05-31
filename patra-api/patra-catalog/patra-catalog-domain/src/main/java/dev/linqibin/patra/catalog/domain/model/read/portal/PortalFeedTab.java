@@ -6,6 +6,9 @@ import java.util.Locale;
 ///
 /// - [RECENT]：最近采集（`last_synced_at` 降序）
 /// - [CITED]：高被引（`citation_count` 降序）
+///
+/// @author linqibin
+/// @since 0.1.0
 public enum PortalFeedTab {
   RECENT,
   CITED;

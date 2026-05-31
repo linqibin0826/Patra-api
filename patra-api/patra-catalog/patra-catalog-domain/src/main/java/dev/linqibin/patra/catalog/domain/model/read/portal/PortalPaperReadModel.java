@@ -20,6 +20,8 @@ import java.util.List;
 /// @param provenanceCode 数据来源代码
 /// @param studyType 文献类型（第一个 publication_type，可空）
 /// @param lastSyncedAt 最后采集时间（可空）
+/// @author linqibin
+/// @since 0.1.0
 public record PortalPaperReadModel(
     Long id,
     String title,
