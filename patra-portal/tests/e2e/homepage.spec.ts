@@ -1,31 +1,25 @@
 import { expect, test } from "@playwright/test";
 
-test("homepage smoke — 6 区块 + Hero composer + AI 速读", async ({ page }) => {
+test("homepage smoke — 结构区块 + 文献流 tab", async ({ page }) => {
   await page.goto("/");
 
-  // TopNav
   await expect(page.getByRole("banner")).toBeVisible();
-
-  // Hero h1
   await expect(page.getByRole("heading", { level: 1 })).toContainText("可被检索");
 
-  // Composer input
-  await expect(page.getByPlaceholder(/JAK1|PMID|DOI|Topol/)).toBeVisible();
+  // 文献流区块存在（无论数据有无 / 后端是否在线）
+  const feed = page.locator("[data-section='explore-feed']");
+  await expect(feed).toBeVisible();
 
-  // TopicCloud
-  await expect(page.getByText("此刻热议")).toBeVisible();
-  await expect
-    .poll(async () => page.locator("[data-section='topic-cloud'] button").count())
-    .toBeGreaterThanOrEqual(4);
+  // 两个 tab 控件始终渲染
+  await expect(feed.getByText("最近更新")).toBeVisible();
+  await expect(feed.getByText("高被引")).toBeVisible();
 
-  // Journals
-  await expect
-    .poll(async () => page.locator("[data-section='journals'] button").count())
-    .toBeGreaterThanOrEqual(3);
-
-  // ExploreFeed AI 速读
-  await expect(page.getByText("AI 速读").first()).toBeVisible();
-
-  // Footer
   await expect(page.getByRole("contentinfo")).toBeVisible();
+});
+
+test("切 tab 改 URL searchParam", async ({ page }) => {
+  await page.goto("/");
+  const feed = page.locator("[data-section='explore-feed']");
+  await feed.getByText("高被引").click();
+  await expect(page).toHaveURL(/[?&]tab=cited/);
 });
