@@ -70,3 +70,15 @@ export interface Paper {
 }
 
 export type Feed = Record<FeedTab, Paper[]>;
+
+/**
+ * 后端 `dev.linqibin.commons.query.PageResult` 的序列化形态。
+ * 字段：page / pageSize / total / totalPages / items（非 content/totalElements）。
+ */
+export interface PageResult<T> {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  items: T[];
+}
