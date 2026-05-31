@@ -10,7 +10,7 @@ describe("fetchFeed", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
-    process.env.PATRA_GATEWAY_BASE_URL = undefined;
+    delete process.env.PATRA_GATEWAY_BASE_URL;
   });
 
   it("拼出正确的 gateway URL 并解析 JSON", async () => {
@@ -34,7 +34,7 @@ describe("fetchFeed", () => {
   });
 
   it("缺 PATRA_GATEWAY_BASE_URL 抛错", async () => {
-    process.env.PATRA_GATEWAY_BASE_URL = undefined;
+    delete process.env.PATRA_GATEWAY_BASE_URL;
     await expect(fetchFeed("recent")).rejects.toThrow(/PATRA_GATEWAY_BASE_URL/);
   });
 });
