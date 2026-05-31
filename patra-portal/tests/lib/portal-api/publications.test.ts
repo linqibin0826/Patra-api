@@ -23,7 +23,10 @@ describe("fetchFeed", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://gw.test:9528/patra-catalog/portal/publications?tab=cited&page=2&pageSize=20",
-      { cache: "no-store" },
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(result).toEqual(EMPTY);
   });

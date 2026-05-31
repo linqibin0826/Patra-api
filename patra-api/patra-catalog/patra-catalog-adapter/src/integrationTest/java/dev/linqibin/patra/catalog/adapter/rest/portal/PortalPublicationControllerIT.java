@@ -3,6 +3,7 @@ package dev.linqibin.patra.catalog.adapter.rest.portal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import dev.linqibin.commons.query.PageResult;
@@ -99,16 +100,28 @@ class PortalPublicationControllerIT {
   }
 
   @Test
-  @DisplayName("非法 tab 返回 4xx")
+  @DisplayName("非法 tab 在适配器校验层收敛为 422，不触达应用层")
   void shouldRejectInvalidTab() {
-    when(portalFeedQueryService.listFeed(any(PortalFeedQuery.class)))
-        .thenThrow(new IllegalArgumentException("不支持的 feed tab：hottest"));
-
     restClient
         .get()
         .uri("/portal/publications?tab=hottest")
         .exchange()
         .expectStatus()
         .isEqualTo(422);
+
+    verifyNoInteractions(portalFeedQueryService);
+  }
+
+  @Test
+  @DisplayName("pageSize 超过上限 50 在适配器校验层收敛为 422")
+  void shouldRejectOversizedPageSize() {
+    restClient
+        .get()
+        .uri("/portal/publications?pageSize=51")
+        .exchange()
+        .expectStatus()
+        .isEqualTo(422);
+
+    verifyNoInteractions(portalFeedQueryService);
   }
 }

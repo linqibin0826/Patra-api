@@ -6,6 +6,7 @@ import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperRespon
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalFeedQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalFeedQuery;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,7 +30,7 @@ public class PortalPublicationController {
   /// @param request 查询请求（Spring MVC 自动绑定 query params）
   /// @return 分页响应
   @GetMapping
-  public PageResult<PortalPaperResponse> listFeed(PortalPublicationListRequest request) {
+  public PageResult<PortalPaperResponse> listFeed(@Valid PortalPublicationListRequest request) {
     PortalFeedQuery query = PortalFeedQuery.of(request.tab(), request.page(), request.pageSize());
     return portalFeedQueryService.listFeed(query).map(portalApiConverter::toResponse);
   }

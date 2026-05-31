@@ -52,7 +52,7 @@ tasks.bootRun {
     // NOTE: 属性值在配置阶段求值，变化时会触发 Configuration Cache 失效（这是预期行为）
     // 对于 bootRun 开发任务，这完全可接受，因为 OTel 配置很少变化
     val otelAgentPath = providers.gradleProperty("otel.agent.path").getOrElse("")
-    val otelExporterEndpoint = providers.gradleProperty("otel.exporter.endpoint").getOrElse("http://localhost:4317")
+    val otelExporterEndpoint = providers.gradleProperty("otel.exporter.endpoint").getOrElse("http://localhost:4318")
 
     // OTel Agent JVM 参数（仅当配置了 agent 路径时启用）
     if (otelAgentPath.isNotBlank()) {

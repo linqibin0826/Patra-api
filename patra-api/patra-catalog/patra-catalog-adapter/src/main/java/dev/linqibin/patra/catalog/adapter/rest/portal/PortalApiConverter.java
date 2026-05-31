@@ -53,6 +53,8 @@ public class PortalApiConverter {
     if (lastSyncedAt == null) {
       return null;
     }
-    return (int) Duration.between(lastSyncedAt, Instant.now()).toMinutes();
+    // 钳到 0：lastSyncedAt 若晚于当前时间（时钟偏移等），避免负分钟透传到响应
+    long minutes = Duration.between(lastSyncedAt, Instant.now()).toMinutes();
+    return (int) Math.max(0L, minutes);
   }
 }

@@ -51,4 +51,10 @@ describe("PaperCard", () => {
     render(<PaperCard paper={makePaper({ source: "OADOI" })} />);
     expect(screen.getByText("OADOI")).toBeInTheDocument();
   });
+
+  it("journal 与 year 均缺失但有作者时，不渲染悬空的 · 分隔符", () => {
+    render(<PaperCard paper={makePaper({ journal: null, year: null })} />);
+    expect(screen.getByText(/Perkovic V\./)).toBeInTheDocument();
+    expect(screen.queryByText("·")).not.toBeInTheDocument();
+  });
 });

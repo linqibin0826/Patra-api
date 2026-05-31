@@ -47,7 +47,7 @@ export function PaperCard({ paper }: PaperCardProps) {
         )}
         {paper.authors.length > 0 && (
           <>
-            <span>·</span>
+            {(paper.journal || paper.year != null) && <span>·</span>}
             <span className="text-fg-2">
               {visibleAuthors.join(", ")}
               {remaining > 0 && ` 等 ${remaining} 位作者`}
