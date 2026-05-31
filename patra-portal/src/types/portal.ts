@@ -3,8 +3,9 @@
  */
 
 export type ComposerMode = "keyword" | "pmid" | "doi" | "author";
-export type FeedTab = "trending" | "recent" | "cited";
-export type PaperSource = "PubMed" | "Europe PMC" | "Crossref";
+export type FeedTab = "recent" | "cited";
+// 后端 source 来自 18 种 provenance 展示名或回退 code，故为开放 string（不可用三值 union）
+export type PaperSource = string;
 export type TopicHeatTier = 1 | 2 | 3 | 4 | 5;
 
 export interface SearchMode {
@@ -54,22 +55,19 @@ export interface Journal {
 export interface Paper {
   id: string;
   title: string;
-  journal: string;
-  year: number;
+  journal: string | null;
+  year: number | null;
   authors: string[];
-  authorCount: number;
-  cites: number;
+  cites: number | null;
   bookmarks: number;
-  readMin: number;
-  doi: string;
-  pmid: string;
+  doi: string | null;
+  pmid: string | null;
   source: PaperSource;
-  ai: string;
-  kind: string;
-  minutesAgo?: number;
+  aiSummary: string | null;
+  estimatedReadMin: number | null;
+  kind: string | null;
+  minutesAgo: number | null;
 }
-
-export type Feed = Record<FeedTab, Paper[]>;
 
 /**
  * 后端 `dev.linqibin.commons.query.PageResult` 的序列化形态。
