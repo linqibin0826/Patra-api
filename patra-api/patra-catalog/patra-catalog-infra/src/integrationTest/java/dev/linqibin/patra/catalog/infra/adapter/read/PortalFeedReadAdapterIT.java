@@ -146,6 +146,24 @@ class PortalFeedReadAdapterIT {
     }
   }
 
+  @Test
+  @DisplayName("软删除的 author 不出现在作者列表")
+  void shouldExcludeSoftDeletedAuthor() {
+    Long venueId = saveVenue("Nature");
+    Long pubId =
+        savePublication(
+            "Paper with deleted author", venueId, 10, Instant.parse("2026-04-01T00:00:00Z"));
+    saveAuthorWithDeletedFlag(pubId, "Alive A.", 1, false);
+    saveAuthorWithDeletedFlag(pubId, "Deleted D.", 2, true);
+    em.flush();
+    em.clear();
+
+    PageResult<PortalPaperReadModel> page =
+        adapter.findFeedPage(PagingParams.of(1, 14), PortalFeedFilter.of(PortalFeedTab.RECENT));
+
+    assertThat(page.items().get(0).authors()).containsExactly("Alive A.");
+  }
+
   private void savePublicationType(Long publicationId, String typeValue, int order) {
     PublicationTypeEntity t =
         PublicationTypeEntity.builder()
@@ -155,5 +173,43 @@ class PortalFeedReadAdapterIT {
             .typeOrder(order)
             .build();
     em.persist(t);
+  }
+
+  /// 保存作者并可选地将其软删除。
+  ///
+  /// 由于 Hibernate `@SoftDelete` 会拦截所有 JPA 删除操作并自动过滤查询，
+  /// 无法通过 `em.remove()` 或字段 setter 直接写入 `deleted_at`。
+  /// 此处使用 native query 绕过 Hibernate 拦截，直接更新 `deleted_at` 列。
+  ///
+  /// @param publicationId 关联的文献 ID
+  /// @param displayName 作者展示名
+  /// @param order 作者顺序
+  /// @param deleted 是否软删除
+  private void saveAuthorWithDeletedFlag(
+      Long publicationId, String displayName, int order, boolean deleted) {
+    AuthorEntity a =
+        AuthorEntity.builder()
+            .id(SnowflakeIdGenerator.getId())
+            .normalizedKey("k" + SnowflakeIdGenerator.getId())
+            .displayName(displayName)
+            .status("ACTIVE")
+            .provenanceCode("PUBMED")
+            .build();
+    em.persist(a);
+    if (deleted) {
+      em.flush();
+      em.getEntityManager()
+          .createNativeQuery("UPDATE cat_author SET deleted_at = now() WHERE id = :id")
+          .setParameter("id", a.getId())
+          .executeUpdate();
+    }
+    PublicationAuthorEntity link =
+        PublicationAuthorEntity.builder()
+            .id(SnowflakeIdGenerator.getId())
+            .publicationId(publicationId)
+            .authorId(a.getId())
+            .authorOrder(order)
+            .build();
+    em.persist(link);
   }
 }

@@ -5,6 +5,9 @@ import java.time.Instant;
 /// [PortalFeedDao] native query 的 Spring Data 接口投影。
 ///
 /// getter 名与 SQL 列别名一一对应（别名在 SQL 中加双引号保持 camelCase）。
+///
+/// @author linqibin
+/// @since 0.1.0
 public interface PortalFeedRow {
   Long getId();
 

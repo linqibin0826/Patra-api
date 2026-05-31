@@ -6,7 +6,6 @@ import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedFilter;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
 import dev.linqibin.patra.catalog.domain.port.read.PortalFeedReadPort;
 import dev.linqibin.patra.catalog.infra.persistence.dao.PortalFeedDao;
-import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -59,6 +58,6 @@ public class PortalFeedReadAdapter implements PortalFeedReadPort {
     if (authorNames == null || authorNames.isBlank()) {
       return List.of();
     }
-    return Arrays.asList(authorNames.split(AUTHOR_DELIMITER, -1));
+    return List.of(authorNames.split(AUTHOR_DELIMITER, -1));
   }
 }
