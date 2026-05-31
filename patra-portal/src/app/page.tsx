@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { ExploreFeed } from "@/components/portal/explore-feed";
+import { ExploreFeedSkeleton } from "@/components/portal/explore-feed/skeleton";
 import { Footer } from "@/components/portal/Footer";
 import { HeroWithToast } from "@/components/portal/HeroWithToast";
 import { Journals } from "@/components/portal/Journals";
@@ -20,7 +22,9 @@ export default async function HomePage({
         <HeroWithToast />
         <TopicCloud />
         <Journals />
-        <ExploreFeed tab={safeTab} />
+        <Suspense fallback={<ExploreFeedSkeleton />}>
+          <ExploreFeed tab={safeTab} />
+        </Suspense>
       </main>
       <Footer />
     </>
