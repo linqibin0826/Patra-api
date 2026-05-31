@@ -5,9 +5,7 @@ import HomePage from "@/app/page";
 
 describe("HomePage smoke", () => {
   it("渲染 6 个核心区块的 data-section anchor", () => {
-    const { container } = render(
-      <HomePage searchParams={Promise.resolve({ tab: "recent" })} />,
-    );
+    const { container } = render(<HomePage searchParams={Promise.resolve({ tab: "recent" })} />);
     for (const section of ["topnav", "hero", "topic-cloud", "journals", "explore-feed", "footer"]) {
       expect(container.querySelector(`[data-section='${section}']`)).toBeTruthy();
     }
