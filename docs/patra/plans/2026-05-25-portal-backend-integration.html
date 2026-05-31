@@ -21,14 +21,14 @@
       <li><a href="#contract">契约缝（前后端共识）</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li data-task-status="pending"><a href="#task-1">Task 1 — 删除 demo 读链路并验证编译</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — Domain 层 portal 读模型与端口</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — Infra 层 DAO + ReadAdapter（TDD）</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — App 层 QueryService（TDD）</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — Adapter 层 Controller + Converter（TDD）</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — 前端 PageResult 类型 + fetch helper（TDD）</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — 前端 Paper 类型重构 + 组件改造</a></li>
-          <li data-task-status="pending"><a href="#task-8">Task 8 — e2e + .env.example + 全量验证</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — 删除 demo 读链路并验证编译</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — Domain 层 portal 读模型与端口</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — Infra 层 DAO + ReadAdapter（TDD）</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — App 层 QueryService（TDD）</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — Adapter 层 Controller + Converter（TDD）</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 前端 PageResult 类型 + fetch helper（TDD）</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 前端 Paper 类型重构 + 组件改造</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — e2e + .env.example + 全量验证</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -171,7 +171,7 @@
 
       <!-- TASK TEMPLATE 注释保留供复制（见模板） -->
 
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：删除 demo 读链路并验证编译</h2>
           <dl class="files">
@@ -183,7 +183,7 @@
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：删除 adapter 层 demo（main + IT）</strong>
             <p>不删整个 rest 目录，只删 publication / venue 两个子包。先确认 portal 包尚不存在（本任务后续才建），删除范围如下：</p>
             <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
@@ -195,7 +195,7 @@ git rm -r \
             <p>注意 venue IT 里 <code>VenueController*IT</code> 引用了 <code>PublicationQueryService</code>，会随本步一起删除。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：删除 app 层 demo（main + test）</strong>
             <pre><code class="lang-bash">git rm -r \
   patra-api/patra-catalog/patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/publication/query \
@@ -205,7 +205,7 @@ git rm -r \
             <p>仅删 <code>query/</code> 子包；<code>usecase/venue/letpub</code>、<code>usecase/venue/scopus</code>（富化任务）等不动。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：删除 domain 层 demo 读模型与端口（main + test）</strong>
             <pre><code class="lang-bash">git rm -r \
   patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/publication \
@@ -216,7 +216,7 @@ git rm -r \
             <p>保留 <code>port/read/VenueEnrichmentReadPort.java</code>（富化任务用）。若 venue read model 有 test 目录一并删除（用 <code>git rm</code> 报错则说明无该目录，忽略）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：删除 infra 层 demo ReadAdapter（main + IT）</strong>
             <pre><code class="lang-bash">git rm \
   patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PublicationReadAdapter.java \
@@ -231,7 +231,7 @@ git rm \
             <p><strong>保留</strong> <code>VenueEnrichmentReadAdapter.java</code>。若 infra 还有 <code>VenueReadAdapterIT</code> 一并删。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：grep 残留引用，确认无悬挂依赖</strong>
             <p>运行：</p>
             <pre><code class="lang-bash">grep -rn "PublicationReadPort\|VenueReadPort\|PublicationSummaryReadModel\|PublicationDetailReadModel\|VenueSummaryReadModel\|VenueDetailReadModel\|PublicationQueryService\|VenueQueryService\|PublicationController\|VenueController\|PublicationReadAdapter\|VenueReadAdapter\|PublicationReadModelMapper" \
@@ -239,7 +239,7 @@ git rm \
             <p>预期：<strong>无输出</strong>（VenueEnrichmentReadPort/Adapter 不在匹配词内，保留无碍）。若有输出，说明该引用点也是 demo 残留，一并删除或修正后重跑直到无输出。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：编译验证（编 boot 即编全链）</strong>
             <p>运行：</p>
             <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-boot:compileJava \
@@ -249,7 +249,7 @@ git rm \
             <p>预期：<code>BUILD SUCCESSFUL</code>。若编译失败且错误指向被删类的引用，回步骤 5 清理。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Commit</strong>
             <pre><code class="lang-bash">git commit -m "refactor(catalog): 删除无客户端调用的 publication/venue demo 读链路
 
@@ -259,7 +259,7 @@ portal 改连真实数据前先清理早期演示代码（adapter/app/domain/inf
         </ol>
       </article>
 
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：Domain 层 portal 读模型与端口</h2>
           <dl class="files">
@@ -271,7 +271,7 @@ portal 改连真实数据前先清理早期演示代码（adapter/app/domain/inf
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：创建 PortalFeedTab 枚举（含 fromCode 归一化）</strong>
             <p>路径 <code>patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/portal/PortalFeedTab.java</code></p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
@@ -308,7 +308,7 @@ public enum PortalFeedTab {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：创建 PortalPaperReadModel</strong>
             <p>路径 <code>.../domain/model/read/portal/PortalPaperReadModel.java</code>。集合字段防御性拷贝（遵循 record 设计规范）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
@@ -353,7 +353,7 @@ public record PortalPaperReadModel(
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：创建 PortalFeedFilter</strong>
             <p>路径 <code>.../domain/model/read/portal/PortalFeedFilter.java</code>。当前仅 tab 一个维度，参数 ≤4 用 <code>of()</code> 工厂。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
@@ -374,7 +374,7 @@ public record PortalFeedFilter(PortalFeedTab tab) {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：创建 PortalFeedReadPort</strong>
             <p>路径 <code>.../domain/port/read/PortalFeedReadPort.java</code>。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.port.read;
@@ -399,13 +399,13 @@ public interface PortalFeedReadPort {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：编译验证</strong>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-domain:compileJava</code></p>
             <p>预期：<code>BUILD SUCCESSFUL</code>。domain 层纯 Java，convention plugin 会校验无框架依赖。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/portal \
         patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/port/read/PortalFeedReadPort.java
@@ -414,7 +414,7 @@ git commit -m "feat(catalog): portal 文献流 domain 读模型与端口"</code>
         </ol>
       </article>
 
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="done">
         <header>
           <h2>任务 3：Infra 层 DAO + ReadAdapter（TDD）</h2>
           <dl class="files">
@@ -426,7 +426,7 @@ git commit -m "feat(catalog): portal 文献流 domain 读模型与端口"</code>
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：先写 Infra IT</strong>
             <p>路径 <code>patra-api/patra-catalog/patra-catalog-infra/src/integrationTest/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalFeedReadAdapterIT.java</code>。沿用现有 <code>PublicationReadAdapterIT</code> 的 Testcontainers 模式（<code>@DataJpaTest</code> + 容器 initializer + <code>@AutoConfigureTestDatabase(NONE)</code> + <code>SnowflakeIdGenerator</code> 造数据）。用 <code>TestEntityManager</code> 写入关联表（author/publication_author/publication_type）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
@@ -595,7 +595,7 @@ class PortalFeedReadAdapterIT {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2（RED）：创建接口投影 PortalFeedRow</strong>
             <p>路径 <code>.../infra/adapter/read/PortalFeedRow.java</code>。Spring Data native query 用接口投影，getter 名对应 SQL 列别名（别名加双引号保 camelCase，避免 Postgres 折叠小写）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
@@ -632,7 +632,7 @@ interface PortalFeedRow {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3（RED）：创建 PortalFeedDao（单次 native query + countQuery）</strong>
             <p>路径 <code>.../infra/persistence/dao/PortalFeedDao.java</code>。作者用 <code>string_agg</code>（单元分隔符 <code>E'\x1f'</code>）+ <code>ORDER BY author_order</code>；类型用相关子查询取 <code>type_order</code> 最小；排序按 <code>:sortMode</code> 用 CASE 内嵌（沿用现有 DAO 模式）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
@@ -692,7 +692,7 @@ public interface PortalFeedDao extends JpaRepository&lt;PublicationEntity, Long&
             <p>注意：HTML 中 <code>E'\\x1f'</code> 的双反斜杠是文档转义，写入 .java 文件时为 <code>E'\x1f'</code>（Postgres 十六进制转义单元分隔符 U+001F）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4（GREEN）：实现 PortalFeedReadAdapter</strong>
             <p>路径 <code>.../infra/adapter/read/PortalFeedReadAdapter.java</code>。<code>@Repository</code> + <code>@RequiredArgsConstructor</code>（沿用现有模式）。拆分 authorNames，转 PageResult。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
@@ -759,7 +759,7 @@ public class PortalFeedReadAdapter implements PortalFeedReadPort {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5（GREEN）：运行 Infra IT 验证通过</strong>
             <p>运行：</p>
             <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-infra:integrationTest \
@@ -767,7 +767,7 @@ public class PortalFeedReadAdapter implements PortalFeedReadPort {
             <p>预期：3 个测试方法全部通过（RECENT/CITED 排序、venue/authors/studyType 组装、降级）。若 authorNames 顺序错，检查 string_agg 的 <code>ORDER BY pa.author_order</code>；若投影字段为 null，检查 SQL 别名是否加了双引号。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/dao/PortalFeedDao.java \
         patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalFeedRow.java \
@@ -778,7 +778,7 @@ git commit -m "feat(catalog): portal 文献流 infra 读适配器（单查询组
         </ol>
       </article>
 
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：App 层 QueryService（TDD）</h2>
           <dl class="files">
@@ -789,7 +789,7 @@ git commit -m "feat(catalog): portal 文献流 infra 读适配器（单查询组
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：创建 PortalFeedQuery（参数 ≤4，of 工厂）</strong>
             <p>路径 <code>.../app/usecase/portal/query/dto/PortalFeedQuery.java</code>。承载未归一化的原始外部输入（tab 为 String，page/pageSize 可空）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query.dto;
@@ -814,7 +814,7 @@ public record PortalFeedQuery(String tab, Integer page, Integer pageSize) {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2（RED）：写 PortalFeedQueryService 单测</strong>
             <p>路径 <code>patra-api/patra-catalog/patra-catalog-app/src/test/java/dev/linqibin/patra/catalog/app/usecase/portal/query/PortalFeedQueryServiceTest.java</code>。Mockito mock ReadPort，验证归一化（默认 pageSize 14、上限 50）、tab 解析、非法 tab 抛错。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
@@ -884,13 +884,13 @@ class PortalFeedQueryServiceTest {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3（RED）：运行测试确认失败</strong>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-app:test --tests "*PortalFeedQueryServiceTest"</code></p>
             <p>预期：编译失败（<code>PortalFeedQueryService</code> 尚不存在）。这是 RED。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4（GREEN）：实现 PortalFeedQueryService</strong>
             <p>路径 <code>.../app/usecase/portal/query/PortalFeedQueryService.java</code>。常量 <code>DEFAULT_PAGE_SIZE=14</code>、<code>MAX_PAGE_SIZE=50</code>，归一化后委托 ReadPort。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
@@ -937,13 +937,13 @@ public class PortalFeedQueryService {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5（GREEN）：运行测试验证通过</strong>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-app:test --tests "*PortalFeedQueryServiceTest"</code></p>
             <p>预期：3 个测试方法全部通过。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/portal \
         patra-api/patra-catalog/patra-catalog-app/src/test/java/dev/linqibin/patra/catalog/app/usecase/portal
@@ -952,7 +952,7 @@ git commit -m "feat(catalog): portal 文献流 app 查询服务（归一化 + TD
         </ol>
       </article>
 
-      <article class="task" id="task-5" data-status="pending">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：Adapter 层 Controller + Converter（TDD）</h2>
           <dl class="files">
@@ -965,7 +965,7 @@ git commit -m "feat(catalog): portal 文献流 app 查询服务（归一化 + TD
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：创建 PortalPaperResponse（≥5 字段用 record，无 of）</strong>
             <p>路径 <code>.../rest/portal/response/PortalPaperResponse.java</code>。字段顺序/命名严格对齐前端 <code>Paper</code>（见「契约缝」）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.response;
@@ -1008,7 +1008,7 @@ public record PortalPaperResponse(
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：创建 PortalPublicationListRequest</strong>
             <p>路径 <code>.../rest/portal/request/PortalPublicationListRequest.java</code>。Spring MVC 自动绑定 query params。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.request;
@@ -1022,7 +1022,7 @@ public record PortalPublicationListRequest(String tab, Integer page, Integer pag
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3（RED）：写 Controller WebMvc 切片 IT</strong>
             <p>路径 <code>patra-api/patra-catalog/patra-catalog-adapter/src/integrationTest/java/dev/linqibin/patra/catalog/adapter/rest/portal/PortalPublicationControllerIT.java</code>。沿用现有 <code>@WebMvcTest</code> + <code>CatalogAdapterITWebMvcConfig</code> + <code>RestTestClient</code> + <code>@MockitoBean</code> 模式。验证信封字段、id 为 String、source 映射、aiSummary/estimatedReadMin 为 null、bookmarks=0、kind 来自 studyType、authors 数组。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
@@ -1125,7 +1125,7 @@ class PortalPublicationControllerIT {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4（GREEN）：实现 PortalApiConverter</strong>
             <p>路径 <code>.../rest/portal/PortalApiConverter.java</code>。普通 <code>@Component</code>（含 source 映射、null+TODO、minutesAgo 墙钟计算等自定义逻辑，比 MapStruct 更直观）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
@@ -1190,7 +1190,7 @@ public class PortalApiConverter {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5（GREEN）：实现 PortalPublicationController</strong>
             <p>路径 <code>.../rest/portal/PortalPublicationController.java</code>。<code>@Tag(name = "Portal")</code>。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
@@ -1230,7 +1230,7 @@ public class PortalPublicationController {
 </code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6（GREEN）：运行 Controller IT 验证通过</strong>
             <p>运行：</p>
             <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-adapter:integrationTest \
@@ -1238,7 +1238,7 @@ public class PortalPublicationController {
             <p>预期：2 个测试方法通过。若非法 tab 测试返回 500 而非 4xx，检查 starter 的 <code>DefaultErrorResolutionEngine</code> 是否把 <code>IllegalArgumentException</code> 识别为 client error；如需要可在 boot 层补 <code>ErrorMappingContributor</code>（遇此情况追加右栏 note）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：全 catalog 测试回归 + Commit</strong>
             <p>运行（确保删除 + 新增未破坏其它测试）：</p>
             <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-app:test \
@@ -1252,7 +1252,7 @@ git commit -m "feat(catalog): portal 文献流 REST 接口 + 字段对齐前端�
         </ol>
       </article>
 
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：前端 PageResult 类型 + fetch helper（TDD）</h2>
           <dl class="files">
@@ -1265,7 +1265,7 @@ git commit -m "feat(catalog): portal 文献流 REST 接口 + 字段对齐前端�
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：追加 PageResult 类型（纯新增，不破坏现有 Paper）</strong>
             <p>在 <code>src/types/portal.ts</code> 末尾追加。本步只加类型，Paper 的字段重命名留到 Task 7（保证本任务 typecheck 绿）。</p>
             <pre><code class="lang-ts">/**
@@ -1281,7 +1281,7 @@ export interface PageResult&lt;T&gt; {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：创建 server-only vitest 空桩 + 配 alias</strong>
             <p><code>server-only</code> 包在非 RSC 环境 import 会抛错，单测需用空桩替换。创建 <code>tests/stubs/server-only.ts</code>：</p>
             <pre><code class="lang-ts">// vitest 环境替换真实 server-only 包（真实包在非 RSC import 即抛错）。
@@ -1308,7 +1308,7 @@ export default defineConfig({
 });</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3（RED）：写 fetch helper 单测</strong>
             <p>路径 <code>tests/lib/portal-api/publications.test.ts</code>。mock 全局 <code>fetch</code>，验证 URL 拼装、JSON 解析、非 2xx 抛错、缺环境变量抛错。</p>
             <pre><code class="lang-ts">import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1356,13 +1356,13 @@ describe("fetchFeed", () => {
 });</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4（RED）：运行确认失败</strong>
             <p>运行：<code>cd patra-portal && pnpm test -- publications</code></p>
             <p>预期：失败（<code>@/lib/portal-api/publications</code> 不存在）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5（GREEN）：实现 fetch helper</strong>
             <p>路径 <code>src/lib/portal-api/publications.ts</code>。</p>
             <pre><code class="lang-ts">import "server-only";
@@ -1391,13 +1391,13 @@ export async function fetchFeed(
             <p>注意：此处用到 <code>FeedTab</code> 类型——它在现有 <code>portal.ts</code> 里仍含 <code>trending</code>（Task 7 才收窄）。本任务用 <code>"cited" | "recent"</code> 字面量传参，与现有 <code>FeedTab</code> 兼容，typecheck 不破。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6（GREEN）：运行测试 + typecheck</strong>
             <p>运行：<code>cd patra-portal && pnpm test -- publications && pnpm typecheck && pnpm lint</code></p>
             <p>预期：3 个测试通过；typecheck/lint 无错（本任务纯新增，未触碰现有组件）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Commit</strong>
             <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
 git add patra-portal/src/types/portal.ts patra-portal/src/lib/portal-api/publications.ts \
@@ -1408,7 +1408,7 @@ git commit -m "feat(portal): PageResult 类型 + 服务端文献流 fetch helper
         </ol>
       </article>
 
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：前端 Paper 类型重构 + 组件改造</h2>
           <dl class="files">
@@ -1424,7 +1424,7 @@ git commit -m "feat(portal): PageResult 类型 + 服务端文献流 fetch helper
         <p style="margin:0 0 1rem;color:var(--ink-600,#666);font-size:.9em">这是一次原子重构：Paper 字段重命名会同时波及 feed.ts / 组件 / 测试，必须一并改完才能编译。本任务步骤多但只在末尾 commit 一次。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：重构 types/portal.ts</strong>
             <p>替换 <code>FeedTab</code>、<code>Paper</code>，删除 <code>Feed</code> 类型（feed.ts 删除后无引用）。保留 PageResult（Task 6 加的）。完整改后的关键片段：</p>
             <pre><code class="lang-ts">export type ComposerMode = "keyword" | "pmid" | "doi" | "author";
@@ -1451,7 +1451,7 @@ export interface Paper {
             <p>同时把文件顶部对 <code>TopicHeatTier</code>、<code>SearchMode</code>、<code>ExampleQuery</code>、<code>PortalStats</code>、<code>Topic</code>、<code>Journal</code> 等其它类型原样保留（它们服务 mock 区块，不在本次范围）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：删除 feed.ts 与 index.ts 的 FEED 导出</strong>
             <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
 git rm patra-portal/src/data/feed.ts</code></pre>
@@ -1463,7 +1463,7 @@ export { SEARCH_MODES } from "./search-modes";
 export { TOPIC_CLOUD, topicTier } from "./topics";</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：改 AISummaryBadge props 重命名</strong>
             <p>路径 <code>src/components/portal/AISummaryBadge.tsx</code>，整文件替换：</p>
             <pre><code class="lang-tsx">import { cn } from "@/lib/utils";
@@ -1497,7 +1497,7 @@ export function AISummaryBadge({ aiSummary, estimatedReadMin, className }: AISum
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：改 PaperCard（null 防御 + authors.length + 字段重命名）</strong>
             <p>路径 <code>src/components/portal/PaperCard.tsx</code>。关键改动：用 <code>paper.authors.length</code> 替代 <code>authorCount</code>；<code>journal/year</code> 可空时不渲染对应 meta；<code>kind</code> 为 null 不渲染标签；<code>aiSummary</code> 为 null 整块隐藏 badge；<code>aiSummary</code>/<code>estimatedReadMin</code> 传新 props 名。改后片段：</p>
             <pre><code class="lang-tsx">export function PaperCard({ paper }: PaperCardProps) {
@@ -1546,7 +1546,7 @@ export function AISummaryBadge({ aiSummary, estimatedReadMin, className }: AISum
             <p>引用数那行把 <code>{paper.cites} 引用</code> 改为 <code>{paper.cites ?? 0} 引用</code>；收藏按钮 <code>收藏 {paper.bookmarks}</code> 不变。其余按钮与结构保持原样。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：创建 explore-feed/empty.tsx（空态/错误态）</strong>
             <p>路径 <code>src/components/portal/explore-feed/empty.tsx</code>。</p>
             <pre><code class="lang-tsx">interface ExploreFeedEmptyProps {
@@ -1566,7 +1566,7 @@ export function ExploreFeedEmpty({ reason }: ExploreFeedEmptyProps) {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：创建 explore-feed/tabs.tsx（Client）</strong>
             <p>路径 <code>src/components/portal/explore-feed/tabs.tsx</code>。切 tab 改 URL searchParam，触发服务端重渲。</p>
             <pre><code class="lang-tsx">"use client";
@@ -1609,7 +1609,7 @@ export function ExploreFeedTabs({ currentTab }: { currentTab: FeedTab }) {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：创建 explore-feed/index.tsx（Server Component）</strong>
             <p>路径 <code>src/components/portal/explore-feed/index.tsx</code>。RSC：服务端 fetch + try/catch 兜底 + 标题区（迁移自旧 ExploreFeed）+ 卡片网格。</p>
             <pre><code class="lang-tsx">import Image from "next/image";
@@ -1678,7 +1678,7 @@ function FeedSection({ children }: { children: React.ReactNode }) {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 8：删除旧 ExploreFeed + 改 page.tsx 引用与 searchParams</strong>
             <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
 git rm patra-portal/src/components/portal/ExploreFeed.tsx \
@@ -1714,7 +1714,7 @@ export default async function HomePage({
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 9：改组件测试（内联 fixture + null case）</strong>
             <p>路径 <code>tests/components/portal/PaperCard.test.tsx</code>，整文件替换（不再依赖被删的 FEED）：</p>
             <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
@@ -1790,13 +1790,13 @@ describe("AISummaryBadge", () => {
 });</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 10：全量验证（lint + typecheck + test）</strong>
             <p>运行：<code>cd patra-portal && pnpm lint && pnpm typecheck && pnpm test</code></p>
             <p>预期：三绿。常见失败：①漏改某处 <code>ai</code>/<code>readMin</code>/<code>authorCount</code> 引用 → typecheck 报错按提示补；②Biome import 顺序 → <code>pnpm format</code> 自动修。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 11：Commit</strong>
             <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
 git add patra-portal/src patra-portal/tests
@@ -1808,7 +1808,7 @@ Paper 字段重命名/null 化（ai→aiSummary、readMin→estimatedReadMin）�
         </ol>
       </article>
 
-      <article class="task" id="task-8" data-status="pending">
+      <article class="task" id="task-8" data-status="done">
         <header>
           <h2>任务 8：e2e + .env.example + 全量验证</h2>
           <dl class="files">
@@ -1818,7 +1818,7 @@ Paper 字段重命名/null 化（ai→aiSummary、readMin→estimatedReadMin）�
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：创建 .env.example</strong>
             <p>路径 <code>patra-portal/.env.example</code>。</p>
             <pre><code class="lang-bash"># Patra Gateway 地址 —— 仅 Next.js 服务端读取（RSC / Route Handler）。
@@ -1827,7 +1827,7 @@ Paper 字段重命名/null 化（ai→aiSummary、readMin→estimatedReadMin）�
 PATRA_GATEWAY_BASE_URL=http://localhost:9528</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：改 e2e（弹性断言，不依赖后端数据）</strong>
             <p>路径 <code>tests/e2e/homepage.spec.ts</code>。原断言里「AI 速读 可见」依赖 mock，现 aiSummary 恒 null 不再渲染，且 e2e 跑 <code>pnpm dev</code> 时后端可能未起 → 文献流可能是空态。改为只断言结构性、对后端状态弹性的元素。整文件替换：</p>
             <pre><code class="lang-ts">import { expect, test } from "@playwright/test";
@@ -1857,14 +1857,14 @@ test("切 tab 改 URL searchParam", async ({ page }) => {
 });</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：e2e 本地验证（需后端在线才看真实数据，仅看冒烟通过）</strong>
             <p>前置：infra（docker compose）+ catalog + gateway 在线，且 <code>patra-portal/.env.local</code> 已配 <code>PATRA_GATEWAY_BASE_URL=http://localhost:9528</code>。运行：</p>
             <pre><code class="lang-bash">cd patra-portal && pnpm test:e2e</code></pre>
             <p>预期：2 个 e2e 用例通过。若后端未起，文献流显示「加载失败」占位，但结构断言（区块 + tab + 切 tab URL）仍通过——这正是弹性断言的目的。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：人工验收（用户执行，对照 spec Done 判定）</strong>
             <p>这一步由用户在浏览器手动确认（计划只列清单，不替用户判定）：</p>
             <pre><code class="lang-text">1. 起 infra + catalog + gateway + portal dev，访问 http://localhost:3000
@@ -1874,14 +1874,14 @@ test("切 tab 改 URL searchParam", async ({ page }) => {
 5. 关掉 catalog → 首页其它区块正常，ExploreFeed 显示「加载失败」占位</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
 git add patra-portal/.env.example patra-portal/tests/e2e/homepage.spec.ts
 git commit -m "test(portal): e2e 弹性冒烟 + 切 tab URL 断言 + .env.example"</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：最终全栈回归</strong>
             <p>运行：</p>
             <pre><code class="lang-bash"># 后端
@@ -1944,16 +1944,129 @@ cd patra-portal && pnpm lint && pnpm typecheck && pnpm test</code></pre>
       data-type 4 类：decision / change / tradeoff / other
       追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
       -->
-    </ol>
 
-    <p class="empty-state">no notes yet</p>
+      <li class="note" data-type="change" data-time="2026-05-25T10:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T10:00">05-25 10:00</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 步骤 4 未列 <code>infra/adapter/read/VenueReadModelMapper.java</code>，但它仅服务已删的 VenueReadAdapter、无其它引用，一并删除。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-05-25T10:01">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T10:01">05-25 10:01</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 步骤 3 称 venue read model test「若不存在则忽略」，实际存在 <code>VenueSummaryReadModelTest.java</code>（属被删 demo 读模型的配套测试），已一并删除。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-05-25T10:02">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T10:02">05-25 10:02</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 步骤 4 未列举 infra 层 4 个 VenueReadAdapter*IT，实际存在（被删 VenueReadAdapter 的配套测试），一并删除。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-05-25T11:00">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-05-25T11:00">05-25 11:00</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>代码质量审查指出 <code>PortalPaperReadModel</code> 11 字段却未用 <code>@Builder</code>（项目规范「≥5 参数用 @Builder」）。控制者裁定：CQRS 读模型由 Infra 唯一调用、一次性 new 构造，豁免 @Builder，保留裸 record 构造器。<strong>不</strong>改 code-style.md 规则文档（超出本任务范围）。同时本任务给 <code>PortalFeedFilter.of()</code> 补了 <code>Objects.requireNonNull</code>、4 文件补 <code>@author</code>/<code>@since</code>（commit 86cee16c9）。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-05-25T12:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T12:00">05-25 12:00</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>plan 中 <code>PortalFeedRow</code> 投影接口写为 package-private，但 <code>PortalFeedDao</code> 在 <code>persistence.dao</code> 包引用它，跨包不可见会编译失败，改为 <code>public</code>。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-05-25T12:01">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T12:01">05-25 12:01</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>plan 中 IT 的 <code>TestEntityManager</code> import 用了 Spring Boot 3 路径 <code>org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager</code>，Spring Boot 4 已迁移至 <code>org.springframework.boot.jpa.test.autoconfigure.TestEntityManager</code>，按实际修正。</p>
+      </li>
+
+      <li class="note" data-type="tradeoff" data-time="2026-05-25T13:00">
+        <header>
+          <span class="note-type">TRADEOFF</span>
+          <time datetime="2026-05-25T13:00">05-25 13:00</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>代码审查指出 <code>citation_count</code> / <code>last_synced_at</code>（两个 tab 的排序列）在 <code>cat_publication</code> 上无索引，大数据量下 ORDER BY 退化为全表扫描 + Sort。本版按 spec §7「数据量小，后续优化」延后——需独立 Flyway 迁移补索引 + 更新 PublicationEntity @Index。控制者将在收尾时建 follow-up issue 跟踪。另注：DAO 用 native query 绕过 Hibernate <code>@SoftDelete</code> 自动过滤，故 publication 主表与 author 子查询均手写 <code>deleted_at IS NULL</code>（已在本任务修复 author 软删过滤并加 IT 验证）。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-05-25T14:00">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-05-25T14:00">05-25 14:00</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>代码审查指出 source 硬映射只覆盖 3 个 provenance、未知值回退原始大写 code 会污染前端强类型。裁定：PortalApiConverter 改用 <code>ProvenanceCode.parse(code).getDescription()</code>（18 个 provenance 均有规范展示名，common-enums 提供），解析失败回退原值。<strong>契约影响 Task 7</strong>：前端 <code>PaperSource</code> 类型必须定义为 <code>string</code>（而非 PubMed/Europe PMC/Crossref 三值 union），且 <code>PaperCard</code> 的 source 配色映射须对未知 source 兜底（现有 SOURCE_DOT_CLASS 仅 3 键）。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-05-25T15:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T15:00">05-25 15:00</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>实现期一度把 fetch helper guard 改为 <code>if (!baseUrl || baseUrl === "undefined")</code> 以迁就单测的 <code>process.env.X = undefined</code>（Node 转字符串）。代码质量审查判定为「生产代码迁就测试」坏味道，已回退：生产恢复纯 <code>if (!baseUrl)</code>，测试改用 <code>delete process.env.X</code>（commit 7a744dd42）。同时给 <code>as PageResult&lt;Paper&gt;</code> 裸断言补 TODO(contract-validation) 注释（契约稳定后可上 zod）。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-05-25T16:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T16:00">05-25 16:00</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>plan 未列 <code>tests/smoke.test.tsx</code>。HomePage 改 async（searchParams 为 Promise）后该全页 smoke 既缺 prop、又因 RTL 无法渲染 async Server Component 而形同虚设（且本就因预存 sonner 缺包失败）。代码质量审查后<strong>删除</strong>该测试——全页冒烟覆盖移交 Task 8 的 Playwright e2e（与本任务删 ExploreFeed.test.tsx 改 e2e 覆盖一致，commit 53b4a0e8e）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-05-25T16:05">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-05-25T16:05">05-25 16:05</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>portal 存在<strong>预存</strong>依赖/类型问题（早于本次工作）：<code>sonner</code>/<code>next-themes</code> 缺包致 2 个测试 suite 失败 + <code>sonner.tsx</code> typecheck 报错；<code>Composer.tsx</code> 的 Zod v4/v3 与 hookform-resolver 不兼容；<code>@playwright/test</code> 未安装。本次 portal 改动未新增任何 typecheck 错误/测试失败，但这些预存问题使 <code>pnpm typecheck</code>/<code>pnpm test</code> 无法完全三绿——超出本 feature 范围，收尾时需向用户说明并单独跟进（如 <code>pnpm install</code> 补依赖 / 修 Zod 版本）。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-05-25T17:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-05-25T17:00">05-25 17:00</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p><code>@playwright/test</code> 未安装（预存），e2e 脚本（已更新为弹性断言）无法本地运行。需用户 <code>pnpm add -D @playwright/test</code>（+ <code>pnpm exec playwright install chromium</code>）后跑 <code>pnpm test:e2e</code>，或在 CI 执行。Done 判定的步骤 2/3（浏览器实跑、切 tab、空态）由用户手动验收。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-05-25T18:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-05-25T18:00">05-25 18:00</time>
+          <a href="#task-7">§ Task 7 / 最终审查</a>
+        </header>
+        <p>最终整体审查发现 page.tsx 的 async <code>ExploreFeed</code> 未包 Suspense，后端慢时阻塞整页流式渲染。计划外增补：新建 <code>explore-feed/skeleton.tsx</code> 骨架 + page.tsx 用 <code>&lt;Suspense fallback={...}&gt;</code> 包裹，其余区块即时流式返回（commit 78bf3a710）。</p>
+      </li>
+    </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
-      <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="decision">2</span> decisions /
+      <span data-counter="change">8</span> changes /
+      <span data-counter="tradeoff">1</span> tradeoffs /
+      <span data-counter="other">2</span> others
     </footer>
   </aside>
 
