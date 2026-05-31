@@ -1,0 +1,1962 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal 前后端集成实现计划：ExploreFeed 接入 catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/journal.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#contract">契约缝（前后端共识）</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li data-task-status="pending"><a href="#task-1">Task 1 — 删除 demo 读链路并验证编译</a></li>
+          <li data-task-status="pending"><a href="#task-2">Task 2 — Domain 层 portal 读模型与端口</a></li>
+          <li data-task-status="pending"><a href="#task-3">Task 3 — Infra 层 DAO + ReadAdapter（TDD）</a></li>
+          <li data-task-status="pending"><a href="#task-4">Task 4 — App 层 QueryService（TDD）</a></li>
+          <li data-task-status="pending"><a href="#task-5">Task 5 — Adapter 层 Controller + Converter（TDD）</a></li>
+          <li data-task-status="pending"><a href="#task-6">Task 6 — 前端 PageResult 类型 + fetch helper（TDD）</a></li>
+          <li data-task-status="pending"><a href="#task-7">Task 7 — 前端 Paper 类型重构 + 组件改造</a></li>
+          <li data-task-status="pending"><a href="#task-8">Task 8 — e2e + .env.example + 全量验证</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>Portal 前后端集成实现计划：ExploreFeed 接入 catalog</h1>
+      <div class="meta-bar">
+        <span>📅 2026-05-25</span>
+        <span>🌿 feat/portal-backend-integration</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。后端任务全程加载 <code>patra-backend:patra-hexagonal</code>（架构）与
+        <code>patra-backend:patra-jpa</code>（数据层）；全程 TDD（先红后绿）。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>portal 首页「文献流」(ExploreFeed) 从 mock 切换为 catalog 真实数据，确立 portal ↔ 后端的接入范式。</dd>
+        <dt>架构</dt> <dd>catalog 新增面向 portal 的 driving adapter（六边形 CQRS 读端），<code>GET /portal/publications?tab={recent|cited}</code>，response 字段直接对齐前端 <code>Paper</code>。portal 用 Next.js RSC 在服务端 fetch gateway，切 tab 走 URL searchParam 触发 RSC 重渲。不引入 BFF route，不使用 TanStack Query。</dd>
+        <dt>技术栈</dt> <dd>后端：Java 25 / Spring Boot 4 / Spring Data JPA（native query + 接口投影）/ PostgreSQL 17 / JUnit5 + Testcontainers + RestTestClient。前端：Next.js 15 App Router / React 19 RSC / TypeScript strict / Vitest + Playwright。</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-05-25-portal-backend-integration-design.html">Portal 前后端集成：ExploreFeed 接入 catalog</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>本计划跨后端（catalog）与前端（portal）两个技术栈，但属同一 feature、单分支单 PR 交付，且唯一耦合点是一条 JSON 契约。因此用单 plan 分三阶段：①后端清理（Task 1）②后端 portal feed 链路（Task 2–5，六边形四层 + TDD）③前端接入（Task 6–8，TDD）。契约缝在下方「契约缝」章节统一描述，后端 Task 5 与前端 Task 6 各自引用它，互不阻塞地独立可测。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>后端 patra-catalog（包前缀 dev.linqibin.patra.catalog）
+
+  catalog-domain/.../model/read/publication/        [delete] demo 读模型整包（Summary/Detail/Filter + 测试）
+  catalog-domain/.../model/read/venue/              [delete] demo venue 读模型整包（5 个）
+  catalog-domain/.../port/read/PublicationReadPort  [delete] 仅 demo 引用
+  catalog-domain/.../port/read/VenueReadPort        [delete] 仅 demo 引用
+  catalog-domain/.../model/read/portal/PortalFeedTab.java          [create] 枚举 RECENT/CITED + fromCode
+  catalog-domain/.../model/read/portal/PortalPaperReadModel.java   [create] portal 读模型
+  catalog-domain/.../model/read/portal/PortalFeedFilter.java       [create] 过滤条件（tab）
+  catalog-domain/.../port/read/PortalFeedReadPort.java             [create] portal read port
+
+  catalog-app/.../usecase/publication/query/        [delete] demo QueryService + dto + 单测
+  catalog-app/.../usecase/venue/query/              [delete] demo QueryService + dto + 单测
+  catalog-app/.../usecase/portal/query/PortalFeedQueryService.java [create] portal 查询服务
+  catalog-app/.../usecase/portal/query/dto/PortalFeedQuery.java    [create] 查询参数（of 工厂）
+  catalog-app/.../usecase/portal/query/PortalFeedQueryServiceTest.java [create] 单测
+
+  catalog-infra/.../adapter/read/PublicationReadAdapter.java       [delete] + PublicationReadModelMapper + IT
+  catalog-infra/.../adapter/read/VenueReadAdapter.java             [delete] + IT
+  catalog-infra/.../persistence/dao/PortalFeedDao.java             [create] native query + 投影
+  catalog-infra/.../adapter/read/PortalFeedRow.java                [create] Spring Data 接口投影
+  catalog-infra/.../adapter/read/PortalFeedReadAdapter.java        [create] 实现 PortalFeedReadPort
+  catalog-infra/.../adapter/read/PortalFeedReadAdapterIT.java      [create] Testcontainers IT
+
+  catalog-adapter/.../rest/publication/             [delete] demo Controller + converter + req/resp + IT
+  catalog-adapter/.../rest/venue/                   [delete] demo Controller + converter + req/resp + IT
+  catalog-adapter/.../rest/portal/PortalPublicationController.java        [create]
+  catalog-adapter/.../rest/portal/request/PortalPublicationListRequest.java [create]
+  catalog-adapter/.../rest/portal/response/PortalPaperResponse.java        [create] 对齐前端 Paper
+  catalog-adapter/.../rest/portal/PortalApiConverter.java                  [create] ReadModel→Response
+  catalog-adapter/.../rest/portal/PortalPublicationControllerIT.java       [create] WebMvc 切片 IT
+
+  保留（勿删）：所有 entity / DAO（PublicationDao/AuthorDao/VenueDao 等为写端共享）、
+               VenueEnrichmentReadPort + VenueEnrichmentReadAdapter + enrichment/VenueSnapshot
+
+前端 patra-portal（src 别名 @/ → ./src）
+
+  src/types/portal.ts                  [modify] Paper 字段重命名/null 化、删 authorCount、加 PageResult、FeedTab 去 trending
+  src/data/feed.ts                     [delete] mock 数据
+  src/lib/portal-api/publications.ts   [create] 服务端 fetch helper（server-only）
+  tests/stubs/server-only.ts           [create] vitest 用 server-only 空桩
+  vitest.config.ts                     [modify] 加 server-only alias
+  src/components/portal/AISummaryBadge.tsx       [modify] props 重命名
+  src/components/portal/PaperCard.tsx            [modify] null 防御 + authors.length
+  src/components/portal/ExploreFeed.tsx          [delete] 迁移到 explore-feed/
+  src/components/portal/explore-feed/index.tsx   [create] Server Component
+  src/components/portal/explore-feed/tabs.tsx    [create] Client Component
+  src/components/portal/explore-feed/empty.tsx   [create] 空态/错误态
+  src/app/page.tsx                     [modify] 读 searchParams 传 tab
+  .env.example                         [create] PATRA_GATEWAY_BASE_URL 文档化
+  tests/lib/portal-api/publications.test.ts        [create]
+  tests/components/portal/PaperCard.test.tsx       [modify] 内联 fixture + null case
+  tests/components/portal/AISummaryBadge.test.tsx  [modify] props 重命名
+  tests/components/portal/ExploreFeed.test.tsx     [delete] 改 e2e 覆盖
+  tests/e2e/homepage.spec.ts           [modify] 默认 tab/切 tab/空态弹性断言</pre>
+      </div>
+    </section>
+
+    <section id="contract">
+      <h2>契约缝（前后端共识）</h2>
+      <p>后端 Task 5 产出、前端 Task 6 消费的唯一耦合点。<strong>响应整体是分页信封</strong>（catalog <code>dev.linqibin.commons.query.PageResult</code> 的实际序列化形态）：</p>
+      <pre><code class="lang-json">{
+  "page": 1,
+  "pageSize": 14,
+  "total": 137,
+  "totalPages": 10,
+  "items": [
+    {
+      "id": "100428830191",          // String（后端 Long.toString，避免 JS 超 2^53 失精）
+      "title": "...",
+      "journal": "N Engl J Med",      // ← venueName，可 null
+      "year": 2026,                   // 可 null
+      "authors": ["Perkovic V.", "Tuttle K. R."],  // 全部作者，按 author_order；无作者则 []
+      "cites": 142,                   // ← citationCount，可 null
+      "bookmarks": 0,                 // 恒为 0（无用户系统）
+      "doi": "10.1056/...",           // 可 null
+      "pmid": "39812044",             // 可 null
+      "source": "PubMed",             // ← provenanceCode 映射；字典外回退原值
+      "aiSummary": null,              // 本版恒 null（TODO：接 LLM 摘要）
+      "estimatedReadMin": null,       // 本版恒 null（TODO：接原文采集/字数估算）
+      "kind": "Journal Article",      // ← 第一个 publication_type，可 null
+      "minutesAgo": 17280             // ← (now - lastSyncedAt) 分钟，可 null
+    }
+  ]
+}</code></pre>
+      <aside class="callout warning">
+        <span class="title">对 spec 的修正</span>
+        <p>spec 草稿里前端 <code>PageResult</code> 写的是 <code>content / totalElements</code>——<strong>错误</strong>。后端 <code>PageResult</code> 真实字段是 <code>page / pageSize / total / totalPages / items</code>（见 <code>linqibin-commons/.../query/PageResult.java</code>）。前端类型按此对齐。</p>
+      </aside>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- TASK TEMPLATE 注释保留供复制（见模板） -->
+
+      <article class="task" id="task-1" data-status="pending">
+        <header>
+          <h2>任务 1：删除 demo 读链路并验证编译</h2>
+          <dl class="files">
+            <dt>删除</dt><dd><code>catalog-adapter/.../rest/publication/</code>、<code>catalog-adapter/.../rest/venue/</code>（含 src/main 与 src/integrationTest）</dd>
+            <dt>删除</dt><dd><code>catalog-app/.../usecase/publication/query/</code>、<code>catalog-app/.../usecase/venue/query/</code>（含 src/main 与 src/test）</dd>
+            <dt>删除</dt><dd><code>catalog-domain/.../model/read/publication/</code>、<code>catalog-domain/.../model/read/venue/</code>、<code>port/read/PublicationReadPort.java</code>、<code>port/read/VenueReadPort.java</code>（含测试）</dd>
+            <dt>删除</dt><dd><code>catalog-infra/.../adapter/read/PublicationReadAdapter.java</code>、<code>PublicationReadModelMapper*.java</code>、<code>VenueReadAdapter.java</code>（含 IT）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：删除 adapter 层 demo（main + IT）</strong>
+            <p>不删整个 rest 目录，只删 publication / venue 两个子包。先确认 portal 包尚不存在（本任务后续才建），删除范围如下：</p>
+            <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
+git rm -r \
+  patra-api/patra-catalog/patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/publication \
+  patra-api/patra-catalog/patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/venue \
+  patra-api/patra-catalog/patra-catalog-adapter/src/integrationTest/java/dev/linqibin/patra/catalog/adapter/rest/publication \
+  patra-api/patra-catalog/patra-catalog-adapter/src/integrationTest/java/dev/linqibin/patra/catalog/adapter/rest/venue</code></pre>
+            <p>注意 venue IT 里 <code>VenueController*IT</code> 引用了 <code>PublicationQueryService</code>，会随本步一起删除。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：删除 app 层 demo（main + test）</strong>
+            <pre><code class="lang-bash">git rm -r \
+  patra-api/patra-catalog/patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/publication/query \
+  patra-api/patra-catalog/patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/venue/query \
+  patra-api/patra-catalog/patra-catalog-app/src/test/java/dev/linqibin/patra/catalog/app/usecase/publication/query \
+  patra-api/patra-catalog/patra-catalog-app/src/test/java/dev/linqibin/patra/catalog/app/usecase/venue/query</code></pre>
+            <p>仅删 <code>query/</code> 子包；<code>usecase/venue/letpub</code>、<code>usecase/venue/scopus</code>（富化任务）等不动。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：删除 domain 层 demo 读模型与端口（main + test）</strong>
+            <pre><code class="lang-bash">git rm -r \
+  patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/publication \
+  patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/venue \
+  patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/port/read/PublicationReadPort.java \
+  patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/port/read/VenueReadPort.java \
+  patra-api/patra-catalog/patra-catalog-domain/src/test/java/dev/linqibin/patra/catalog/domain/model/read/publication</code></pre>
+            <p>保留 <code>port/read/VenueEnrichmentReadPort.java</code>（富化任务用）。若 venue read model 有 test 目录一并删除（用 <code>git rm</code> 报错则说明无该目录，忽略）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4：删除 infra 层 demo ReadAdapter（main + IT）</strong>
+            <pre><code class="lang-bash">git rm \
+  patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PublicationReadAdapter.java \
+  patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/VenueReadAdapter.java
+# PublicationReadModelMapper（接口 + MapStruct 生成实现的源接口）：
+git rm patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PublicationReadModelMapper.java
+# 对应 IT：
+git rm \
+  patra-api/patra-catalog/patra-catalog-infra/src/integrationTest/java/dev/linqibin/patra/catalog/infra/adapter/read/PublicationReadAdapterIT.java \
+  patra-api/patra-catalog/patra-catalog-infra/src/integrationTest/java/dev/linqibin/patra/catalog/infra/adapter/read/PublicationReadAdapterDetailIT.java \
+  patra-api/patra-catalog/patra-catalog-infra/src/integrationTest/java/dev/linqibin/patra/catalog/infra/adapter/read/PublicationReadAdapterTopByVenueIT.java</code></pre>
+            <p><strong>保留</strong> <code>VenueEnrichmentReadAdapter.java</code>。若 infra 还有 <code>VenueReadAdapterIT</code> 一并删。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5：grep 残留引用，确认无悬挂依赖</strong>
+            <p>运行：</p>
+            <pre><code class="lang-bash">grep -rn "PublicationReadPort\|VenueReadPort\|PublicationSummaryReadModel\|PublicationDetailReadModel\|VenueSummaryReadModel\|VenueDetailReadModel\|PublicationQueryService\|VenueQueryService\|PublicationController\|VenueController\|PublicationReadAdapter\|VenueReadAdapter\|PublicationReadModelMapper" \
+  patra-api/patra-catalog --include="*.java" | grep -v "/build/"</code></pre>
+            <p>预期：<strong>无输出</strong>（VenueEnrichmentReadPort/Adapter 不在匹配词内，保留无碍）。若有输出，说明该引用点也是 demo 残留，一并删除或修正后重跑直到无输出。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：编译验证（编 boot 即编全链）</strong>
+            <p>运行：</p>
+            <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-boot:compileJava \
+          :patra-api:patra-catalog:patra-catalog-app:compileTestJava \
+          :patra-api:patra-catalog:patra-catalog-adapter:compileIntegrationTestJava \
+          :patra-api:patra-catalog:patra-catalog-infra:compileIntegrationTestJava</code></pre>
+            <p>预期：<code>BUILD SUCCESSFUL</code>。若编译失败且错误指向被删类的引用，回步骤 5 清理。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 7：Commit</strong>
+            <pre><code class="lang-bash">git commit -m "refactor(catalog): 删除无客户端调用的 publication/venue demo 读链路
+
+portal 改连真实数据前先清理早期演示代码（adapter/app/domain/infra 四层 +
+对应测试）。保留 VenueEnrichmentReadPort/Adapter（富化任务内部使用）。"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-2" data-status="pending">
+        <header>
+          <h2>任务 2：Domain 层 portal 读模型与端口</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>catalog-domain/.../domain/model/read/portal/PortalFeedTab.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-domain/.../domain/model/read/portal/PortalPaperReadModel.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-domain/.../domain/model/read/portal/PortalFeedFilter.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-domain/.../domain/port/read/PortalFeedReadPort.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：创建 PortalFeedTab 枚举（含 fromCode 归一化）</strong>
+            <p>路径 <code>patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/portal/PortalFeedTab.java</code></p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+import java.util.Locale;
+
+/// Portal 文献流的排序维度。
+///
+/// - [RECENT]：最近采集（`last_synced_at` 降序）
+/// - [CITED]：高被引（`citation_count` 降序）
+public enum PortalFeedTab {
+  RECENT,
+  CITED;
+
+  /// 将外部传入的 tab 字符串归一化为枚举。
+  ///
+  /// `null` 回退到 [RECENT]（默认 tab）；非法值抛 [IllegalArgumentException]，
+  /// 由 starter-web 的全局异常处理映射为 4xx。
+  ///
+  /// @param code 外部 tab 字符串（大小写不敏感）
+  /// @return 对应枚举
+  /// @throws IllegalArgumentException 当 code 非 recent/cited 时
+  public static PortalFeedTab fromCode(String code) {
+    if (code == null || code.isBlank()) {
+      return RECENT;
+    }
+    return switch (code.toLowerCase(Locale.ROOT)) {
+      case "recent" -> RECENT;
+      case "cited" -> CITED;
+      default -> throw new IllegalArgumentException("不支持的 feed tab：" + code);
+    };
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：创建 PortalPaperReadModel</strong>
+            <p>路径 <code>.../domain/model/read/portal/PortalPaperReadModel.java</code>。集合字段防御性拷贝（遵循 record 设计规范）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+import java.time.Instant;
+import java.util.List;
+
+/// Portal 文献流列表项读模型（CQRS 读端）。
+///
+/// 字段来源于 `cat_publication` 主表 + venue/author/publication_type 关联，
+/// 由 Infra 层一次查询组装。`aiSummary`/`estimatedReadMin` 不在读模型中——
+/// 后端暂无数据来源，由 Adapter 层 Response 置 null（见 PortalPaperResponse）。
+///
+/// @param id 文献主键
+/// @param title 标题
+/// @param venueName 载体名称（可空）
+/// @param publicationYear 出版年份（可空）
+/// @param authors 全部作者展示名，按 author_order 升序（无作者则空列表）
+/// @param citationCount 被引次数（可空）
+/// @param doi DOI（可空）
+/// @param pmid PubMed ID（可空）
+/// @param provenanceCode 数据来源代码
+/// @param studyType 文献类型（第一个 publication_type，可空）
+/// @param lastSyncedAt 最后采集时间（可空）
+public record PortalPaperReadModel(
+    Long id,
+    String title,
+    String venueName,
+    Integer publicationYear,
+    List&lt;String&gt; authors,
+    Integer citationCount,
+    String doi,
+    String pmid,
+    String provenanceCode,
+    String studyType,
+    Instant lastSyncedAt) {
+
+  public PortalPaperReadModel {
+    authors = authors != null ? List.copyOf(authors) : List.of();
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：创建 PortalFeedFilter</strong>
+            <p>路径 <code>.../domain/model/read/portal/PortalFeedFilter.java</code>。当前仅 tab 一个维度，参数 ≤4 用 <code>of()</code> 工厂。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+/// Portal 文献流查询过滤条件。
+///
+/// @param tab 排序维度（已归一化的枚举）
+public record PortalFeedFilter(PortalFeedTab tab) {
+
+  /// 创建过滤条件。
+  ///
+  /// @param tab 排序维度
+  /// @return 过滤条件
+  public static PortalFeedFilter of(PortalFeedTab tab) {
+    return new PortalFeedFilter(tab);
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4：创建 PortalFeedReadPort</strong>
+            <p>路径 <code>.../domain/port/read/PortalFeedReadPort.java</code>。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.port.read;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+
+/// Portal 文献流 CQRS 读端口。
+///
+/// 由 Infra 层 [PortalFeedReadAdapter] 实现，单次查询组装文献流列表项。
+public interface PortalFeedReadPort {
+
+  /// 分页查询 portal 文献流。
+  ///
+  /// @param paging 已归一化的分页参数
+  /// @param filter 过滤条件（含排序维度）
+  /// @return 分页结果
+  PageResult&lt;PortalPaperReadModel&gt; findFeedPage(PagingParams paging, PortalFeedFilter filter);
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5：编译验证</strong>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-domain:compileJava</code></p>
+            <p>预期：<code>BUILD SUCCESSFUL</code>。domain 层纯 Java，convention plugin 会校验无框架依赖。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/portal \
+        patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/port/read/PortalFeedReadPort.java
+git commit -m "feat(catalog): portal 文献流 domain 读模型与端口"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-3" data-status="pending">
+        <header>
+          <h2>任务 3：Infra 层 DAO + ReadAdapter（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>catalog-infra/.../infra/persistence/dao/PortalFeedDao.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-infra/.../infra/adapter/read/PortalFeedRow.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-infra/.../infra/adapter/read/PortalFeedReadAdapter.java</code></dd>
+            <dt>测试</dt><dd><code>catalog-infra/src/integrationTest/.../infra/adapter/read/PortalFeedReadAdapterIT.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：先写 Infra IT</strong>
+            <p>路径 <code>patra-api/patra-catalog/patra-catalog-infra/src/integrationTest/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalFeedReadAdapterIT.java</code>。沿用现有 <code>PublicationReadAdapterIT</code> 的 Testcontainers 模式（<code>@DataJpaTest</code> + 容器 initializer + <code>@AutoConfigureTestDatabase(NONE)</code> + <code>SnowflakeIdGenerator</code> 造数据）。用 <code>TestEntityManager</code> 写入关联表（author/publication_author/publication_type）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedTab;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import dev.linqibin.patra.catalog.infra.config.CatalogITPostgreSQLContainerInitializer;
+import dev.linqibin.patra.catalog.infra.persistence.entity.AuthorEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationTypeEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
+import dev.linqibin.starter.jpa.autoconfig.JpaAuditingConfig;
+import dev.linqibin.starter.jpa.id.SnowflakeIdGenerator;
+import java.time.Instant;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
+
+@DataJpaTest
+@ContextConfiguration(initializers = CatalogITPostgreSQLContainerInitializer.class)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({PortalFeedReadAdapter.class, JpaAuditingConfig.class})
+@ActiveProfiles("test")
+@DisplayName("PortalFeedReadAdapter 文献流查询集成测试")
+class PortalFeedReadAdapterIT {
+
+  @Autowired private PortalFeedReadAdapter adapter;
+  @Autowired private TestEntityManager em;
+
+  @Test
+  @DisplayName("RECENT tab 按 last_synced_at 降序，组装 venue/authors/studyType")
+  void shouldAssembleAndSortByRecent() {
+    // Given
+    Long venueId = saveVenue("N Engl J Med");
+    Long older = savePublication("Older paper", venueId, 100, Instant.parse("2026-01-01T00:00:00Z"));
+    Long newer = savePublication("Newer paper", venueId, 5, Instant.parse("2026-05-01T00:00:00Z"));
+    saveAuthors(newer, "Perkovic V.", "Tuttle K. R.");      // 乱序插入验证 author_order 排序
+    savePublicationType(newer, "Journal Article", 1);
+    savePublicationType(newer, "Review", 2);
+    em.flush();
+    em.clear();
+
+    // When
+    PageResult&lt;PortalPaperReadModel&gt; page =
+        adapter.findFeedPage(PagingParams.of(1, 14), PortalFeedFilter.of(PortalFeedTab.RECENT));
+
+    // Then
+    assertThat(page.total()).isEqualTo(2);
+    assertThat(page.items()).extracting(PortalPaperReadModel::id).containsExactly(newer, older);
+    PortalPaperReadModel head = page.items().get(0);
+    assertThat(head.title()).isEqualTo("Newer paper");
+    assertThat(head.venueName()).isEqualTo("N Engl J Med");
+    assertThat(head.authors()).containsExactly("Perkovic V.", "Tuttle K. R.");
+    assertThat(head.studyType()).isEqualTo("Journal Article");      // type_order 最小
+    assertThat(head.citationCount()).isEqualTo(5);
+  }
+
+  @Test
+  @DisplayName("CITED tab 按 citation_count 降序")
+  void shouldSortByCited() {
+    Long venueId = saveVenue("Cell");
+    Long low = savePublication("Low cited", venueId, 10, Instant.parse("2026-05-01T00:00:00Z"));
+    Long high = savePublication("High cited", venueId, 999, Instant.parse("2026-01-01T00:00:00Z"));
+    em.flush();
+    em.clear();
+
+    PageResult&lt;PortalPaperReadModel&gt; page =
+        adapter.findFeedPage(PagingParams.of(1, 14), PortalFeedFilter.of(PortalFeedTab.CITED));
+
+    assertThat(page.items()).extracting(PortalPaperReadModel::id).containsExactly(high, low);
+  }
+
+  @Test
+  @DisplayName("无作者/无类型/无 venue 时降级为 空列表/null")
+  void shouldDegradeGracefully() {
+    Long pubId = savePublication("Lonely paper", null, 0, Instant.parse("2026-03-01T00:00:00Z"));
+    em.flush();
+    em.clear();
+
+    PageResult&lt;PortalPaperReadModel&gt; page =
+        adapter.findFeedPage(PagingParams.of(1, 14), PortalFeedFilter.of(PortalFeedTab.RECENT));
+
+    PortalPaperReadModel only = page.items().get(0);
+    assertThat(only.authors()).isEmpty();
+    assertThat(only.studyType()).isNull();
+    assertThat(only.venueName()).isNull();
+  }
+
+  // --- 测试数据 helper ---
+
+  private Long saveVenue(String title) {
+    VenueEntity v = new VenueEntity();
+    v.setId(SnowflakeIdGenerator.getId());
+    v.setVenueType("JOURNAL");
+    v.setTitle(title);
+    v.setProvenanceCode("OPENALEX");
+    v.setCountryCode("US");
+    em.persist(v);
+    return v.getId();
+  }
+
+  private Long savePublication(String title, Long venueId, int cites, Instant syncedAt) {
+    PublicationEntity p =
+        PublicationEntity.builder()
+            .id(SnowflakeIdGenerator.getId())
+            .provenanceCode("PUBMED")
+            .title(title)
+            .publicationYear(2026)
+            .venueId(venueId)
+            .venueInstanceId(venueId != null ? venueId : SnowflakeIdGenerator.getId())
+            .isOa(false)
+            .authorsComplete(true)
+            .citationCount(cites)
+            .lastSyncedAt(syncedAt)
+            .build();
+    em.persist(p);
+    return p.getId();
+  }
+
+  /// 按传入顺序的倒序插入，验证 SQL 的 ORDER BY author_order 真正生效。
+  private void saveAuthors(Long publicationId, String... displayNames) {
+    for (int i = displayNames.length - 1; i &gt;= 0; i--) {
+      AuthorEntity a =
+          AuthorEntity.builder()
+              .id(SnowflakeIdGenerator.getId())
+              .normalizedKey("k" + SnowflakeIdGenerator.getId())
+              .displayName(displayNames[i])
+              .status("ACTIVE")
+              .provenanceCode("PUBMED")
+              .build();
+      em.persist(a);
+      PublicationAuthorEntity link =
+          PublicationAuthorEntity.builder()
+              .id(SnowflakeIdGenerator.getId())
+              .publicationId(publicationId)
+              .authorId(a.getId())
+              .authorOrder(i + 1)
+              .build();
+      em.persist(link);
+    }
+  }
+
+  private void savePublicationType(Long publicationId, String typeValue, int order) {
+    PublicationTypeEntity t =
+        PublicationTypeEntity.builder()
+            .id(SnowflakeIdGenerator.getId())
+            .publicationId(publicationId)
+            .typeValue(typeValue)
+            .typeOrder(order)
+            .build();
+    em.persist(t);
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED）：创建接口投影 PortalFeedRow</strong>
+            <p>路径 <code>.../infra/adapter/read/PortalFeedRow.java</code>。Spring Data native query 用接口投影，getter 名对应 SQL 列别名（别名加双引号保 camelCase，避免 Postgres 折叠小写）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import java.time.Instant;
+
+/// [PortalFeedDao] native query 的 Spring Data 接口投影。
+///
+/// getter 名与 SQL 列别名一一对应（别名在 SQL 中加双引号保持 camelCase）。
+interface PortalFeedRow {
+  Long getId();
+
+  String getTitle();
+
+  String getVenueName();
+
+  Integer getPublicationYear();
+
+  Integer getCitationCount();
+
+  String getDoi();
+
+  String getPmid();
+
+  String getProvenanceCode();
+
+  String getStudyType();
+
+  /// 作者展示名，单元分隔符（U+001F）拼接，按 author_order 升序；无作者时为 null。
+  String getAuthorNames();
+
+  Instant getLastSyncedAt();
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（RED）：创建 PortalFeedDao（单次 native query + countQuery）</strong>
+            <p>路径 <code>.../infra/persistence/dao/PortalFeedDao.java</code>。作者用 <code>string_agg</code>（单元分隔符 <code>E'\x1f'</code>）+ <code>ORDER BY author_order</code>；类型用相关子查询取 <code>type_order</code> 最小；排序按 <code>:sortMode</code> 用 CASE 内嵌（沿用现有 DAO 模式）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
+
+import dev.linqibin.patra.catalog.infra.adapter.read.PortalFeedRow;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+public interface PortalFeedDao extends JpaRepository&lt;PublicationEntity, Long&gt; {
+
+  /// 单次查询组装 portal 文献流。
+  ///
+  /// 作者用 `string_agg(... ORDER BY author_order)` 单元分隔符拼接；
+  /// 类型用相关子查询取 `type_order` 最小；排序按 `:sortMode`（RECENT/CITED）。
+  /// `Pageable` 仅携带分页，排序内嵌 SQL。
+  @Query(
+      value =
+          """
+          SELECT
+            p.id AS "id",
+            p.title AS "title",
+            v.title AS "venueName",
+            p.publication_year AS "publicationYear",
+            p.citation_count AS "citationCount",
+            p.doi AS "doi",
+            p.pmid AS "pmid",
+            p.provenance_code AS "provenanceCode",
+            (SELECT pt.type_value FROM cat_publication_type pt
+               WHERE pt.publication_id = p.id
+               ORDER BY pt.type_order ASC NULLS LAST, pt.id ASC
+               LIMIT 1) AS "studyType",
+            (SELECT string_agg(a.display_name, E'\\x1f' ORDER BY pa.author_order)
+               FROM cat_publication_author pa
+               JOIN cat_author a ON a.id = pa.author_id
+               WHERE pa.publication_id = p.id) AS "authorNames",
+            p.last_synced_at AS "lastSyncedAt"
+          FROM cat_publication p
+          LEFT JOIN cat_venue v ON v.id = p.venue_id
+          WHERE p.deleted_at IS NULL
+          ORDER BY
+            CASE WHEN :sortMode = 'CITED' THEN COALESCE(p.citation_count, -1) ELSE NULL END DESC,
+            CASE WHEN :sortMode = 'RECENT' THEN p.last_synced_at ELSE NULL END DESC NULLS LAST,
+            p.id DESC
+          """,
+      countQuery =
+          """
+          SELECT COUNT(*) FROM cat_publication p WHERE p.deleted_at IS NULL
+          """,
+      nativeQuery = true)
+  Page&lt;PortalFeedRow&gt; findFeedPage(@Param("sortMode") String sortMode, Pageable pageable);
+}
+</code></pre>
+            <p>注意：HTML 中 <code>E'\\x1f'</code> 的双反斜杠是文档转义，写入 .java 文件时为 <code>E'\x1f'</code>（Postgres 十六进制转义单元分隔符 U+001F）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN）：实现 PortalFeedReadAdapter</strong>
+            <p>路径 <code>.../infra/adapter/read/PortalFeedReadAdapter.java</code>。<code>@Repository</code> + <code>@RequiredArgsConstructor</code>（沿用现有模式）。拆分 authorNames，转 PageResult。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import dev.linqibin.patra.catalog.domain.port.read.PortalFeedReadPort;
+import dev.linqibin.patra.catalog.infra.persistence.dao.PortalFeedDao;
+import java.util.Arrays;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Repository;
+
+/// Portal 文献流 CQRS 读适配器。
+///
+/// 单次 native query（venue LEFT JOIN + author string_agg + type 子查询）组装读模型，
+/// 无 N+1。排序内嵌 SQL，由 tab 决定。
+@Repository
+@RequiredArgsConstructor
+public class PortalFeedReadAdapter implements PortalFeedReadPort {
+
+  /// 作者拼接分隔符，与 [PortalFeedDao] 的 `string_agg(..., E'\x1f', ...)` 一致。
+  private static final String AUTHOR_DELIMITER = "";
+
+  private final PortalFeedDao portalFeedDao;
+
+  @Override
+  public PageResult&lt;PortalPaperReadModel&gt; findFeedPage(
+      PagingParams paging, PortalFeedFilter filter) {
+    Pageable pageable = PageRequest.of(paging.page() - 1, paging.pageSize());
+    Page&lt;PortalFeedRow&gt; page = portalFeedDao.findFeedPage(filter.tab().name(), pageable);
+
+    List&lt;PortalPaperReadModel&gt; items = page.getContent().stream().map(this::toReadModel).toList();
+    return PageResult.of(items, paging.page(), paging.pageSize(), page.getTotalElements());
+  }
+
+  private PortalPaperReadModel toReadModel(PortalFeedRow row) {
+    return new PortalPaperReadModel(
+        row.getId(),
+        row.getTitle(),
+        row.getVenueName(),
+        row.getPublicationYear(),
+        splitAuthors(row.getAuthorNames()),
+        row.getCitationCount(),
+        row.getDoi(),
+        row.getPmid(),
+        row.getProvenanceCode(),
+        row.getStudyType(),
+        row.getLastSyncedAt());
+  }
+
+  private List&lt;String&gt; splitAuthors(String authorNames) {
+    if (authorNames == null || authorNames.isBlank()) {
+      return List.of();
+    }
+    return Arrays.asList(authorNames.split(AUTHOR_DELIMITER));
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN）：运行 Infra IT 验证通过</strong>
+            <p>运行：</p>
+            <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-infra:integrationTest \
+  --tests "*PortalFeedReadAdapterIT"</code></pre>
+            <p>预期：3 个测试方法全部通过（RECENT/CITED 排序、venue/authors/studyType 组装、降级）。若 authorNames 顺序错，检查 string_agg 的 <code>ORDER BY pa.author_order</code>；若投影字段为 null，检查 SQL 别名是否加了双引号。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/dao/PortalFeedDao.java \
+        patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalFeedRow.java \
+        patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalFeedReadAdapter.java \
+        patra-api/patra-catalog/patra-catalog-infra/src/integrationTest/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalFeedReadAdapterIT.java
+git commit -m "feat(catalog): portal 文献流 infra 读适配器（单查询组装 + IT）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-4" data-status="pending">
+        <header>
+          <h2>任务 4：App 层 QueryService（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>catalog-app/.../app/usecase/portal/query/dto/PortalFeedQuery.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-app/.../app/usecase/portal/query/PortalFeedQueryService.java</code></dd>
+            <dt>测试</dt><dd><code>catalog-app/src/test/.../app/usecase/portal/query/PortalFeedQueryServiceTest.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：创建 PortalFeedQuery（参数 ≤4，of 工厂）</strong>
+            <p>路径 <code>.../app/usecase/portal/query/dto/PortalFeedQuery.java</code>。承载未归一化的原始外部输入（tab 为 String，page/pageSize 可空）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query.dto;
+
+/// Portal 文献流查询参数（未归一化的外部输入）。
+///
+/// @param tab 排序维度字符串（recent/cited，可空 → 默认 recent）
+/// @param page 页码（可空，由服务归一化）
+/// @param pageSize 每页大小（可空，由服务归一化）
+public record PortalFeedQuery(String tab, Integer page, Integer pageSize) {
+
+  /// 创建查询参数。
+  ///
+  /// @param tab 排序维度字符串
+  /// @param page 页码
+  /// @param pageSize 每页大小
+  /// @return 查询参数
+  public static PortalFeedQuery of(String tab, Integer page, Integer pageSize) {
+    return new PortalFeedQuery(tab, page, pageSize);
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED）：写 PortalFeedQueryService 单测</strong>
+            <p>路径 <code>patra-api/patra-catalog/patra-catalog-app/src/test/java/dev/linqibin/patra/catalog/app/usecase/portal/query/PortalFeedQueryServiceTest.java</code>。Mockito mock ReadPort，验证归一化（默认 pageSize 14、上限 50）、tab 解析、非法 tab 抛错。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalFeedQuery;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedTab;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import dev.linqibin.patra.catalog.domain.port.read.PortalFeedReadPort;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("PortalFeedQueryService 单元测试")
+class PortalFeedQueryServiceTest {
+
+  @Mock private PortalFeedReadPort readPort;
+  @InjectMocks private PortalFeedQueryService service;
+
+  @Test
+  @DisplayName("默认 pageSize=14，tab 缺省解析为 RECENT")
+  void shouldApplyDefaults() {
+    when(readPort.findFeedPage(any(), any())).thenReturn(PageResult.empty(1, 14));
+
+    service.listFeed(PortalFeedQuery.of(null, null, null));
+
+    ArgumentCaptor&lt;PagingParams&gt; paging = ArgumentCaptor.forClass(PagingParams.class);
+    ArgumentCaptor&lt;PortalFeedFilter&gt; filter = ArgumentCaptor.forClass(PortalFeedFilter.class);
+    verify(readPort).findFeedPage(paging.capture(), filter.capture());
+    assertThat(paging.getValue().page()).isEqualTo(1);
+    assertThat(paging.getValue().pageSize()).isEqualTo(14);
+    assertThat(filter.getValue().tab()).isEqualTo(PortalFeedTab.RECENT);
+  }
+
+  @Test
+  @DisplayName("pageSize 超过 50 被截断为 50")
+  void shouldCapPageSize() {
+    when(readPort.findFeedPage(any(), any())).thenReturn(PageResult.empty(1, 50));
+
+    service.listFeed(PortalFeedQuery.of("cited", 1, 999));
+
+    ArgumentCaptor&lt;PagingParams&gt; paging = ArgumentCaptor.forClass(PagingParams.class);
+    verify(readPort).findFeedPage(paging.capture(), any());
+    assertThat(paging.getValue().pageSize()).isEqualTo(50);
+  }
+
+  @Test
+  @DisplayName("非法 tab 抛 IllegalArgumentException")
+  void shouldRejectInvalidTab() {
+    assertThatThrownBy(() -> service.listFeed(PortalFeedQuery.of("hottest", 1, 14)))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（RED）：运行测试确认失败</strong>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-app:test --tests "*PortalFeedQueryServiceTest"</code></p>
+            <p>预期：编译失败（<code>PortalFeedQueryService</code> 尚不存在）。这是 RED。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN）：实现 PortalFeedQueryService</strong>
+            <p>路径 <code>.../app/usecase/portal/query/PortalFeedQueryService.java</code>。常量 <code>DEFAULT_PAGE_SIZE=14</code>、<code>MAX_PAGE_SIZE=50</code>，归一化后委托 ReadPort。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalFeedQuery;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalFeedTab;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import dev.linqibin.patra.catalog.domain.port.read.PortalFeedReadPort;
+import java.util.Objects;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+/// Portal 文献流 CQRS 查询服务。
+///
+/// 归一化分页与 tab 后委托 [PortalFeedReadPort]。只读，无 `@Transactional`。
+@Service
+@RequiredArgsConstructor
+public class PortalFeedQueryService {
+
+  /// Portal 文献流默认每页大小（首页一屏视觉密度）。
+  private static final int DEFAULT_PAGE_SIZE = 14;
+
+  /// Portal 文献流每页大小上限。
+  private static final int MAX_PAGE_SIZE = 50;
+
+  private final PortalFeedReadPort readPort;
+
+  /// 查询 portal 文献流。
+  ///
+  /// @param query 未归一化的外部查询参数
+  /// @return 分页结果
+  /// @throws IllegalArgumentException 当 tab 非法时
+  public PageResult&lt;PortalPaperReadModel&gt; listFeed(PortalFeedQuery query) {
+    Objects.requireNonNull(query, "query must not be null");
+    PagingParams paging =
+        PagingParams.normalize(query.page(), query.pageSize(), DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+    PortalFeedFilter filter = PortalFeedFilter.of(PortalFeedTab.fromCode(query.tab()));
+    return readPort.findFeedPage(paging, filter);
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN）：运行测试验证通过</strong>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-app:test --tests "*PortalFeedQueryServiceTest"</code></p>
+            <p>预期：3 个测试方法全部通过。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/portal \
+        patra-api/patra-catalog/patra-catalog-app/src/test/java/dev/linqibin/patra/catalog/app/usecase/portal
+git commit -m "feat(catalog): portal 文献流 app 查询服务（归一化 + TDD）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-5" data-status="pending">
+        <header>
+          <h2>任务 5：Adapter 层 Controller + Converter（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>catalog-adapter/.../rest/portal/response/PortalPaperResponse.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-adapter/.../rest/portal/request/PortalPublicationListRequest.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-adapter/.../rest/portal/PortalApiConverter.java</code></dd>
+            <dt>创建</dt><dd><code>catalog-adapter/.../rest/portal/PortalPublicationController.java</code></dd>
+            <dt>测试</dt><dd><code>catalog-adapter/src/integrationTest/.../rest/portal/PortalPublicationControllerIT.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：创建 PortalPaperResponse（≥5 字段用 record，无 of）</strong>
+            <p>路径 <code>.../rest/portal/response/PortalPaperResponse.java</code>。字段顺序/命名严格对齐前端 <code>Paper</code>（见「契约缝」）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.response;
+
+import java.util.List;
+
+/// Portal 文献流列表项响应。
+///
+/// 字段名与类型直接对齐前端 `Paper`，前端零字段映射。
+///
+/// @param id 文献主键（String，避免 JS 超 2^53 精度损失）
+/// @param title 标题
+/// @param journal 载体名称（可空）
+/// @param year 出版年份（可空）
+/// @param authors 全部作者展示名
+/// @param cites 被引次数（可空）
+/// @param bookmarks 收藏数（无用户系统，恒为 0）
+/// @param doi DOI（可空）
+/// @param pmid PubMed ID（可空）
+/// @param source 数据来源展示名
+/// @param aiSummary AI 速读（本版恒 null，TODO 接入 LLM 摘要）
+/// @param estimatedReadMin 原文预计阅读时长（本版恒 null，TODO 接入原文采集/字数估算）
+/// @param kind 文献类型（可空）
+/// @param minutesAgo 距最后采集的分钟数（可空）
+public record PortalPaperResponse(
+    String id,
+    String title,
+    String journal,
+    Integer year,
+    List&lt;String&gt; authors,
+    Integer cites,
+    Integer bookmarks,
+    String doi,
+    String pmid,
+    String source,
+    String aiSummary,
+    Integer estimatedReadMin,
+    String kind,
+    Integer minutesAgo) {}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：创建 PortalPublicationListRequest</strong>
+            <p>路径 <code>.../rest/portal/request/PortalPublicationListRequest.java</code>。Spring MVC 自动绑定 query params。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.request;
+
+/// Portal 文献流列表查询请求。
+///
+/// @param tab 排序维度（recent/cited，可空 → 默认 recent）
+/// @param page 页码（可空）
+/// @param pageSize 每页大小（可空）
+public record PortalPublicationListRequest(String tab, Integer page, Integer pageSize) {}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（RED）：写 Controller WebMvc 切片 IT</strong>
+            <p>路径 <code>patra-api/patra-catalog/patra-catalog-adapter/src/integrationTest/java/dev/linqibin/patra/catalog/adapter/rest/portal/PortalPublicationControllerIT.java</code>。沿用现有 <code>@WebMvcTest</code> + <code>CatalogAdapterITWebMvcConfig</code> + <code>RestTestClient</code> + <code>@MockitoBean</code> 模式。验证信封字段、id 为 String、source 映射、aiSummary/estimatedReadMin 为 null、bookmarks=0、kind 来自 studyType、authors 数组。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalFeedQueryService;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalFeedQuery;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import java.time.Instant;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.client.RestTestClient;
+
+@WebMvcTest(controllers = PortalPublicationController.class)
+@ContextConfiguration(classes = CatalogAdapterITWebMvcConfig.class)
+@Import({PortalPublicationController.class, PortalApiConverter.class})
+@AutoConfigureRestTestClient
+@DisplayName("PortalPublicationController REST 切片测试")
+class PortalPublicationControllerIT {
+
+  @Autowired private RestTestClient restClient;
+
+  @MockitoBean private PortalFeedQueryService portalFeedQueryService;
+
+  @Test
+  @DisplayName("GET /portal/publications 返回 200 + 对齐前端的分页信封")
+  void shouldReturnFeedEnvelope() {
+    PortalPaperReadModel model =
+        new PortalPaperReadModel(
+            100428830191L,
+            "Semaglutide 长期心血管转归",
+            "N Engl J Med",
+            2026,
+            List.of("Perkovic V.", "Tuttle K. R."),
+            142,
+            "10.1056/NEJMoa2603120",
+            "39812044",
+            "PUBMED",
+            "Journal Article",
+            Instant.parse("2026-01-01T00:00:00Z"));
+    when(portalFeedQueryService.listFeed(any(PortalFeedQuery.class)))
+        .thenReturn(PageResult.of(List.of(model), 1, 14, 137));
+
+    restClient
+        .get()
+        .uri("/portal/publications?tab=recent&page=1&pageSize=14")
+        .exchange()
+        .expectStatus().isOk()
+        .expectHeader().contentType(MediaType.APPLICATION_JSON)
+        .expectBody()
+        .jsonPath("$.page").isEqualTo(1)
+        .jsonPath("$.pageSize").isEqualTo(14)
+        .jsonPath("$.total").isEqualTo(137)
+        .jsonPath("$.totalPages").isEqualTo(10)
+        .jsonPath("$.items[0].id").isEqualTo("100428830191")   // Long → String
+        .jsonPath("$.items[0].journal").isEqualTo("N Engl J Med")
+        .jsonPath("$.items[0].authors.length()").isEqualTo(2)
+        .jsonPath("$.items[0].cites").isEqualTo(142)
+        .jsonPath("$.items[0].bookmarks").isEqualTo(0)
+        .jsonPath("$.items[0].source").isEqualTo("PubMed")     // PUBMED → "PubMed"
+        .jsonPath("$.items[0].kind").isEqualTo("Journal Article")
+        .jsonPath("$.items[0].aiSummary").isEmpty()            // null
+        .jsonPath("$.items[0].estimatedReadMin").isEmpty()     // null
+        .jsonPath("$.items[0].minutesAgo").isNumber();
+
+    ArgumentCaptor&lt;PortalFeedQuery&gt; captor = ArgumentCaptor.forClass(PortalFeedQuery.class);
+    verify(portalFeedQueryService).listFeed(captor.capture());
+    assertThat(captor.getValue().tab()).isEqualTo("recent");
+    assertThat(captor.getValue().page()).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("非法 tab 返回 4xx")
+  void shouldRejectInvalidTab() {
+    when(portalFeedQueryService.listFeed(any(PortalFeedQuery.class)))
+        .thenThrow(new IllegalArgumentException("不支持的 feed tab：hottest"));
+
+    restClient
+        .get()
+        .uri("/portal/publications?tab=hottest")
+        .exchange()
+        .expectStatus().is4xxClientError();
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN）：实现 PortalApiConverter</strong>
+            <p>路径 <code>.../rest/portal/PortalApiConverter.java</code>。普通 <code>@Component</code>（含 source 映射、null+TODO、minutesAgo 墙钟计算等自定义逻辑，比 MapStruct 更直观）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
+
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperResponse;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import org.springframework.stereotype.Component;
+
+/// Portal 读模型 → 响应 DTO 转换器。
+@Component
+public class PortalApiConverter {
+
+  /// provenance code → 前端展示名。
+  /// TODO(provenance-dict)：后续接入 registry provenance 字典的规范方式替换硬码。
+  private static final Map&lt;String, String&gt; SOURCE_DISPLAY =
+      Map.of(
+          "PUBMED", "PubMed",
+          "EPMC", "Europe PMC",
+          "CROSSREF", "Crossref");
+
+  /// 将读模型转为响应 DTO。
+  ///
+  /// @param model 读模型
+  /// @return 响应 DTO
+  public PortalPaperResponse toResponse(PortalPaperReadModel model) {
+    return new PortalPaperResponse(
+        Long.toString(model.id()),
+        model.title(),
+        model.venueName(),
+        model.publicationYear(),
+        model.authors(),
+        model.citationCount(),
+        0,
+        model.doi(),
+        model.pmid(),
+        toSource(model.provenanceCode()),
+        // TODO(LLM-summary)：接入 LLM 摘要生成后填充
+        null,
+        // TODO(read-time)：接入原文采集/字数后估算原文阅读时长
+        null,
+        model.studyType(),
+        toMinutesAgo(model.lastSyncedAt()));
+  }
+
+  private String toSource(String provenanceCode) {
+    if (provenanceCode == null) {
+      return null;
+    }
+    return SOURCE_DISPLAY.getOrDefault(provenanceCode, provenanceCode);
+  }
+
+  private Integer toMinutesAgo(Instant lastSyncedAt) {
+    if (lastSyncedAt == null) {
+      return null;
+    }
+    return (int) Duration.between(lastSyncedAt, Instant.now()).toMinutes();
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN）：实现 PortalPublicationController</strong>
+            <p>路径 <code>.../rest/portal/PortalPublicationController.java</code>。<code>@Tag(name = "Portal")</code>。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.patra.catalog.adapter.rest.portal.request.PortalPublicationListRequest;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperResponse;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalFeedQueryService;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalFeedQuery;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/// Portal C 端门户文献流查询控制器。
+@Tag(name = "Portal", description = "Portal C 端门户专用接口")
+@RestController
+@RequestMapping("/portal/publications")
+@RequiredArgsConstructor
+public class PortalPublicationController {
+
+  private final PortalFeedQueryService portalFeedQueryService;
+  private final PortalApiConverter portalApiConverter;
+
+  /// 查询 portal 文献流分页列表。
+  ///
+  /// @param request 查询请求（Spring MVC 自动绑定 query params）
+  /// @return 分页响应
+  @GetMapping
+  public PageResult&lt;PortalPaperResponse&gt; listFeed(PortalPublicationListRequest request) {
+    PortalFeedQuery query =
+        PortalFeedQuery.of(request.tab(), request.page(), request.pageSize());
+    return portalFeedQueryService.listFeed(query).map(portalApiConverter::toResponse);
+  }
+}
+</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6（GREEN）：运行 Controller IT 验证通过</strong>
+            <p>运行：</p>
+            <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-adapter:integrationTest \
+  --tests "*PortalPublicationControllerIT"</code></pre>
+            <p>预期：2 个测试方法通过。若非法 tab 测试返回 500 而非 4xx，检查 starter 的 <code>DefaultErrorResolutionEngine</code> 是否把 <code>IllegalArgumentException</code> 识别为 client error；如需要可在 boot 层补 <code>ErrorMappingContributor</code>（遇此情况追加右栏 note）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 7：全 catalog 测试回归 + Commit</strong>
+            <p>运行（确保删除 + 新增未破坏其它测试）：</p>
+            <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-app:test \
+          :patra-api:patra-catalog:patra-catalog-infra:integrationTest \
+          :patra-api:patra-catalog:patra-catalog-adapter:integrationTest</code></pre>
+            <p>预期：全部 <code>BUILD SUCCESSFUL</code>。然后 commit：</p>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/portal \
+        patra-api/patra-catalog/patra-catalog-adapter/src/integrationTest/java/dev/linqibin/patra/catalog/adapter/rest/portal
+git commit -m "feat(catalog): portal 文献流 REST 接口 + 字段对齐前端（TDD）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-6" data-status="pending">
+        <header>
+          <h2>任务 6：前端 PageResult 类型 + fetch helper（TDD）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/types/portal.ts</code>（仅追加 PageResult，不动 Paper）</dd>
+            <dt>创建</dt><dd><code>patra-portal/src/lib/portal-api/publications.ts</code></dd>
+            <dt>创建</dt><dd><code>patra-portal/tests/stubs/server-only.ts</code></dd>
+            <dt>修改</dt><dd><code>patra-portal/vitest.config.ts</code>（加 server-only alias）</dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/portal-api/publications.test.ts</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：追加 PageResult 类型（纯新增，不破坏现有 Paper）</strong>
+            <p>在 <code>src/types/portal.ts</code> 末尾追加。本步只加类型，Paper 的字段重命名留到 Task 7（保证本任务 typecheck 绿）。</p>
+            <pre><code class="lang-ts">/**
+ * 后端 `dev.linqibin.commons.query.PageResult` 的序列化形态。
+ * 字段：page / pageSize / total / totalPages / items（非 content/totalElements）。
+ */
+export interface PageResult&lt;T&gt; {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  items: T[];
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：创建 server-only vitest 空桩 + 配 alias</strong>
+            <p><code>server-only</code> 包在非 RSC 环境 import 会抛错，单测需用空桩替换。创建 <code>tests/stubs/server-only.ts</code>：</p>
+            <pre><code class="lang-ts">// vitest 环境替换真实 server-only 包（真实包在非 RSC import 即抛错）。
+export {};</code></pre>
+            <p>修改 <code>vitest.config.ts</code> 的 <code>resolve.alias</code>，追加一条（保留现有 <code>@</code> 别名）：</p>
+            <pre><code class="lang-ts">import { resolve } from "node:path";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "./src"),
+      "server-only": resolve(__dirname, "./tests/stubs/server-only.ts"),
+    },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    include: ["tests/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["tests/e2e/**"],
+  },
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（RED）：写 fetch helper 单测</strong>
+            <p>路径 <code>tests/lib/portal-api/publications.test.ts</code>。mock 全局 <code>fetch</code>，验证 URL 拼装、JSON 解析、非 2xx 抛错、缺环境变量抛错。</p>
+            <pre><code class="lang-ts">import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchFeed } from "@/lib/portal-api/publications";
+import type { PageResult, Paper } from "@/types/portal";
+
+const EMPTY: PageResult&lt;Paper&gt; = { page: 1, pageSize: 14, total: 0, totalPages: 0, items: [] };
+
+describe("fetchFeed", () => {
+  beforeEach(() => {
+    process.env.PATRA_GATEWAY_BASE_URL = "http://gw.test:9528";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    process.env.PATRA_GATEWAY_BASE_URL = undefined;
+  });
+
+  it("拼出正确的 gateway URL 并解析 JSON", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(EMPTY), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchFeed("cited", 2, 20);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://gw.test:9528/patra-catalog/portal/publications?tab=cited&page=2&pageSize=20",
+      { cache: "no-store" },
+    );
+    expect(result).toEqual(EMPTY);
+  });
+
+  it("非 2xx 抛错", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("err", { status: 502 })),
+    );
+    await expect(fetchFeed("recent")).rejects.toThrow(/502/);
+  });
+
+  it("缺 PATRA_GATEWAY_BASE_URL 抛错", async () => {
+    process.env.PATRA_GATEWAY_BASE_URL = undefined;
+    await expect(fetchFeed("recent")).rejects.toThrow(/PATRA_GATEWAY_BASE_URL/);
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（RED）：运行确认失败</strong>
+            <p>运行：<code>cd patra-portal && pnpm test -- publications</code></p>
+            <p>预期：失败（<code>@/lib/portal-api/publications</code> 不存在）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN）：实现 fetch helper</strong>
+            <p>路径 <code>src/lib/portal-api/publications.ts</code>。</p>
+            <pre><code class="lang-ts">import "server-only";
+import type { FeedTab, PageResult, Paper } from "@/types/portal";
+
+/**
+ * 在服务端拉取 portal 文献流。仅 RSC / Route Handler 调用（server-only）。
+ * 通过 gateway 访问 catalog，gateway 地址只在服务端可见。
+ */
+export async function fetchFeed(
+  tab: FeedTab,
+  page = 1,
+  pageSize = 14,
+): Promise&lt;PageResult&lt;Paper&gt;&gt; {
+  const baseUrl = process.env.PATRA_GATEWAY_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("PATRA_GATEWAY_BASE_URL 未配置");
+  }
+  const url = `${baseUrl}/patra-catalog/portal/publications?tab=${tab}&page=${page}&pageSize=${pageSize}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`文献流加载失败：${res.status}`);
+  }
+  return (await res.json()) as PageResult&lt;Paper&gt;;
+}</code></pre>
+            <p>注意：此处用到 <code>FeedTab</code> 类型——它在现有 <code>portal.ts</code> 里仍含 <code>trending</code>（Task 7 才收窄）。本任务用 <code>"cited" | "recent"</code> 字面量传参，与现有 <code>FeedTab</code> 兼容，typecheck 不破。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6（GREEN）：运行测试 + typecheck</strong>
+            <p>运行：<code>cd patra-portal && pnpm test -- publications && pnpm typecheck && pnpm lint</code></p>
+            <p>预期：3 个测试通过；typecheck/lint 无错（本任务纯新增，未触碰现有组件）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 7：Commit</strong>
+            <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
+git add patra-portal/src/types/portal.ts patra-portal/src/lib/portal-api/publications.ts \
+        patra-portal/tests/stubs/server-only.ts patra-portal/vitest.config.ts \
+        patra-portal/tests/lib/portal-api/publications.test.ts
+git commit -m "feat(portal): PageResult 类型 + 服务端文献流 fetch helper（TDD）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-7" data-status="pending">
+        <header>
+          <h2>任务 7：前端 Paper 类型重构 + 组件改造</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>src/types/portal.ts</code>（Paper 重命名/null 化、删 authorCount、FeedTab 去 trending、删 Feed 类型）</dd>
+            <dt>删除</dt><dd><code>src/data/feed.ts</code>、<code>tests/components/portal/ExploreFeed.test.tsx</code></dd>
+            <dt>修改</dt><dd><code>src/components/portal/AISummaryBadge.tsx</code>、<code>PaperCard.tsx</code></dd>
+            <dt>删除</dt><dd><code>src/components/portal/ExploreFeed.tsx</code></dd>
+            <dt>创建</dt><dd><code>src/components/portal/explore-feed/{index,tabs,empty}.tsx</code></dd>
+            <dt>修改</dt><dd><code>src/app/page.tsx</code>、<code>src/data/index.ts</code></dd>
+            <dt>测试</dt><dd><code>tests/components/portal/{PaperCard,AISummaryBadge}.test.tsx</code></dd>
+          </dl>
+        </header>
+        <p style="margin:0 0 1rem;color:var(--ink-600,#666);font-size:.9em">这是一次原子重构：Paper 字段重命名会同时波及 feed.ts / 组件 / 测试，必须一并改完才能编译。本任务步骤多但只在末尾 commit 一次。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：重构 types/portal.ts</strong>
+            <p>替换 <code>FeedTab</code>、<code>Paper</code>，删除 <code>Feed</code> 类型（feed.ts 删除后无引用）。保留 PageResult（Task 6 加的）。完整改后的关键片段：</p>
+            <pre><code class="lang-ts">export type ComposerMode = "keyword" | "pmid" | "doi" | "author";
+export type FeedTab = "recent" | "cited";          // 去掉 trending
+export type PaperSource = "PubMed" | "Europe PMC" | "Crossref";
+
+export interface Paper {
+  id: string;
+  title: string;
+  journal: string | null;
+  year: number | null;
+  authors: string[];               // 全部作者（删除 authorCount）
+  cites: number | null;
+  bookmarks: number;               // 恒 0
+  doi: string | null;
+  pmid: string | null;
+  source: PaperSource;
+  aiSummary: string | null;        // 原 ai，本版恒 null
+  estimatedReadMin: number | null; // 原 readMin
+  kind: string | null;
+  minutesAgo: number | null;
+}
+// 删除 export type Feed = Record&lt;FeedTab, Paper[]&gt;;（feed.ts 删除后无引用）</code></pre>
+            <p>同时把文件顶部对 <code>TopicHeatTier</code>、<code>SearchMode</code>、<code>ExampleQuery</code>、<code>PortalStats</code>、<code>Topic</code>、<code>Journal</code> 等其它类型原样保留（它们服务 mock 区块，不在本次范围）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：删除 feed.ts 与 index.ts 的 FEED 导出</strong>
+            <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
+git rm patra-portal/src/data/feed.ts</code></pre>
+            <p>编辑 <code>src/data/index.ts</code>，删除 <code>export { FEED } from "./feed";</code> 这一行，其余导出保留：</p>
+            <pre><code class="lang-ts">export { EXAMPLE_QUERIES } from "./example-queries";
+export { JOURNALS } from "./journals";
+export { PORTAL_STATS } from "./portal-stats";
+export { SEARCH_MODES } from "./search-modes";
+export { TOPIC_CLOUD, topicTier } from "./topics";</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：改 AISummaryBadge props 重命名</strong>
+            <p>路径 <code>src/components/portal/AISummaryBadge.tsx</code>，整文件替换：</p>
+            <pre><code class="lang-tsx">import { cn } from "@/lib/utils";
+
+interface AISummaryBadgeProps {
+  aiSummary: string;
+  estimatedReadMin?: number | null;
+  className?: string;
+}
+
+export function AISummaryBadge({ aiSummary, estimatedReadMin, className }: AISummaryBadgeProps) {
+  return (
+    &lt;div
+      className={cn(
+        "border-l-2 border-l-clay-500 bg-amber-50/60 px-3 py-2.5 text-sm leading-snug text-ink-800",
+        className,
+      )}
+    &gt;
+      &lt;div className="mb-1.5 flex items-center gap-2"&gt;
+        &lt;span className="font-mono text-2xs uppercase tracking-caps text-clay-700"&gt;AI 速读&lt;/span&gt;
+        &lt;span className="rounded-sm border border-clay-200 bg-paper-50 px-1.5 py-px font-mono text-[10px] text-clay-700"&gt;
+          自动生成
+        &lt;/span&gt;
+        {estimatedReadMin != null && (
+          &lt;span className="ml-auto font-mono text-2xs text-fg-3"&gt;≈ {estimatedReadMin} 分钟原文&lt;/span&gt;
+        )}
+      &lt;/div&gt;
+      &lt;p className="text-fg-2"&gt;{aiSummary}&lt;/p&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4：改 PaperCard（null 防御 + authors.length + 字段重命名）</strong>
+            <p>路径 <code>src/components/portal/PaperCard.tsx</code>。关键改动：用 <code>paper.authors.length</code> 替代 <code>authorCount</code>；<code>journal/year</code> 可空时不渲染对应 meta；<code>kind</code> 为 null 不渲染标签；<code>aiSummary</code> 为 null 整块隐藏 badge；<code>aiSummary</code>/<code>estimatedReadMin</code> 传新 props 名。改后片段：</p>
+            <pre><code class="lang-tsx">export function PaperCard({ paper }: PaperCardProps) {
+  const visibleAuthors = paper.authors.slice(0, 2);
+  const remaining = paper.authors.length - visibleAuthors.length;
+
+  return (
+    &lt;article className="flex flex-col gap-3.5 rounded-lg border border-border-default bg-paper-50 p-5"&gt;
+      {/* source + doi 行不变 */}
+      &lt;h3 className="font-serif text-lg font-medium leading-snug tracking-tight text-ink-900"&gt;
+        {paper.title}
+      &lt;/h3&gt;
+
+      &lt;div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-3"&gt;
+        {paper.journal && &lt;span className="font-serif italic text-ink-700"&gt;{paper.journal}&lt;/span&gt;}
+        {paper.year != null && (
+          &lt;&gt;
+            &lt;span&gt;·&lt;/span&gt;
+            &lt;span&gt;{paper.year}&lt;/span&gt;
+          &lt;/&gt;
+        )}
+        {paper.authors.length &gt; 0 && (
+          &lt;&gt;
+            &lt;span&gt;·&lt;/span&gt;
+            &lt;span className="text-fg-2"&gt;
+              {visibleAuthors.join(", ")}
+              {remaining &gt; 0 && ` 等 ${remaining} 位作者`}
+            &lt;/span&gt;
+          &lt;/&gt;
+        )}
+        {paper.kind && (
+          &lt;span className="ml-auto rounded-sm border border-border-subtle bg-paper-100 px-1.5 py-0.5 font-mono text-2xs uppercase tracking-caps text-fg-3"&gt;
+            {paper.kind}
+          &lt;/span&gt;
+        )}
+      &lt;/div&gt;
+
+      {paper.aiSummary && (
+        &lt;AISummaryBadge aiSummary={paper.aiSummary} estimatedReadMin={paper.estimatedReadMin} /&gt;
+      )}
+
+      {/* 操作按钮行：收藏数用 paper.bookmarks（恒 0）；引用数用 paper.cites ?? 0，其余不变 */}
+    &lt;/article&gt;
+  );
+}</code></pre>
+            <p>引用数那行把 <code>{paper.cites} 引用</code> 改为 <code>{paper.cites ?? 0} 引用</code>；收藏按钮 <code>收藏 {paper.bookmarks}</code> 不变。其余按钮与结构保持原样。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5：创建 explore-feed/empty.tsx（空态/错误态）</strong>
+            <p>路径 <code>src/components/portal/explore-feed/empty.tsx</code>。</p>
+            <pre><code class="lang-tsx">interface ExploreFeedEmptyProps {
+  reason: "empty" | "error";
+}
+
+export function ExploreFeedEmpty({ reason }: ExploreFeedEmptyProps) {
+  const text = reason === "error" ? "加载失败，请稍后重试" : "暂无文献";
+  return (
+    &lt;div
+      data-feed-state={reason}
+      className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-border-default bg-paper-50 text-sm text-fg-3"
+    &gt;
+      {text}
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：创建 explore-feed/tabs.tsx（Client）</strong>
+            <p>路径 <code>src/components/portal/explore-feed/tabs.tsx</code>。切 tab 改 URL searchParam，触发服务端重渲。</p>
+            <pre><code class="lang-tsx">"use client";
+
+import { Clock, Quote } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { FeedTab } from "@/types/portal";
+
+const TABS: { value: FeedTab; label: string; Icon: typeof Clock }[] = [
+  { value: "recent", label: "最近更新", Icon: Clock },
+  { value: "cited", label: "高被引", Icon: Quote },
+];
+
+export function ExploreFeedTabs({ currentTab }: { currentTab: FeedTab }) {
+  const router = useRouter();
+  return (
+    &lt;Tabs
+      value={currentTab}
+      onValueChange={(v) =&gt; router.push(`/?tab=${v}`, { scroll: false })}
+      className="flex-col!"
+    &gt;
+      &lt;TabsList
+        variant="line"
+        className="flex h-auto w-full items-center justify-start gap-0 rounded-none border-b border-border-default bg-transparent p-0"
+      &gt;
+        {TABS.map(({ value, label, Icon }) =&gt; (
+          &lt;TabsTrigger
+            key={value}
+            value={value}
+            className="group/feed-tab relative -mb-px flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent px-4 py-2.5 text-sm font-medium text-fg-3 shadow-none transition-colors duration-150 hover:text-ink-900 data-active:border-clay-500! data-active:text-ink-900!"
+          &gt;
+            &lt;Icon className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden /&gt;
+            {label}
+          &lt;/TabsTrigger&gt;
+        ))}
+      &lt;/TabsList&gt;
+    &lt;/Tabs&gt;
+  );
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 7：创建 explore-feed/index.tsx（Server Component）</strong>
+            <p>路径 <code>src/components/portal/explore-feed/index.tsx</code>。RSC：服务端 fetch + try/catch 兜底 + 标题区（迁移自旧 ExploreFeed）+ 卡片网格。</p>
+            <pre><code class="lang-tsx">import Image from "next/image";
+import { PaperCard } from "@/components/portal/PaperCard";
+import { fetchFeed } from "@/lib/portal-api/publications";
+import type { FeedTab, Paper } from "@/types/portal";
+import { ExploreFeedEmpty } from "./empty";
+import { ExploreFeedTabs } from "./tabs";
+
+export async function ExploreFeed({ tab }: { tab: FeedTab }) {
+  let papers: Paper[];
+  try {
+    const page = await fetchFeed(tab);
+    papers = page.items;
+  } catch {
+    papers = [];
+    return (
+      &lt;FeedSection&gt;
+        &lt;ExploreFeedTabs currentTab={tab} /&gt;
+        &lt;div className="pt-6"&gt;
+          &lt;ExploreFeedEmpty reason="error" /&gt;
+        &lt;/div&gt;
+      &lt;/FeedSection&gt;
+    );
+  }
+
+  return (
+    &lt;FeedSection&gt;
+      &lt;ExploreFeedTabs currentTab={tab} /&gt;
+      &lt;div className="pt-6"&gt;
+        {papers.length === 0 ? (
+          &lt;ExploreFeedEmpty reason="empty" /&gt;
+        ) : (
+          &lt;div className="grid grid-cols-2 gap-5 max-[880px]:grid-cols-1"&gt;
+            {papers.map((p) =&gt; (
+              &lt;PaperCard key={p.id} paper={p} /&gt;
+            ))}
+          &lt;/div&gt;
+        )}
+      &lt;/div&gt;
+    &lt;/FeedSection&gt;
+  );
+}
+
+function FeedSection({ children }: { children: React.ReactNode }) {
+  return (
+    &lt;section
+      data-section="explore-feed"
+      className="container mx-auto max-w-[1200px] px-6 py-14 max-[880px]:py-10"
+    &gt;
+      &lt;div className="mb-6"&gt;
+        &lt;span className="inline-flex items-center gap-1.5 font-sans text-2xs font-semibold uppercase tracking-caps text-fg-3"&gt;
+          &lt;Image src="/brand/patra-mark.svg" alt="" aria-hidden width={4} height={14} /&gt;
+          文献流
+        &lt;/span&gt;
+        &lt;h2 className="mt-1 font-serif text-3xl font-medium leading-tight tracking-tight text-ink-900"&gt;
+          值得读一读的文献
+        &lt;/h2&gt;
+        &lt;p className="mt-1 text-sm text-fg-3"&gt;
+          每篇都带一段 AI 速读 —— 由 Patra 在采集时生成，仅作为线索，不能替代阅读原文。
+        &lt;/p&gt;
+      &lt;/div&gt;
+      {children}
+    &lt;/section&gt;
+  );
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 8：删除旧 ExploreFeed + 改 page.tsx 引用与 searchParams</strong>
+            <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
+git rm patra-portal/src/components/portal/ExploreFeed.tsx \
+       patra-portal/tests/components/portal/ExploreFeed.test.tsx</code></pre>
+            <p>改 <code>src/app/page.tsx</code>（Next.js 15 searchParams 为 Promise）：</p>
+            <pre><code class="lang-tsx">import { ExploreFeed } from "@/components/portal/explore-feed";
+import { Footer } from "@/components/portal/Footer";
+import { HeroWithToast } from "@/components/portal/HeroWithToast";
+import { Journals } from "@/components/portal/Journals";
+import { TopicCloud } from "@/components/portal/TopicCloud";
+import { TopNav } from "@/components/portal/TopNav";
+import type { FeedTab } from "@/types/portal";
+
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise&lt;{ tab?: string }&gt;;
+}) {
+  const { tab } = await searchParams;
+  const safeTab: FeedTab = tab === "cited" ? "cited" : "recent";
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;HeroWithToast /&gt;
+        &lt;TopicCloud /&gt;
+        &lt;Journals /&gt;
+        &lt;ExploreFeed tab={safeTab} /&gt;
+      &lt;/main&gt;
+      &lt;Footer /&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 9：改组件测试（内联 fixture + null case）</strong>
+            <p>路径 <code>tests/components/portal/PaperCard.test.tsx</code>，整文件替换（不再依赖被删的 FEED）：</p>
+            <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { PaperCard } from "@/components/portal/PaperCard";
+import type { Paper } from "@/types/portal";
+
+function makePaper(overrides: Partial&lt;Paper&gt; = {}): Paper {
+  return {
+    id: "p1",
+    title: "Semaglutide 长期心血管转归",
+    journal: "N Engl J Med",
+    year: 2026,
+    authors: ["Perkovic V.", "Tuttle K. R.", "Mann J. F. E."],
+    cites: 142,
+    bookmarks: 0,
+    doi: "10.1056/NEJMoa2603120",
+    pmid: "39812044",
+    source: "PubMed",
+    aiSummary: "心血管事件下降 22%",
+    estimatedReadMin: 12,
+    kind: "Journal Article",
+    minutesAgo: 120,
+    ...overrides,
+  };
+}
+
+describe("PaperCard", () => {
+  it("渲染 title / journal / source", () => {
+    render(&lt;PaperCard paper={makePaper()} /&gt;);
+    expect(screen.getByText("Semaglutide 长期心血管转归")).toBeInTheDocument();
+    expect(screen.getByText(/N Engl J Med/)).toBeInTheDocument();
+    expect(screen.getByText("PubMed")).toBeInTheDocument();
+  });
+
+  it("作者展示 visible + remaining 数（基于 authors.length）", () => {
+    render(&lt;PaperCard paper={makePaper()} /&gt;);
+    expect(screen.getByText(/等\s*1\s*位作者/)).toBeInTheDocument();
+  });
+
+  it("aiSummary 为 null 时不渲染 AI 速读", () => {
+    render(&lt;PaperCard paper={makePaper({ aiSummary: null })} /&gt;);
+    expect(screen.queryByText("AI 速读")).not.toBeInTheDocument();
+  });
+
+  it("kind 为 null 时不渲染类型标签", () => {
+    render(&lt;PaperCard paper={makePaper({ kind: null })} /&gt;);
+    expect(screen.queryByText("Journal Article")).not.toBeInTheDocument();
+  });
+});</code></pre>
+            <p>路径 <code>tests/components/portal/AISummaryBadge.test.tsx</code>，props 改名：</p>
+            <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { AISummaryBadge } from "@/components/portal/AISummaryBadge";
+
+describe("AISummaryBadge", () => {
+  it("渲染 'AI 速读' 标签", () => {
+    render(&lt;AISummaryBadge aiSummary="测试摘要" /&gt;);
+    expect(screen.getByText("AI 速读")).toBeInTheDocument();
+  });
+
+  it("渲染传入的 aiSummary 文字", () => {
+    render(&lt;AISummaryBadge aiSummary="心血管事件下降 22%" /&gt;);
+    expect(screen.getByText(/心血管事件下降/)).toBeInTheDocument();
+  });
+
+  it("estimatedReadMin 非空时显示分钟数", () => {
+    render(&lt;AISummaryBadge aiSummary="x" estimatedReadMin={12} /&gt;);
+    expect(screen.getByText(/≈ 12 分钟原文/)).toBeInTheDocument();
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 10：全量验证（lint + typecheck + test）</strong>
+            <p>运行：<code>cd patra-portal && pnpm lint && pnpm typecheck && pnpm test</code></p>
+            <p>预期：三绿。常见失败：①漏改某处 <code>ai</code>/<code>readMin</code>/<code>authorCount</code> 引用 → typecheck 报错按提示补；②Biome import 顺序 → <code>pnpm format</code> 自动修。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 11：Commit</strong>
+            <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
+git add patra-portal/src patra-portal/tests
+git commit -m "feat(portal): ExploreFeed 接入真实数据 + Paper 类型重构
+
+Paper 字段重命名/null 化（ai→aiSummary、readMin→estimatedReadMin），
+删 authorCount/mock feed.ts，ExploreFeed 拆为 RSC+Client+空态，切 tab 走 URL。"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-8" data-status="pending">
+        <header>
+          <h2>任务 8：e2e + .env.example + 全量验证</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/.env.example</code></dd>
+            <dt>修改</dt><dd><code>patra-portal/tests/e2e/homepage.spec.ts</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：创建 .env.example</strong>
+            <p>路径 <code>patra-portal/.env.example</code>。</p>
+            <pre><code class="lang-bash"># Patra Gateway 地址 —— 仅 Next.js 服务端读取（RSC / Route Handler）。
+# 禁止加 NEXT_PUBLIC_ 前缀，否则会下发到浏览器、暴露后端地址。
+# 本地开发：复制为 .env.local 并按需修改（.env.local 已 gitignore）。
+PATRA_GATEWAY_BASE_URL=http://localhost:9528</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：改 e2e（弹性断言，不依赖后端数据）</strong>
+            <p>路径 <code>tests/e2e/homepage.spec.ts</code>。原断言里「AI 速读 可见」依赖 mock，现 aiSummary 恒 null 不再渲染，且 e2e 跑 <code>pnpm dev</code> 时后端可能未起 → 文献流可能是空态。改为只断言结构性、对后端状态弹性的元素。整文件替换：</p>
+            <pre><code class="lang-ts">import { expect, test } from "@playwright/test";
+
+test("homepage smoke — 结构区块 + 文献流 tab", async ({ page }) => {
+  await page.goto("/");
+
+  await expect(page.getByRole("banner")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("可被检索");
+
+  // 文献流区块存在（无论数据有无 / 后端是否在线）
+  const feed = page.locator("[data-section='explore-feed']");
+  await expect(feed).toBeVisible();
+
+  // 两个 tab 控件始终渲染
+  await expect(feed.getByText("最近更新")).toBeVisible();
+  await expect(feed.getByText("高被引")).toBeVisible();
+
+  await expect(page.getByRole("contentinfo")).toBeVisible();
+});
+
+test("切 tab 改 URL searchParam", async ({ page }) => {
+  await page.goto("/");
+  const feed = page.locator("[data-section='explore-feed']");
+  await feed.getByText("高被引").click();
+  await expect(page).toHaveURL(/[?&]tab=cited/);
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：e2e 本地验证（需后端在线才看真实数据，仅看冒烟通过）</strong>
+            <p>前置：infra（docker compose）+ catalog + gateway 在线，且 <code>patra-portal/.env.local</code> 已配 <code>PATRA_GATEWAY_BASE_URL=http://localhost:9528</code>。运行：</p>
+            <pre><code class="lang-bash">cd patra-portal && pnpm test:e2e</code></pre>
+            <p>预期：2 个 e2e 用例通过。若后端未起，文献流显示「加载失败」占位，但结构断言（区块 + tab + 切 tab URL）仍通过——这正是弹性断言的目的。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4：人工验收（用户执行，对照 spec Done 判定）</strong>
+            <p>这一步由用户在浏览器手动确认（计划只列清单，不替用户判定）：</p>
+            <pre><code class="lang-text">1. 起 infra + catalog + gateway + portal dev，访问 http://localhost:3000
+2. ExploreFeed 显示真实文献（非 mock）；默认 tab「最近更新」
+3. 切「高被引」→ URL 变 /?tab=cited，列表按引用数重排
+4. 某文献 aiSummary 为 null → 不显示 AI 速读区块；kind 为 null → 不显示类型标签
+5. 关掉 catalog → 首页其它区块正常，ExploreFeed 显示「加载失败」占位</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">cd "$(git rev-parse --show-toplevel)"
+git add patra-portal/.env.example patra-portal/tests/e2e/homepage.spec.ts
+git commit -m "test(portal): e2e 弹性冒烟 + 切 tab URL 断言 + .env.example"</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：最终全栈回归</strong>
+            <p>运行：</p>
+            <pre><code class="lang-bash"># 后端
+./gradlew :patra-api:patra-catalog:patra-catalog-app:test \
+          :patra-api:patra-catalog:patra-catalog-infra:integrationTest \
+          :patra-api:patra-catalog:patra-catalog-adapter:integrationTest
+# 前端
+cd patra-portal && pnpm lint && pnpm typecheck && pnpm test</code></pre>
+            <p>预期：后端 <code>BUILD SUCCESSFUL</code>，前端三绿。完成后进入 <code>patra:finishing-a-development-branch</code> 决定收尾（PR/合并）。</p>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec §4 后端删除→Task 1；§4.2 domain→Task 2、infra→Task 3、app→Task 4、adapter→Task 5；§4.3 API Contract→Task 5 + 契约缝章节。spec §5 前端：5.1 类型/mock→Task 6（PageResult）+Task 7（Paper）；5.2 fetch helper→Task 6；5.3 ExploreFeed 拆分→Task 7；5.4 page/PaperCard→Task 7；5.5 .env→Task 8；5.6 测试→Task 6/7/8。spec §6 决策全部落到对应实现。spec §7 风险（数据非空/删除误伤/provenance 取值/性能/超时）已在 Task 1 步骤5、Task 3 单查询、Task 5 source 回退、Task 8 验收中覆盖。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无「待定/TODO/后续实现/类似任务 N」等计划占位。每个代码步骤含完整可复制代码。代码内的 <code>TODO(LLM-summary)</code>/<code>TODO(read-time)</code>/<code>TODO(provenance-dict)</code> 是 spec 明确要求保留的业务占位（标注未来工作），非计划缺陷。已 grep 确认无残留 <code>&lt;!-- FILL: --&gt;</code>。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>后端跨任务命名一致：<code>PortalFeedReadPort.findFeedPage(PagingParams, PortalFeedFilter)</code>（Task 2 定义 / Task 3 实现 / Task 4 调用）；<code>PortalFeedTab.fromCode</code>（Task 2 / Task 4）；<code>PortalApiConverter.toResponse</code>（Task 5）。前后端契约一致：<code>PageResult</code> 字段 <code>page/pageSize/total/totalPages/items</code>（已修正 spec 的 content/totalElements 错误，见契约缝 callout）；<code>Paper</code> 字段名与 <code>PortalPaperResponse</code> 一一对应（id/journal/year/authors/cites/bookmarks/source/aiSummary/estimatedReadMin/kind/minutesAgo）。<code>FeedTab="recent"|"cited"</code> 前端（Task 7）与后端 tab 取值一致。string_agg 分隔符 U+001F 在 DAO（Task 3 步骤3）与 Adapter（Task 3 步骤4 <code>AUTHOR_DELIMITER</code>）一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>8 个 <code>&lt;article class="task"&gt;</code>，id task-1..task-8 唯一，初始 <code>data-status="pending"</code>；每个 <code>&lt;li class="step"&gt;</code> 均 <code>data-status="pending"</code>。头部 <code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec 四项。<code>&lt;head&gt;</code> 2 个 link 指向 journal.css + plan-extras.css，无 inline style（步骤5 的 file-tree 标题用了 1 处 inline style 属性作版式微调，非 <code>&lt;style&gt;</code> 块）。左栏 <code>toc-tasks</code> 8 条 li 与 8 个 article 一一对应，初始 <code>data-task-status="pending"</code> 与 article 一致。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+    </ol>
+
+    <p class="empty-state">no notes yet</p>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">0</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>
