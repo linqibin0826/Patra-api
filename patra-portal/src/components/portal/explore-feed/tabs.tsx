@@ -15,7 +15,10 @@ export function ExploreFeedTabs({ currentTab }: { currentTab: FeedTab }) {
   return (
     <Tabs
       value={currentTab}
-      onValueChange={(v) => router.push(`/?tab=${v}`, { scroll: false })}
+      onValueChange={(v) => {
+        const tab = v as FeedTab;
+        router.push(`/?tab=${tab}`, { scroll: false });
+      }}
       className="flex-col!"
     >
       <TabsList

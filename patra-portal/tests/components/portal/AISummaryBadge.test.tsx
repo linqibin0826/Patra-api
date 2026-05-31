@@ -18,4 +18,9 @@ describe("AISummaryBadge", () => {
     render(<AISummaryBadge aiSummary="x" estimatedReadMin={12} />);
     expect(screen.getByText(/≈ 12 分钟原文/)).toBeInTheDocument();
   });
+
+  it("estimatedReadMin 为 null 时不显示分钟数", () => {
+    render(<AISummaryBadge aiSummary="x" estimatedReadMin={null} />);
+    expect(screen.queryByText(/分钟原文/)).not.toBeInTheDocument();
+  });
 });

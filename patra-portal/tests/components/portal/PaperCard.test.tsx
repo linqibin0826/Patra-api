@@ -46,4 +46,9 @@ describe("PaperCard", () => {
     render(<PaperCard paper={makePaper({ kind: null })} />);
     expect(screen.queryByText("Journal Article")).not.toBeInTheDocument();
   });
+
+  it("未知 source 仍渲染 source 文本（兜底色）", () => {
+    render(<PaperCard paper={makePaper({ source: "OADOI" })} />);
+    expect(screen.getByText("OADOI")).toBeInTheDocument();
+  });
 });

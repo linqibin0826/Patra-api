@@ -3,6 +3,7 @@
  */
 
 export type ComposerMode = "keyword" | "pmid" | "doi" | "author";
+// trending 后端暂无热度信号，本版只暴露 recent / cited（见 spec §范围边界）
 export type FeedTab = "recent" | "cited";
 // 后端 source 来自 18 种 provenance 展示名或回退 code，故为开放 string（不可用三值 union）
 export type PaperSource = string;
@@ -66,7 +67,7 @@ export interface Paper {
   aiSummary: string | null;
   estimatedReadMin: number | null;
   kind: string | null;
-  minutesAgo: number | null;
+  minutesAgo: number | null; // 后端提供，UI 暂未展示（留作"X 分钟前"标签）
 }
 
 /**

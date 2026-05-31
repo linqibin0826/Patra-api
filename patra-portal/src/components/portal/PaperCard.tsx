@@ -36,12 +36,14 @@ export function PaperCard({ paper }: PaperCardProps) {
       </h3>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-3">
-        {paper.journal && <span className="font-serif italic text-ink-700">{paper.journal}</span>}
-        {paper.year != null && (
-          <>
-            <span>·</span>
-            <span>{paper.year}</span>
-          </>
+        {(paper.journal || paper.year != null) && (
+          <span>
+            {paper.journal && (
+              <span className="font-serif italic text-ink-700">{paper.journal}</span>
+            )}
+            {paper.journal && paper.year != null && <span> · </span>}
+            {paper.year != null && <span>{paper.year}</span>}
+          </span>
         )}
         {paper.authors.length > 0 && (
           <>
