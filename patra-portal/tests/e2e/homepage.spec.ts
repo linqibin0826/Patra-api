@@ -11,8 +11,8 @@ test("homepage smoke — 结构区块 + 文献流 tab", async ({ page }) => {
   await expect(feed).toBeVisible();
 
   // 两个 tab 控件始终渲染
-  await expect(feed.getByText("最近更新")).toBeVisible();
-  await expect(feed.getByText("高被引")).toBeVisible();
+  await expect(feed.getByRole("tab", { name: "最近更新" })).toBeVisible();
+  await expect(feed.getByRole("tab", { name: "高被引" })).toBeVisible();
 
   await expect(page.getByRole("contentinfo")).toBeVisible();
 });
@@ -20,6 +20,6 @@ test("homepage smoke — 结构区块 + 文献流 tab", async ({ page }) => {
 test("切 tab 改 URL searchParam", async ({ page }) => {
   await page.goto("/");
   const feed = page.locator("[data-section='explore-feed']");
-  await feed.getByText("高被引").click();
+  await feed.getByRole("tab", { name: "高被引" }).click();
   await expect(page).toHaveURL(/[?&]tab=cited/);
 });
