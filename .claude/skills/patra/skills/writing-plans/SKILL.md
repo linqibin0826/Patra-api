@@ -20,7 +20,7 @@ description: 当你有规格说明或需求用于多步骤任务时使用，在�
 **计划保存位置：** `<git-root>/docs/patra/plans/YYYY-MM-DD-<feature-name>.html`
 - 用户对计划位置的偏好优先于此默认值
 - **产物是 HTML，不是 Markdown**——通过 `data-status` 属性追踪进度比 markdown checkbox 表达力强
-- 复制 `template/plan-template.html`，按 `<!-- FILL: -->` 注释填内容；不要改 `<link>` href / 结构（CSS 在 `<git-root>/docs/patra/styles/journal.css` + `plan-extras.css`，所有 plan 共享）
+- 复制 `template/plan-template.html`，按 `<!-- FILL: -->` 注释填内容；不要改 `<link>` href / 结构（CSS 在 `<git-root>/docs/patra/styles/spec-theme.css` + `plan-extras.css`，spec 与 plan 共享主题）
 
 ## 范围检查
 
@@ -48,7 +48,7 @@ description: 当你有规格说明或需求用于多步骤任务时使用，在�
 
 ## 计划文档结构（HTML 模板）
 
-复制 `template/plan-template.html` 到 `<git-root>/docs/patra/plans/YYYY-MM-DD-<feature-name>.html`，按文件内所有 `<!-- FILL: -->` 注释填内容。**禁止修改 `<link>` href、章节顺序、HTML 结构** —— 只填内容。模板已 link 到 `../styles/journal.css` + `../styles/plan-extras.css`（在 `<git-root>/docs/patra/styles/`，所有 plan/spec 共享），**绝不在生成的 HTML 里嵌入 `<style>` 块**。
+复制 `template/plan-template.html` 到 `<git-root>/docs/patra/plans/YYYY-MM-DD-<feature-name>.html`，按文件内所有 `<!-- FILL: -->` 注释填内容。**禁止修改 `<link>` href、章节顺序、HTML 结构** —— 只填内容。模板已 link 到 `../styles/spec-theme.css` + `../styles/plan-extras.css`（在 `<git-root>/docs/patra/styles/`；spec-theme.css 为 spec/plan 共享的「工程简报」主题，plan-extras.css 补 plan 专属任务卡片样式），**绝不在生成的 HTML 里嵌入 `<style>` 块**。
 
 模板已包含：
 - 三栏布局（左 TOC 含任务子列表 / 中 任务卡片 / 右 Implementation Notes）
@@ -102,7 +102,7 @@ patra-api 是单人开发的绿地项目（无历史包袱），编计划时主�
 - 每个 `<article class="task">` 都有唯一 `id="task-N"` 与初始 `data-status="pending"`？
 - 每个 `<li class="step">` 都有初始 `data-status="pending"`？
 - 头部 `<dl class="meta">` 含目标 / 架构 / 技术栈 / 关联 spec 四项？
-- `<head>` 含 2 个 `<link>` 引用 `../styles/journal.css` + `../styles/plan-extras.css`，**无 inline `<style>` 块**？
+- `<head>` 含 2 个 `<link>` 引用 `../styles/spec-theme.css` + `../styles/plan-extras.css`，**无 inline `<style>` 块**？
 - `[data-status]` 与 `[data-task-status]` 属性选择器都已在 `<git-root>/docs/patra/styles/plan-extras.css` 定义了对应渲染规则？
 - TOC 任务子列表与中栏 article 一一对应？`<ol class="toc-tasks">` 内 li 数量 = `<article class="task">` 数量；每个 article 的 `id="task-N"` 都能在 toc-tasks 的某条 `<a href="#task-N">` 找到；初始 `data-task-status="pending"` 与 article `data-status="pending"` 一致
 

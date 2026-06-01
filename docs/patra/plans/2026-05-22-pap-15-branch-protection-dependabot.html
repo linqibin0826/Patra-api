@@ -6,10 +6,10 @@
   <title>PAP-15 — 分支保护 + Dependabot 实现计划</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <!-- CSS 外置：相对路径 ../styles/ 是从生成位置 docs/patra/plans/ 出发；
        模板本身在 .claude-marketplace/ 下打开时此 link 会 404（接受：模板预览以生成后的 plan 为准） -->
-  <link rel="stylesheet" href="../styles/journal.css">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
   <link rel="stylesheet" href="../styles/plan-extras.css">
 </head>
 <body>
@@ -645,7 +645,7 @@ git reset --hard HEAD~1</code></pre>
 
       <aside class="callout success">
         <span class="title">4. HTML 结构完整性</span>
-        <p>6 个 <code>&lt;article class="task"&gt;</code> 均有唯一 <code>id="task-1..6"</code> 与初始 <code>data-status="pending"</code>；所有 <code>&lt;li class="step"&gt;</code> 均有初始 <code>data-status="pending"</code>；<code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec 四项；<code>&lt;head&gt;</code> 含 journal.css + plan-extras.css 两个 link，无 inline style；TOC <code>&lt;ol class="toc-tasks"&gt;</code> 6 条 li 与 6 个 article 一一对应，初始 <code>data-task-status="pending"</code> 与 article <code>data-status="pending"</code> 一致。</p>
+        <p>6 个 <code>&lt;article class="task"&gt;</code> 均有唯一 <code>id="task-1..6"</code> 与初始 <code>data-status="pending"</code>；所有 <code>&lt;li class="step"&gt;</code> 均有初始 <code>data-status="pending"</code>；<code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec 四项；<code>&lt;head&gt;</code> 含 spec-theme.css + plan-extras.css 两个 link，无 inline style；TOC <code>&lt;ol class="toc-tasks"&gt;</code> 6 条 li 与 6 个 article 一一对应，初始 <code>data-task-status="pending"</code> 与 article <code>data-status="pending"</code> 一致。</p>
       </aside>
     </section>
 

@@ -6,8 +6,8 @@
   <title>Portal 前后端集成实现计划：ExploreFeed 接入 catalog</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles/journal.css">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
   <link rel="stylesheet" href="../styles/plan-extras.css">
 </head>
 <body>
@@ -1917,7 +1917,7 @@ cd patra-portal && pnpm lint && pnpm typecheck && pnpm test</code></pre>
 
       <aside class="callout success">
         <span class="title">4. HTML 结构完整性</span>
-        <p>8 个 <code>&lt;article class="task"&gt;</code>，id task-1..task-8 唯一，初始 <code>data-status="pending"</code>；每个 <code>&lt;li class="step"&gt;</code> 均 <code>data-status="pending"</code>。头部 <code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec 四项。<code>&lt;head&gt;</code> 2 个 link 指向 journal.css + plan-extras.css，无 inline style（步骤5 的 file-tree 标题用了 1 处 inline style 属性作版式微调，非 <code>&lt;style&gt;</code> 块）。左栏 <code>toc-tasks</code> 8 条 li 与 8 个 article 一一对应，初始 <code>data-task-status="pending"</code> 与 article 一致。</p>
+        <p>8 个 <code>&lt;article class="task"&gt;</code>，id task-1..task-8 唯一，初始 <code>data-status="pending"</code>；每个 <code>&lt;li class="step"&gt;</code> 均 <code>data-status="pending"</code>。头部 <code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec 四项。<code>&lt;head&gt;</code> 2 个 link 指向 spec-theme.css + plan-extras.css，无 inline style（步骤5 的 file-tree 标题用了 1 处 inline style 属性作版式微调，非 <code>&lt;style&gt;</code> 块）。左栏 <code>toc-tasks</code> 8 条 li 与 8 个 article 一一对应，初始 <code>data-task-status="pending"</code> 与 article 一致。</p>
       </aside>
     </section>
 

@@ -28,7 +28,7 @@ description: "在任何创造性工作之前必须使用此技能——创建功
 3. **提出澄清问题** — 每次一个，了解目的/约束/成功标准
 4. **提出 2-3 种方案** — 附带权衡分析和你的推荐
 5. **展示设计** — 按复杂度分节展示，每节展示后获得用户批准
-6. **编写设计文档** — 复制 `template/spec-template.html` 到 `<git-root>/docs/patra/specs/YYYY-MM-DD-<topic>-design.html`，按文件内所有 `<!-- FILL: -->` 注释逐一替换占位内容。**禁止修改 `<link>` href、章节顺序、HTML 结构** —— 只填内容。模板已 link 到 `../styles/spec-theme.css`（spec 专用「工程简报」主题，在 `<git-root>/docs/patra/styles/`；plan 仍用 journal.css），右栏「我的备注」由同目录 `user-notes.js` 驱动（localStorage 本地存储、不进 git），**绝不在生成的 HTML 里嵌入 `<style>` 块**——改主题在 CSS 文件里改一次即可全部生效。完成后 commit，然后执行 `open <path>` 在浏览器中打开供用户查看（macOS；Linux 用 `xdg-open <path>`，Windows 用 `start <path>`）。
+6. **编写设计文档** — 复制 `template/spec-template.html` 到 `<git-root>/docs/patra/specs/YYYY-MM-DD-<topic>-design.html`，按文件内所有 `<!-- FILL: -->` 注释逐一替换占位内容。**禁止修改 `<link>` href、章节顺序、HTML 结构** —— 只填内容。模板已 link 到 `../styles/spec-theme.css`（「工程简报」主题（spec / plan 共享），在 `<git-root>/docs/patra/styles/`），右栏「我的备注」由同目录 `user-notes.js` 驱动（localStorage 本地存储、不进 git），**绝不在生成的 HTML 里嵌入 `<style>` 块**——改主题在 CSS 文件里改一次即可全部生效。完成后 commit，然后执行 `open <path>` 在浏览器中打开供用户查看（macOS；Linux 用 `xdg-open <path>`，Windows 用 `start <path>`）。
 7. **规格自检** — 快速内联检查占位符、矛盾、模糊性、范围（详见下方）
 8. **用户审查书面规格** — 在继续之前请用户审查规格文件
 9. **过渡到实现** — 调用 writing-plans 技能创建实现计划

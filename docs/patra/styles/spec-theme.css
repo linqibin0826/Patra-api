@@ -6,13 +6,13 @@
       移植自 GezQ 工程简报主题，:root 换为 patra portal 暖色板
       （paper 米底 + ink 暖墨 + clay 陶土强调，源自 patra-portal tokens）。
 
-   作用域：所有 spec 共享（brainstorming 模板默认）。
+   作用域：所有 spec 与 plan 共享（brainstorming / writing-plans 模板默认）。
    docs/patra/specs/ 顶层 spec 用 ../styles/spec-theme.css，子目录 spec 用
-   ../../styles/spec-theme.css。自包含，不依赖 journal.css（后者仍服务 plan）。
+   ../../styles/spec-theme.css；plan 在本主题之上再 link plan-extras.css。自包含。
 
-   选择器契约：与 journal.css 类名一致（.layout / .toc / .doc-header /
-   .callout / .decision / .pill / table / .notes-panel / li.note 等），
-   保证 user-notes.js（右栏 localStorage 备注）继续可用。
+   选择器契约：.layout / .toc / .doc-header / .callout / .decision / .pill /
+   table / .notes-panel / li.note 等类名，保证 user-notes.js（spec 右栏 localStorage
+   备注）与 plan-extras.css（plan 任务卡片 / Implementation Notes）继续复用。
    ============================================================ */
 
 :root {

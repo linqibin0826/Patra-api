@@ -6,8 +6,8 @@
   <title>Claude 配置 workspace 上移 — 实现计划</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../styles/journal.css">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
   <link rel="stylesheet" href="../styles/plan-extras.css">
 </head>
 <body>
@@ -747,7 +747,7 @@ rmdir patra-api/docs   # 空目录清理</code></pre>
           <li class="step" data-status="done">
             <strong>步骤 4：本 plan 自身内的相对路径引用核查</strong>
             <p>plan HTML 引用 spec HTML 用 <code>../specs/...</code>，git mv 后两份 HTML 同步从 <code>patra-api/docs/patra/{plans,specs}/</code> 移到 <code>docs/patra/{plans,specs}/</code>，相对位置不变，无需改动。</p>
-            <p>同样 plan HTML 引用 <code>../styles/journal.css</code> + <code>../styles/plan-extras.css</code>，git mv 后 styles 目录也同步移动，相对路径仍正确。</p>
+            <p>同样 plan HTML 引用 <code>../styles/spec-theme.css</code> + <code>../styles/plan-extras.css</code>，git mv 后 styles 目录也同步移动，相对路径仍正确。</p>
           </li>
 
           <li class="step" data-status="done">
@@ -780,7 +780,7 @@ git commit -m "chore(docs+skill): docs/ 上移到 workspace 根 + skill 默认�
 
       <aside class="callout success">
         <span class="title">4. HTML 结构完整性</span>
-        <p>7 个 <code>&lt;article class="task"&gt;</code> 各有唯一 <code>id="task-1"</code> 到 <code>id="task-7"</code> 与初始 <code>data-status="pending"</code>；每个 <code>&lt;li class="step"&gt;</code> 初始 <code>data-status="pending"</code>；header <code>&lt;dl class="meta"&gt;</code> 含目标 / 架构 / 技术栈 / 关联 spec 四项；<code>&lt;head&gt;</code> 含 2 个 <code>&lt;link&gt;</code> 引用 journal.css + plan-extras.css，无 inline <code>&lt;style&gt;</code>；TOC <code>&lt;ol class="toc-tasks"&gt;</code> 含 7 个 li 一一对应 Task 1-7，初始 <code>data-task-status="pending"</code> 与 article 一致。</p>
+        <p>7 个 <code>&lt;article class="task"&gt;</code> 各有唯一 <code>id="task-1"</code> 到 <code>id="task-7"</code> 与初始 <code>data-status="pending"</code>；每个 <code>&lt;li class="step"&gt;</code> 初始 <code>data-status="pending"</code>；header <code>&lt;dl class="meta"&gt;</code> 含目标 / 架构 / 技术栈 / 关联 spec 四项；<code>&lt;head&gt;</code> 含 2 个 <code>&lt;link&gt;</code> 引用 spec-theme.css + plan-extras.css，无 inline <code>&lt;style&gt;</code>；TOC <code>&lt;ol class="toc-tasks"&gt;</code> 含 7 个 li 一一对应 Task 1-7，初始 <code>data-task-status="pending"</code> 与 article 一致。</p>
       </aside>
     </section>
 
