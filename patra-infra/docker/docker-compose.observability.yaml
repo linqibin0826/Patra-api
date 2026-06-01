@@ -26,7 +26,7 @@
 # - 3000: Grafana Web UI
 # - 9093: Alertmanager Web UI
 
-name: patra
+name: patra-observability
 
 services:
   # OpenTelemetry Collector - 统一接收 Traces/Metrics/Logs
@@ -189,4 +189,6 @@ services:
 
 networks:
   default:
+    # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）
     name: patra-net
+    external: true

@@ -1,6 +1,6 @@
 version: "3.9"
 
-name: patra
+name: patra-tailnet
 
 # Tailnet 网关：让 patra-net 上的容器能主动外连 tailnet（如 MacBook 执行器 100.x）。
 # ---------------------------------------------------------------------------
@@ -53,39 +53,12 @@ services:
       retries: 10
       start_period: 20s
 
-  # ---- 路由注入边车（每个需外连 tailnet 的业务容器配一个）----
-  # 共享 xxl-job-admin 的网络命名空间，把 100.64.0.0/10 路由指向网关。
-  # 用边车是因为 xxl-job-admin 镜像内无 ip 命令；netshoot 自带 ip/getent。
-  # 循环维持：xxl-job-admin 重启重建命名空间后能重新补上路由。
-  xxl-job-tailnet-route:
-    image: ghcr.io/nicolaka/netshoot:latest     # 同上，ghcr.io 优先
-    container_name: patra-xxl-job-tailnet-route
-    restart: unless-stopped
-    network_mode: "service:xxl-job-admin"
-    cap_add:
-      - NET_ADMIN
-    depends_on:
-      tailscale-gw:
-        condition: service_healthy
-      xxl-job-admin:
-        condition: service_started
-    command:
-      - /bin/sh
-      - -c
-      - |
-        echo "[tailnet-route] 维持 xxl-job-admin → tailnet(100.64.0.0/10) via tailscale-gw"
-        while true; do
-          GW=$$(getent hosts tailscale-gw | awk '{print $$1}')
-          if [ -n "$$GW" ]; then
-            ip route replace 100.64.0.0/10 via "$$GW" \
-              && echo "[tailnet-route] ok: 100.64.0.0/10 via $$GW" \
-              || echo "[tailnet-route] WARN: 路由设置失败 (gw=$$GW)"
-          else
-            echo "[tailnet-route] 等待 tailscale-gw DNS 解析..."
-          fi
-          sleep 30
-        done
+# 说明：原先与本网关同栈的路由注入边车 xxl-job-tailnet-route 已随 xxl-job-admin
+# 迁入 patra-jobs（它须 network_mode: service: 共享 xxl-job-admin 命名空间，故必须同 project）。
+# 本栈只保留共享网关 tailscale-gw；其它栈的边车靠 patra-net 的 DNS 解析到 tailscale-gw。
 
 networks:
   default:
+    # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）
     name: patra-net
+    external: true
