@@ -1,6 +1,6 @@
 version: "3.9"
 
-name: patra
+name: patra-storage
 
 # Storage services for object storage and file management
 # Currently includes MinIO for S3-compatible object storage
@@ -67,4 +67,6 @@ services:
 
 networks:
   default:
+    # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）
     name: patra-net
+    external: true

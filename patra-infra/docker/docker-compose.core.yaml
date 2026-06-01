@@ -1,6 +1,6 @@
 version: "3.9"
 
-name: patra
+name: patra-core
 
 # Core infrastructure services required for application runtime
 # These services are essential and should always be running
@@ -71,4 +71,6 @@ services:
 
 networks:
   default:
+    # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）
     name: patra-net
+    external: true

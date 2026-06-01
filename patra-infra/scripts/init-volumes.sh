@@ -8,7 +8,7 @@
 #   bash patra-infra/scripts/init-volumes.sh
 #
 # 完成后即可：
-#   docker compose -f patra-infra/docker/docker-compose.dev.yaml up -d
+#   bash patra-infra/scripts/compose-all.sh up
 
 set -euo pipefail
 
@@ -95,6 +95,6 @@ echo "✅ 初始化完成"
 echo "===================================="
 echo ""
 echo "下一步："
-echo "  docker compose -f docker/docker-compose.dev.yaml up -d"
-echo "  docker compose -f docker/docker-compose.dev.yaml ps"
+echo "  bash patra-infra/scripts/compose-all.sh up   # 拉起全部子栈（各为独立 project）"
+echo "  bash patra-infra/scripts/compose-all.sh ps   # 查看所有 patra-* 容器"
 echo ""

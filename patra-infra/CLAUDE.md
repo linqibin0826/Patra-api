@@ -15,23 +15,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **网络无感切换**：在家同 LAN → MagicDNS 解析为 `192.168.1.11` 直连；离家 → 解析为 `100.73.7.112` 走 tailscale 隧道。无需任何切换配置。
 - **应用侧单一开关**：所有微服务用一个环境变量 `PATRA_INFRA_HOST=linqibins-mac-mini` 指向容器；yml 默认值 `127.0.0.1` 仅作本地应急 fallback。改基建地址范式时要同步 patra-api 各 boot 模块的 yml（本目录范围外）。
 
-因此**改 compose / .env 不能只在本机改**，要让 Mac mini 上的仓库副本 `git pull` 后重启容器。Mac mini 的部署 SSOT 是 **monorepo 的 sparse-checkout**（`~/Projects/patra`，仅 patra-infra）。日常迭代命令见 README "日常迭代"节，本质是 `ssh linqibin@linqibins-mac-mini 'cd ~/Projects/patra && git pull && docker compose -f patra-infra/docker/docker-compose.dev.yaml up -d --remove-orphans'`。
+因此**改 compose / .env 不能只在本机改**，要让 Mac mini 上的仓库副本 `git pull` 后重启容器。Mac mini 的部署 SSOT 是 **monorepo 的 sparse-checkout**（`~/Projects/patra`，仅 patra-infra）。日常迭代命令见 README "日常迭代"节，本质是 `ssh linqibin@linqibins-mac-mini 'cd ~/Projects/patra && git pull && bash patra-infra/scripts/compose-all.sh up'`。
 
 ## Compose 分栈结构
 
-`docker-compose.dev.yaml` 是主入口，用 `include:` 聚合 5 个子栈，可单独启动以加速：
+每个子栈是**独立的 Docker project**（`patra-core` / `patra-storage` / `patra-search` / `patra-observability` / `patra-tailnet` / `patra-jobs`），共享外部网络 `patra-net`。拆成多 project 是为了让 IDEA / OrbStack 的 Docker 视图按子栈分组显示，而非合成一个 `patra` 组。
 
-| 子栈 | 内容 |
+| 子栈 / project | 内容 |
 |---|---|
-| `core` | postgres / redis / nacos |
-| `storage` | minio |
-| `search` | elasticsearch |
-| `observability` | otel-collector / prometheus / loki / tempo / grafana / alertmanager |
-| `jobs` | rocketmq(namesrv+broker) / xxl-job-admin（依赖独立 `mysql-ops` 容器） |
+| `patra-core` | postgres / redis / nacos |
+| `patra-storage` | minio / minio-init |
+| `patra-search` | elasticsearch |
+| `patra-observability` | otel-collector / prometheus / loki / tempo / grafana / alertmanager |
+| `patra-tailnet` | tailscale-gw（共享出向网关） |
+| `patra-jobs` | mysql-ops / xxl-job-admin / xxl-job-tailnet-route / rocketmq(namesrv+broker+dashboard) |
 
-network 统一为 `patra-net`，project name 统一为 `patra`。容器数据卷根目录是 Mac mini 上的 `~/.patra/docker/`，首次部署前必须跑 `scripts/init-volumes.sh` 建目录骨架（幂等）。
+- **多 project 编排入口是 `scripts/compose-all.sh`**（取代已删除的 `docker-compose.dev.yaml`）。compose 的 `include:` 会把所有子栈合并进同一个 project 无法分组，多 project 只能逐个 `up`，故用脚本编排：`compose-all.sh up [stack...]` / `down` / `ps`。
+- **网络 `patra-net` 声明为 `external: true`**，须先于任何子栈存在；`compose-all.sh up` 会幂等创建。各 project 在共享网络上靠容器/服务名 DNS 互通（跨 project 同样生效，因 DNS 是网络作用域而非 project 作用域）。
+- **路由边车 `xxl-job-tailnet-route` 在 `patra-jobs` 而非 `patra-tailnet`**：它用 `network_mode: "service:xxl-job-admin"` 共享 xxl-job-admin 的网络命名空间，`service:` 模式不能跨 project，故必须与 xxl-job-admin 同 project；`tailscale-gw` 作为共享网关独立在 `patra-tailnet`，边车靠 `patra-net` DNS 解析到它。
+- 容器数据卷全是 bind mount，根目录是 Mac mini 上的 `~/.patra/docker/`，首次部署前必须跑 `scripts/init-volumes.sh` 建目录骨架（幂等）。
 
 `xxl-job-admin` 用独立 MySQL 8 容器 `mysql-ops`（不暴露宿主机端口），因为它不支持 PG；**业务库一律走 PG**，`mysql-ops` 仅服务于这类不兼容 PG 的运维组件。
+
+> **一次性迁移（从旧单 project `patra` 切到多 project）**：旧容器的 `container_name` 与新栈相同，不先拆旧 project 会因重名启动失败（安全失败，非数据丢失）。在 Mac mini 上 **git pull 前**先用旧文件拆掉：`docker compose -p patra down`（或对旧 `docker-compose.dev.yaml down`），再 pull、再 `compose-all.sh up`。bind mount 数据不受影响。
 
 ## 非显性约束（改之前必须知道）
 

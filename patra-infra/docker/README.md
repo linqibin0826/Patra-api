@@ -10,17 +10,20 @@ Patra 全部基础设施容器部署在 **Mac mini**（hostname: `linqibins-mac-
 
 ```
 docker/
-├── docker-compose.dev.yaml          # 主入口（include 全部栈）
-├── docker-compose.core.yaml         # postgres + redis + nacos
-├── docker-compose.storage.yaml      # minio + minio-init
-├── docker-compose.search.yaml       # elasticsearch
-├── docker-compose.observability.yaml # otel/prom/loki/tempo/grafana
-├── docker-compose.jobs.yaml         # rocketmq + xxl-job-admin
-├── docker-compose.tailnet.yaml      # tailscale 网关（容器外连 tailnet）
+├── docker-compose.core.yaml         # project patra-core：postgres + redis + nacos
+├── docker-compose.storage.yaml      # project patra-storage：minio + minio-init
+├── docker-compose.search.yaml       # project patra-search：elasticsearch
+├── docker-compose.observability.yaml # project patra-observability：otel/prom/loki/tempo/grafana
+├── docker-compose.jobs.yaml         # project patra-jobs：rocketmq + xxl-job-admin + 路由边车
+├── docker-compose.tailnet.yaml      # project patra-tailnet：tailscale 共享网关
 ├── .env                              # BROKER_IP1 等环境变量
 ├── .env.secret                       # TS_AUTHKEY 等真实密钥（gitignore，不入库）
 └── README.md                         # 本文件
 ```
+
+**每个子栈是独立的 Docker project**（`patra-core` / `patra-storage` / …），共享外部网络 `patra-net`，
+这样 IDEA / OrbStack 按子栈分组显示。多 project 无法用单条 `docker compose` 拉起，统一入口是
+**`scripts/compose-all.sh`**（`up` / `down` / `ps`，取代旧的 `docker-compose.dev.yaml`）。
 
 ---
 
@@ -75,10 +78,11 @@ cp patra-infra/docker/.env.secret.example patra-infra/docker/.env.secret
 # 编辑 .env.secret，把 TS_AUTHKEY 填成真实值（tskey-auth-...）
 
 # 5. (Mac mini) 启动全栈（含 tailscale 网关；镜像走 ghcr.io，docker.io 在国内常 502）
-docker compose -f patra-infra/docker/docker-compose.dev.yaml up -d
+#    脚本会先幂等创建共享网络 patra-net，再按依赖顺序逐个子栈 up
+bash patra-infra/scripts/compose-all.sh up
 
 # 6. (Mac mini) 验证全部 healthy
-docker compose -f patra-infra/docker/docker-compose.dev.yaml ps
+bash patra-infra/scripts/compose-all.sh ps
 
 # 7. (Mac mini) 首次初始化 Nacos 3.x admin 用户（一次性，nacos 容器 healthy 后执行）
 #    Nacos 3.x 鉴权开启后默认无 admin 用户；首次调用后该 API 失效，密码可设强密码
@@ -127,18 +131,23 @@ ssh linqibin@linqibins-mac-mini "echo 'export PATH=/usr/local/bin:\$PATH' >> ~/.
 ssh linqibin@linqibins-mac-mini '
   cd ~/Projects/patra &&
   git pull &&
-  docker compose -f patra-infra/docker/docker-compose.dev.yaml up -d --remove-orphans
+  bash patra-infra/scripts/compose-all.sh up
 '
 ```
 
-如果只改了某个栈，可针对性重启：
+如果只改了某个栈，可只 up 该栈，或直接重启单个容器（容器名稳定，与 project 无关）：
 
 ```bash
 ssh linqibin@linqibins-mac-mini '
   cd ~/Projects/patra &&
-  docker compose -f patra-infra/docker/docker-compose.jobs.yaml restart rocketmq-broker
+  bash patra-infra/scripts/compose-all.sh up jobs   # 只重建 jobs 栈
 '
+ssh linqibin@linqibins-mac-mini 'docker restart patra-rocketmq-broker'  # 只重启单容器
 ```
+
+> **一次性迁移（旧单 project `patra` → 多 project）**：旧容器 `container_name` 与新栈相同，
+> 不先拆旧 project 会因重名启动失败（安全失败，非数据丢失）。**git pull 前**先用旧文件拆掉旧栈：
+> `docker compose -p patra down`，再 pull、再 `compose-all.sh up`。数据是 bind mount，不受影响。
 
 ---
 
@@ -213,23 +222,20 @@ rocketmq:
 
 ## 选择性启动
 
-不需要全栈时按需启动子栈：
+不需要全栈时按需启动子栈（`compose-all.sh up` 接子栈名，可传多个；自动确保 patra-net 存在）：
 
 ```bash
 # 只起核心（最快）
-docker compose -f patra-infra/docker/docker-compose.core.yaml up -d
+bash patra-infra/scripts/compose-all.sh up core
 
 # 核心 + 存储（开发文件上传）
-docker compose -f patra-infra/docker/docker-compose.core.yaml \
-               -f patra-infra/docker/docker-compose.storage.yaml up -d
+bash patra-infra/scripts/compose-all.sh up core storage
 
 # 核心 + 任务（开发消息/定时任务）
-docker compose -f patra-infra/docker/docker-compose.core.yaml \
-               -f patra-infra/docker/docker-compose.jobs.yaml up -d
+bash patra-infra/scripts/compose-all.sh up core jobs
 
 # 核心 + 监控
-docker compose -f patra-infra/docker/docker-compose.core.yaml \
-               -f patra-infra/docker/docker-compose.observability.yaml up -d
+bash patra-infra/scripts/compose-all.sh up core observability
 ```
 
 ---
@@ -248,20 +254,20 @@ docker compose -f patra-infra/docker/docker-compose.core.yaml \
 ## 常用命令
 
 ```bash
-# 健康状态
-docker compose -f patra-infra/docker/docker-compose.dev.yaml ps
+# 健康状态（所有 patra-* 容器）
+bash patra-infra/scripts/compose-all.sh ps
 
-# 单服务日志
-docker compose -f patra-infra/docker/docker-compose.dev.yaml logs -f postgres
+# 单服务日志（容器名稳定，与 project 无关）
+docker logs -f patra-postgres
 
 # 重启单服务
-docker compose -f patra-infra/docker/docker-compose.dev.yaml restart rocketmq-broker
+docker restart patra-rocketmq-broker
 
-# 停止全栈
-docker compose -f patra-infra/docker/docker-compose.dev.yaml down
+# 停止全栈（逆序；patra-net 是 external，保留不删）
+bash patra-infra/scripts/compose-all.sh down
 
-# 停止 + 清理 volume（⚠️ 会删数据）
-docker compose -f patra-infra/docker/docker-compose.dev.yaml down -v
+# 清数据：容器数据是 bind mount，停栈后删宿主目录即可（⚠️ 会删数据）
+# rm -rf ~/.patra/docker/<service>/data
 ```
 
 ---
@@ -271,8 +277,8 @@ docker compose -f patra-infra/docker/docker-compose.dev.yaml down -v
 ### 服务无法启动
 
 ```bash
-# 查看具体服务日志
-docker compose -f patra-infra/docker/docker-compose.dev.yaml logs <service-name>
+# 查看具体服务日志（容器名形如 patra-postgres / patra-nacos）
+docker logs <container-name>
 
 # 在 Mac mini 上检查端口占用
 ssh linqibin@linqibins-mac-mini 'lsof -i :15432'
