@@ -52,7 +52,7 @@ tasks.bootRun {
     // NOTE: 属性值在配置阶段求值，变化时会触发 Configuration Cache 失效（这是预期行为）
     // 对于 bootRun 开发任务，这完全可接受，因为 OTel 配置很少变化
     val otelAgentPath = providers.gradleProperty("otel.agent.path").getOrElse("")
-    val otelExporterEndpoint = providers.gradleProperty("otel.exporter.endpoint").getOrElse("http://localhost:4317")
+    val otelExporterEndpoint = providers.gradleProperty("otel.exporter.endpoint").getOrElse("http://localhost:4318")
 
     // OTel Agent JVM 参数（仅当配置了 agent 路径时启用）
     if (otelAgentPath.isNotBlank()) {
@@ -61,7 +61,9 @@ tasks.bootRun {
             "-javaagent:$agentJar",
             "-Dotel.service.name=${project.name}",
             "-Dotel.exporter.otlp.endpoint=$otelExporterEndpoint",
-            "-Dotel.exporter.otlp.protocol=grpc",
+            // HTTP/protobuf 而非 gRPC：tailscale MTU=1280 丢 gRPC 的 HTTP/2 SETTINGS 帧
+            // （endpoint 须指向 collector 的 4318 HTTP 端口，见 gradle.properties）
+            "-Dotel.exporter.otlp.protocol=http/protobuf",
             "-Dotel.traces.exporter=otlp"
         )
     }

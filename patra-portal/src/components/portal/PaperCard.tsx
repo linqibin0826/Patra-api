@@ -1,12 +1,12 @@
 import { ArrowLeftRight, Bookmark, ChevronRight, MessageSquare, Share2 } from "lucide-react";
 import { AISummaryBadge } from "@/components/portal/AISummaryBadge";
-import type { Paper, PaperSource } from "@/types/portal";
+import type { Paper } from "@/types/portal";
 
 interface PaperCardProps {
   paper: Paper;
 }
 
-const SOURCE_DOT_CLASS: Record<PaperSource, string> = {
+const SOURCE_DOT_CLASS: Record<string, string> = {
   PubMed: "bg-emerald-500",
   "Europe PMC": "bg-clay-500",
   Crossref: "bg-sky-500",
@@ -14,21 +14,21 @@ const SOURCE_DOT_CLASS: Record<PaperSource, string> = {
 
 export function PaperCard({ paper }: PaperCardProps) {
   const visibleAuthors = paper.authors.slice(0, 2);
-  const remaining = paper.authorCount - visibleAuthors.length;
+  const remaining = paper.authors.length - visibleAuthors.length;
+  const dotClass = SOURCE_DOT_CLASS[paper.source] ?? "bg-fg-3";
 
   return (
     <article className="flex flex-col gap-3.5 rounded-lg border border-border-default bg-paper-50 p-5">
       <div className="flex items-center justify-between gap-3">
         <span className="inline-flex items-center gap-1.5 font-mono text-2xs font-medium text-fg-2">
-          <span
-            aria-hidden
-            className={`inline-block h-1.5 w-1.5 rounded-full ${SOURCE_DOT_CLASS[paper.source]}`}
-          />
+          <span aria-hidden className={`inline-block h-1.5 w-1.5 rounded-full ${dotClass}`} />
           {paper.source}
         </span>
-        <span data-doi className="font-mono text-2xs text-fg-3">
-          {paper.doi}
-        </span>
+        {paper.doi && (
+          <span data-doi className="font-mono text-2xs text-fg-3">
+            {paper.doi}
+          </span>
+        )}
       </div>
 
       <h3 className="font-serif text-lg font-medium leading-snug tracking-tight text-ink-900">
@@ -36,20 +36,34 @@ export function PaperCard({ paper }: PaperCardProps) {
       </h3>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-3">
-        <span className="font-serif italic text-ink-700">{paper.journal}</span>
-        <span>·</span>
-        <span>{paper.year}</span>
-        <span>·</span>
-        <span className="text-fg-2">
-          {visibleAuthors.join(", ")}
-          {remaining > 0 && ` 等 ${remaining} 位作者`}
-        </span>
-        <span className="ml-auto rounded-sm border border-border-subtle bg-paper-100 px-1.5 py-0.5 font-mono text-2xs uppercase tracking-caps text-fg-3">
-          {paper.kind}
-        </span>
+        {(paper.journal || paper.year != null) && (
+          <span>
+            {paper.journal && (
+              <span className="font-serif italic text-ink-700">{paper.journal}</span>
+            )}
+            {paper.journal && paper.year != null && <span> · </span>}
+            {paper.year != null && <span>{paper.year}</span>}
+          </span>
+        )}
+        {paper.authors.length > 0 && (
+          <>
+            {(paper.journal || paper.year != null) && <span>·</span>}
+            <span className="text-fg-2">
+              {visibleAuthors.join(", ")}
+              {remaining > 0 && ` 等 ${remaining} 位作者`}
+            </span>
+          </>
+        )}
+        {paper.kind && (
+          <span className="ml-auto rounded-sm border border-border-subtle bg-paper-100 px-1.5 py-0.5 font-mono text-2xs uppercase tracking-caps text-fg-3">
+            {paper.kind}
+          </span>
+        )}
       </div>
 
-      <AISummaryBadge summary={paper.ai} readMin={paper.readMin} />
+      {paper.aiSummary && (
+        <AISummaryBadge aiSummary={paper.aiSummary} estimatedReadMin={paper.estimatedReadMin} />
+      )}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-fg-2">
         <button
@@ -94,7 +108,7 @@ export function PaperCard({ paper }: PaperCardProps) {
         </button>
         <span className="ml-auto inline-flex items-center gap-1.5 font-mono text-xs text-fg-3">
           <ArrowLeftRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
-          {paper.cites} 引用
+          {paper.cites ?? 0} 引用
         </span>
       </div>
     </article>
