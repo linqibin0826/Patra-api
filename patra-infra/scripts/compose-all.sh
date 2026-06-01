@@ -27,6 +27,16 @@ ensure_network() {
   docker network inspect patra-net >/dev/null 2>&1 || docker network create patra-net
 }
 
+# 校验子栈参数：未知名直接报错退出非 0，避免拼写错误导致静默空执行（up/down 什么都不做却返回成功）。
+require_valid_stacks() {
+  for want in "$@"; do
+    case " ${ORDER[*]} " in
+      *" $want "*) ;;
+      *) echo "错误: 未知子栈 '$want'。可选: ${ORDER[*]}" >&2; exit 1 ;;
+    esac
+  done
+}
+
 # 选择要操作的子栈：未指定则全部，否则取参数（保持 ORDER 的相对顺序）。
 select_stacks() {
   if [ "$#" -eq 0 ]; then printf '%s\n' "${ORDER[@]}"; return; fi
@@ -37,6 +47,7 @@ ACTION="${1:-}"; shift || true
 
 case "$ACTION" in
   up)
+    require_valid_stacks "$@"
     ensure_network
     while IFS= read -r s; do
       echo "==> up patra-$s"
@@ -44,6 +55,7 @@ case "$ACTION" in
     done < <(select_stacks "$@")
     ;;
   down)
+    require_valid_stacks "$@"
     # 逆序停。patra-net 是 external，compose 不会删它（其它 project 可能仍在用）。
     while IFS= read -r s; do echo "$s"; done < <(select_stacks "$@") \
       | tail -r | while IFS= read -r s; do
