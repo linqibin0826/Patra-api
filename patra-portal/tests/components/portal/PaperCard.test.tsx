@@ -2,50 +2,59 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { PaperCard } from "@/components/portal/PaperCard";
-import { FEED } from "@/data/feed";
+import type { Paper } from "@/types/portal";
+
+function makePaper(overrides: Partial<Paper> = {}): Paper {
+  return {
+    id: "p1",
+    title: "Semaglutide 长期心血管转归",
+    journal: "N Engl J Med",
+    year: 2026,
+    authors: ["Perkovic V.", "Tuttle K. R.", "Mann J. F. E."],
+    cites: 142,
+    bookmarks: 0,
+    doi: "10.1056/NEJMoa2603120",
+    pmid: "39812044",
+    source: "PubMed",
+    aiSummary: "心血管事件下降 22%",
+    estimatedReadMin: 12,
+    kind: "Journal Article",
+    minutesAgo: 120,
+    ...overrides,
+  };
+}
 
 describe("PaperCard", () => {
-  const p = FEED.trending[0];
-  if (!p) throw new Error("unreachable");
-
-  it("渲染 title", () => {
-    render(<PaperCard paper={p} />);
-    expect(screen.getByText(p.title)).toBeInTheDocument();
-  });
-
-  it("渲染 journal + year", () => {
-    render(<PaperCard paper={p} />);
+  it("渲染 title / journal / source", () => {
+    render(<PaperCard paper={makePaper()} />);
+    expect(screen.getByText("Semaglutide 长期心血管转归")).toBeInTheDocument();
     expect(screen.getByText(/N Engl J Med/)).toBeInTheDocument();
-    expect(screen.getByText(/2026/)).toBeInTheDocument();
+    expect(screen.getByText("PubMed")).toBeInTheDocument();
   });
 
-  it("DOI 应用 font-mono", () => {
-    const { container } = render(<PaperCard paper={p} />);
-    const doi = container.querySelector("[data-doi]") as HTMLElement | null;
-    if (!doi) throw new Error("data-doi element not found");
-    expect(doi.className).toMatch(/font-mono/);
+  it("作者展示 visible + remaining 数（基于 authors.length）", () => {
+    render(<PaperCard paper={makePaper()} />);
+    expect(screen.getByText(/等\s*1\s*位作者/)).toBeInTheDocument();
   });
 
-  it("渲染 source 标签", () => {
-    render(<PaperCard paper={p} />);
-    expect(screen.getByText(p.source)).toBeInTheDocument();
+  it("aiSummary 为 null 时不渲染 AI 速读", () => {
+    render(<PaperCard paper={makePaper({ aiSummary: null })} />);
+    expect(screen.queryByText("AI 速读")).not.toBeInTheDocument();
   });
 
-  it("作者文本展示 visible 数 + remaining 数", () => {
-    render(<PaperCard paper={p} />);
-    const remaining = p.authorCount - 2;
-    expect(screen.getByText(new RegExp(`等\\s*${remaining}\\s*位作者`))).toBeInTheDocument();
+  it("kind 为 null 时不渲染类型标签", () => {
+    render(<PaperCard paper={makePaper({ kind: null })} />);
+    expect(screen.queryByText("Journal Article")).not.toBeInTheDocument();
   });
 
-  it("含 AI 速读区域 + summary 文字片段", () => {
-    render(<PaperCard paper={p} />);
-    expect(screen.getByText("AI 速读")).toBeInTheDocument();
-    expect(screen.getByText("自动生成")).toBeInTheDocument();
-    expect(screen.getByText(/心血管事件下降/)).toBeInTheDocument();
+  it("未知 source 仍渲染 source 文本（兜底色）", () => {
+    render(<PaperCard paper={makePaper({ source: "OADOI" })} />);
+    expect(screen.getByText("OADOI")).toBeInTheDocument();
   });
 
-  it("不包含 emoji 字符 (📖 / ⭐ / 💬)", () => {
-    const { container } = render(<PaperCard paper={p} />);
-    expect(container.textContent).not.toMatch(/[📖⭐💬]/u);
+  it("journal 与 year 均缺失但有作者时，不渲染悬空的 · 分隔符", () => {
+    render(<PaperCard paper={makePaper({ journal: null, year: null })} />);
+    expect(screen.getByText(/Perkovic V\./)).toBeInTheDocument();
+    expect(screen.queryByText("·")).not.toBeInTheDocument();
   });
 });

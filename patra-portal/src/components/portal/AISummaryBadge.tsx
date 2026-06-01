@@ -1,12 +1,12 @@
 import { cn } from "@/lib/utils";
 
 interface AISummaryBadgeProps {
-  summary: string;
-  readMin?: number;
+  aiSummary: string;
+  estimatedReadMin?: number | null;
   className?: string;
 }
 
-export function AISummaryBadge({ summary, readMin, className }: AISummaryBadgeProps) {
+export function AISummaryBadge({ aiSummary, estimatedReadMin, className }: AISummaryBadgeProps) {
   return (
     <div
       className={cn(
@@ -19,11 +19,13 @@ export function AISummaryBadge({ summary, readMin, className }: AISummaryBadgePr
         <span className="rounded-sm border border-clay-200 bg-paper-50 px-1.5 py-px font-mono text-[10px] text-clay-700">
           自动生成
         </span>
-        {readMin !== undefined && (
-          <span className="ml-auto font-mono text-2xs text-fg-3">≈ {readMin} 分钟原文</span>
+        {estimatedReadMin != null && (
+          <span className="ml-auto font-mono text-2xs text-fg-3">
+            ≈ {estimatedReadMin} 分钟原文
+          </span>
         )}
       </div>
-      <p className="text-fg-2">{summary}</p>
+      <p className="text-fg-2">{aiSummary}</p>
     </div>
   );
 }
