@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal 首页期刊模块接入真实数据</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：相对路径 ../styles/ 是从生成位置 docs/patra/specs/ 出发；
+       模板本身在 .claude-marketplace/ 下打开时此 link 会 404（接受：模板预览以生成后的 spec 为准） -->
+  <link rel="stylesheet" href="../styles/journal.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#backend">后端设计</a></li>
+      <li><a href="#frontend">前端设计</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>Portal 首页期刊模块接入真实数据</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-01</span>
+        <span>🌿 feat/portal-journals-real-data</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>将 portal 首页「高影响力期刊」模块从 6 条硬编码 mock 替换为 catalog 真实数据。新增 catalog
+        <code>GET /portal/venues</code> 端点，按影响因子降序取 Top 6，走与现有 publication portal 端点完全一致的
+        CQRS 读链路；返回 <code>id / name / abbr / impactFactor / quartile / foundedYear</code>。前端
+        <code>Journals</code> 改为 async RSC 拉真实数据，<code>JournalCoverCard</code> 封面改为前端生成式、卡片右下「本周收录」位换成 JCR 分区标签，并删除
+        <code>data/journals.ts</code> mock。本轮范围仅期刊；Hero 统计与话题云各自后续独立 PR。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>patra-portal 首页由 4 个模块组成：文献流（已于 #114 接入 catalog 真实数据）、Hero 统计、话题云、期刊。后三者目前仍是前端硬编码 mock。本次处理「期刊」模块。</p>
+      <p>当前 <code>src/components/portal/Journals.tsx</code> 直接 <code>import { JOURNALS }</code>，数据来自
+        <code>src/data/journals.ts</code> 中 6 本顶级期刊（NEJM / Lancet / JAMA 等）的硬编码常量，其 <code>impact</code>、<code>weekly</code>
+        均为虚构值。catalog 后端已落库完整期刊数据（<code>cat_venue</code> 中 15,434 本 JOURNAL、<code>cat_venue_jcr_rating</code> 影响因子），但尚未对外暴露任何期刊 REST 端点——
+        catalog 当前唯一的 portal 端点是 <code>GET /portal/publications</code>。</p>
+      <p><strong>真实数据现状（决定设计的硬约束，均经 SQL 核验）：</strong></p>
+      <ul>
+        <li>JOURNAL 共 <strong>15,434</strong> 本；有影响因子的仅 <strong>670</strong> 本（4.3%）。</li>
+        <li>JCR 影响因子数据<strong>按字母只爬到 A 段</strong>（670 中 614 本 A 开头）：NEJM / Lancet / Nature / JAMA / CA 当前 <code>impact_factor</code> 全为 null。按影响因子排序，首页 Top 当前必然是 Annals of oncology(65.4) 等 A 开头刊。<strong>用户将同步补爬 JCR 数据，端点逻辑不变，数据补全后门面自动改善。</strong></li>
+        <li><code>weekly</code>「本周收录」<strong>无法实现</strong>：全部 18,807 篇文献的 <code>created_at</code> 集中在 2026-05-31 一小时内（同批导入），时间窗聚合零区分度。</li>
+        <li>可用字段覆盖率：<code>abbreviated_title</code> 100%、<code>publication_profile.startYear</code>（创刊年）98%、<code>wos_overall_quartile</code>（最新年）<strong>100%</strong>、<code>jif_quartile</code> 仅 78%。</li>
+      </ul>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>catalog 新增 <code>GET /portal/venues</code>，完整 CQRS 读链路（照 publication portal 1:1）。</li>
+            <li>按影响因子降序取 Top 6（topN 参数，默认 6）。</li>
+            <li>前端 <code>Journals</code> 模块接入真实数据并删除 mock。</li>
+            <li><code>JournalCoverCard</code> 封面生成式 + 右下换 JCR 分区标签 + 文案数字修正。</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>Hero 统计、话题云模块（各自后续独立 PR）。</li>
+            <li>期刊详情页 / 全量期刊浏览（卡片点击保持 disabled）。</li>
+            <li>JCR 影响因子数据补全（用户单独爬，属数据层任务）。</li>
+            <li>期刊封面图 <code>image_object_key</code> 接入（仅 670 本有图，覆盖率低）。</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="backend">
+      <h2>3. 后端设计</h2>
+      <p><strong>端点</strong>：<code>GET /patra-catalog/portal/venues</code>（经 gateway <code>StripPrefix=1</code> 转发至 catalog
+        <code>/portal/venues</code>）。查询参数 <code>topN</code>（可空，默认 6，上限约 50，Bean Validation 收敛 4xx）。</p>
+      <p><strong>取数</strong>：<code>cat_venue</code> 中 <code>venue_type='JOURNAL'</code> 且未软删，<code>LEFT JOIN LATERAL</code>
+        取每刊<strong>最新年</strong> <code>cat_venue_jcr_rating</code>（<code>ORDER BY year DESC LIMIT 1</code>），按 <code>impact_factor</code>
+        降序，取前 N。该 LATERAL JOIN 写法直接复用 <code>VenueDao.findFilteredJournalPage</code> 现成模板。Top N 为首页固定列表，<strong>不分页</strong>，读链路统一用
+        <code>List</code> 传递。</p>
+      <p><strong>调用链（与 <code>PortalPublicationController</code> 那条 1:1 对齐）：</strong></p>
+      <pre><code>PortalVenueController            (adapter)  GET /portal/venues
+  → PortalVenueQueryService       (app, 无接口)   归一化 topN，委托 ReadPort
+    → PortalVenueReadPort         (domain port/read)  List&lt;PortalVenueReadModel&gt; findTopByImpactFactor(int topN)
+      → PortalVenueReadAdapter    (infra adapter/read, @Repository)
+        → VenueDao#findTopVenuesByImpactFactor  (native query + LATERAL JOIN)
+          → PortalVenueRow        (Spring Data 接口投影)
+  ← PortalVenueReadModel          (domain model/read/portal)
+  ← PortalApiConverter#toVenueResponse → PortalVenueResponse</code></pre>
+      <p><strong>数据契约（<code>PortalVenueResponse</code>，record，YAGNI 只给卡片用得上的字段）：</strong></p>
+      <table>
+        <thead>
+          <tr><th>字段</th><th>类型</th><th>来源</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>id</code></td><td>String</td><td><code>cat_venue.id</code></td><td>venue 主键（雪花 id，序列化为字符串避免精度丢失）</td></tr>
+          <tr><td><code>name</code></td><td>String</td><td><code>cat_venue.title</code></td><td>期刊全称，100% 覆盖</td></tr>
+          <tr><td><code>abbr</code></td><td>String</td><td><code>cat_venue.abbreviated_title</code></td><td>缩写，100% 覆盖；前端据此生成封面文字</td></tr>
+          <tr><td><code>impactFactor</code></td><td>BigDecimal</td><td>最新年 <code>impact_factor</code></td><td>670 池均非 null，序列化为 JSON number</td></tr>
+          <tr><td><code>quartile</code></td><td>String</td><td>最新年 <code>wos_overall_quartile</code></td><td>Q1–Q4，100% 覆盖（故选 wos 而非 jif 分区）</td></tr>
+          <tr><td><code>foundedYear</code></td><td>Integer</td><td><code>publication_profile</code> JSON <code>startYear</code></td><td>创刊年，98% 覆盖，可空</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="frontend">
+      <h2>4. 前端设计</h2>
+      <p><strong>新增 API 封装</strong> <code>src/lib/portal-api/venues.ts</code>：<code>fetchVenues(topN = 6)</code>，
+        <code>import "server-only"</code>，走 <code>PATRA_GATEWAY_BASE_URL</code>，<code>cache: "no-store"</code> + 10s 超时，结构完全类比现有
+        <code>publications.ts</code> 的 <code>fetchFeed</code>。</p>
+      <p><strong><code>Journals.tsx</code></strong>：由静态组件改为 <code>async</code> RSC，调用 <code>fetchVenues()</code> 渲染；区块文案改真实——
+        「持续追踪 1,247 本…本周收录最活跃的 6 本」改为「持续追踪 15,434 本…影响因子最高的 6 本」，废弃按钮文案中的 1,247 同步更新。</p>
+      <p><strong><code>JournalCoverCard.tsx</code></strong> 字段映射改造：</p>
+      <table>
+        <thead>
+          <tr><th>卡片位置</th><th>现状（mock）</th><th>改造后</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>封面大字</td><td>手写 <code>cover</code>（"NEJM"）</td><td>由 <code>abbr</code> 生成</td></tr>
+          <tr><td>封面配色</td><td>每刊手配 <code>coverStyle</code></td><td>按 <code>id</code> hash 从预设深色学术调色板选取（延续现有视觉质感）</td></tr>
+          <tr><td><code>est. {founded}</code></td><td>mock 整数</td><td><code>foundedYear</code>，为 null 时隐藏该行</td></tr>
+          <tr><td>左下 影响因子</td><td><code>impact.toFixed(1)</code></td><td><code>impactFactor.toFixed(1)</code></td></tr>
+          <tr><td>右下「本周收录」</td><td><code>weekly</code>（虚构）</td><td>换为 JCR 分区标签 <code>quartile</code>（Q1–Q4）</td></tr>
+        </tbody>
+      </table>
+      <p><strong><code>types/portal.ts</code> 的 <code>Journal</code> 类型重定义</strong>（对齐后端契约；封面文字/配色为前端派生，不入类型）：</p>
+      <pre><code>interface Journal {
+  id: string;
+  name: string;
+  abbr: string;
+  impactFactor: number;
+  quartile: string;        // Q1–Q4
+  foundedYear: number | null;
+}</code></pre>
+      <p><strong>删除</strong> <code>src/data/journals.ts</code>（mock）。展示数量保持 6 本，贴合现有 <code>grid-cols-6</code> 布局；卡片点击维持 disabled。</p>
+    </section>
+
+    <section id="decisions">
+      <h2>关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：排序 = 影响因子降序，670 池（不按文献过滤）</h3>
+        <p>按最新年影响因子降序取 Top 6，符合医学领域期刊展示惯例（LetPub / MedSci / Web of Science 均按 JIF + 分区）。不以「是否有库内文献」做过滤。</p>
+        <p class="alternatives"><strong>备选 A：</strong>限「有影响因子 ∩ 有文献」288 池 — 否决：用户明确「不需要看有没有文献」。<br>
+        <strong>备选 B：</strong>按库内收录文献数排序（2924 池）— 否决：非医学惯例，顶部是 Int J Mol Sci 等大体量 OA 水刊，不构成门面。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：卡片右下「本周收录」位换为 JCR 分区</h3>
+        <p>用 <code>wos_overall_quartile</code>（最新年，100% 覆盖）展示 Q1–Q4 分区标签，与影响因子绝配，是医学期刊最通行的标签。</p>
+        <p class="alternatives"><strong>备选 A：</strong>库内收录篇数 — 否决：语义偏弱，非期刊门面惯例。<br>
+        <strong>备选 B：</strong>移除该数据位 — 否决：卡片右下视觉留空、不平衡。<br>
+        <strong>注：</strong>分区选 <code>wos_overall_quartile</code> 而非 <code>jif_quartile</code>，因前者 100% 覆盖、后者仅 78%。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：后端走完整 CQRS 读链路（照 publication）</h3>
+        <p>新建 9 个类 1:1 对齐现有 publication portal 端点，SQL 复用 <code>VenueDao</code> 现成 LATERAL JOIN。绿地项目一致性优先，CQRS 读端口清晰，为期刊详情/筛选等后续扩展留基础。</p>
+        <p class="alternatives"><strong>备选：</strong>轻量复用 <code>VenueDao</code>、跳过 domain ReadPort — 否决：少写约 4 个类，但破坏与 publication 端点的架构一致性，CQRS 读端口缺失。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：封面走前端生成式</h3>
+        <p>封面文字由 <code>abbr</code> 派生，配色按 <code>id</code> hash 从预设深色调色板选取，统一视觉。后端 <code>image_object_key</code> 不接入。</p>
+        <p class="alternatives"><strong>备选：</strong>接入后端 <code>image_object_key</code> 真实封面图 — 否决：仅 670 本有图，覆盖率低且风格不一，生成式更统一可控。</p>
+      </div>
+
+    </section>
+
+    <section id="risks">
+      <h2>风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>JCR 数据按字母只爬到 A 段，首页 Top 偏 A 开头刊，NEJM/Lancet 等暂缺。</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>用户同步补爬 JCR 数据；端点逻辑与数据解耦，补全后门面自动改善，无需改码。</td>
+          </tr>
+          <tr>
+            <td><code>foundedYear</code> 从 <code>publication_profile</code> JSON 解析可能 null 或结构缺失。</td>
+            <td><span class="pill low">low</span></td>
+            <td>后端解析失败返回 null；前端 null 时隐藏 <code>est.</code> 行，不报错。</td>
+          </tr>
+          <tr>
+            <td><code>impactFactor</code> 为 <code>numeric</code>，BigDecimal 序列化精度/格式。</td>
+            <td><span class="pill low">low</span></td>
+            <td>Response 统一 BigDecimal → JSON number；展示精度由前端 <code>toFixed(1)</code> 控制。</td>
+          </tr>
+          <tr>
+            <td>Top 6 可能同为 Q1，分区标签区分度低。</td>
+            <td><span class="pill low">low</span></td>
+            <td>可接受：分区是行业标准标签而非排序键，与影响因子数值互补。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>…/adapter/rest/portal/PortalVenueController.java</code></td><td><span class="pill create">create</span></td><td>GET /portal/venues，注入 QueryService + Converter（照 PortalPublicationController）</td></tr>
+          <tr><td>2</td><td><code>…/adapter/rest/portal/request/PortalVenueListRequest.java</code></td><td><span class="pill create">create</span></td><td>record，topN 入参 + Bean Validation</td></tr>
+          <tr><td>3</td><td><code>…/adapter/rest/portal/response/PortalVenueResponse.java</code></td><td><span class="pill create">create</span></td><td>record，对齐前端 Journal 契约</td></tr>
+          <tr><td>4</td><td><code>…/app/usecase/portal/query/dto/PortalVenueQuery.java</code></td><td><span class="pill create">create</span></td><td>record + of() 工厂，承载未归一化 topN</td></tr>
+          <tr><td>5</td><td><code>…/app/usecase/portal/query/PortalVenueQueryService.java</code></td><td><span class="pill create">create</span></td><td>QueryService 无接口，归一化 topN，委托 ReadPort</td></tr>
+          <tr><td>6</td><td><code>…/domain/model/read/portal/PortalVenueReadModel.java</code></td><td><span class="pill create">create</span></td><td>期刊 portal 读模型 record</td></tr>
+          <tr><td>7</td><td><code>…/domain/port/read/PortalVenueReadPort.java</code></td><td><span class="pill create">create</span></td><td>findTopByImpactFactor(int topN)</td></tr>
+          <tr><td>8</td><td><code>…/infra/adapter/read/PortalVenueRow.java</code></td><td><span class="pill create">create</span></td><td>Spring Data 接口投影，列别名 camelCase</td></tr>
+          <tr><td>9</td><td><code>…/infra/adapter/read/PortalVenueReadAdapter.java</code></td><td><span class="pill create">create</span></td><td>@Repository，实现 ReadPort，Row → ReadModel 组装</td></tr>
+          <tr><td>10</td><td><code>…/infra/persistence/dao/VenueDao.java</code></td><td><span class="pill modify">modify</span></td><td>加 findTopVenuesByImpactFactor，复用 findFilteredJournalPage 的 LATERAL JOIN</td></tr>
+          <tr><td>11</td><td><code>…/adapter/rest/portal/PortalApiConverter.java</code></td><td><span class="pill modify">modify</span></td><td>加 toVenueResponse(PortalVenueReadModel)</td></tr>
+          <tr><td>12</td><td><code>patra-portal/src/lib/portal-api/venues.ts</code></td><td><span class="pill create">create</span></td><td>fetchVenues(topN)，server-only，类比 publications.ts</td></tr>
+          <tr><td>13</td><td><code>patra-portal/src/components/portal/Journals.tsx</code></td><td><span class="pill modify">modify</span></td><td>改 async RSC 拉真实数据 + 文案数字修正</td></tr>
+          <tr><td>14</td><td><code>patra-portal/src/components/portal/JournalCoverCard.tsx</code></td><td><span class="pill modify">modify</span></td><td>封面生成式 + 右下换 JCR 分区 + 字段映射</td></tr>
+          <tr><td>15</td><td><code>patra-portal/src/types/portal.ts</code></td><td><span class="pill modify">modify</span></td><td>Journal 类型重定义（去 cover/coverStyle/weekly，加 quartile/foundedYear）</td></tr>
+          <tr><td>16</td><td><code>patra-portal/src/data/journals.ts</code></td><td><span class="pill delete">delete</span></td><td>删除 mock 常量</td></tr>
+          <tr><td>17</td><td>后端测试（ReadAdapter / QueryService / Controller）</td><td><span class="pill create">create</span></td><td>TDD：Top N 排序 + 最新年 JCR + 契约</td></tr>
+          <tr><td>18</td><td>前端测试（venues.ts / Journals / JournalCoverCard）</td><td><span class="pill create">create</span></td><td>TDD：fetch 封装 + 渲染真实数据 + null 隐藏</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li><code>GET /patra-catalog/portal/venues</code> 返回按影响因子降序的 Top 6 真实期刊，字段契约一致。</li>
+        <li>首页期刊模块渲染真实数据，代码中无任何 mock import；<code>data/journals.ts</code> 已删除。</li>
+        <li>卡片展示真实 <code>impactFactor</code> + JCR 分区 + <code>foundedYear</code>（null 隐藏），封面为生成式。</li>
+        <li>区块文案数字改为真实（15,434），不再出现 1,247 / 「本周收录最活跃」。</li>
+        <li>后端与前端测试全部通过。</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：Implementation Notes（实施期由 Claude Code 维护）
+       ============================================================ -->
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 spec 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#sec-N">§ N 章节名</a>
+        </header>
+        <p>描述：spec 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+    </ol>
+
+    <p class="empty-state">no notes yet</p>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">0</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>
