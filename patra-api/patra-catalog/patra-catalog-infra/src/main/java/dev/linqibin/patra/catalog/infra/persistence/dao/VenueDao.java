@@ -1,5 +1,6 @@
 package dev.linqibin.patra.catalog.infra.persistence.dao;
 
+import dev.linqibin.patra.catalog.infra.adapter.read.PortalVenueRow;
 import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
 import java.util.Collection;
 import java.util.List;
@@ -245,4 +246,38 @@ public interface VenueDao extends JpaRepository<VenueEntity, Long> {
       @Param("warningOnly") Boolean warningOnly,
       @Param("sortBy") String sortBy,
       Pageable pageable);
+
+  /// 按最新年影响因子降序取 Top N 期刊（portal 首页期刊榜）。
+  ///
+  /// INNER JOIN LATERAL 取每刊「最新的、有影响因子的」一条 JCR 评级，因而只保留有 IF 的期刊；
+  /// 按 impact_factor 降序、id 兜底排序。foundedYear 从 publication_profile JSON 的
+  /// publicationHistory.startYear 提取（缺失时为 null）。固定 venue_type='JOURNAL' 且未软删。
+  ///
+  /// @param topN 返回数量上限
+  /// @return 期刊投影，按影响因子降序
+  @Query(
+      value =
+          """
+          SELECT
+            v.id AS "id",
+            v.title AS "name",
+            v.abbreviated_title AS "abbr",
+            jcr.impact_factor AS "impactFactor",
+            jcr.wos_overall_quartile AS "quartile",
+            (v.publication_profile -> 'publicationHistory' ->> 'startYear')::int AS "foundedYear"
+          FROM cat_venue v
+          JOIN LATERAL (
+              SELECT r.impact_factor, r.wos_overall_quartile
+              FROM cat_venue_jcr_rating r
+              WHERE r.venue_id = v.id AND r.impact_factor IS NOT NULL
+              ORDER BY r.year DESC
+              LIMIT 1
+          ) jcr ON TRUE
+          WHERE v.venue_type = 'JOURNAL'
+            AND v.deleted_at IS NULL
+          ORDER BY jcr.impact_factor DESC, v.id DESC
+          LIMIT :topN
+          """,
+      nativeQuery = true)
+  List<PortalVenueRow> findTopVenuesByImpactFactor(@Param("topN") int topN);
 }
