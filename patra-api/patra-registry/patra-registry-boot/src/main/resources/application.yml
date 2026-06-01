@@ -9,6 +9,8 @@
 # ========================================
 server:
   port: 6000
+  # 解析 Gateway 注入的 X-Forwarded-*（含 Prefix），使 springdoc 生成的 servers 指向对外网关地址
+  forward-headers-strategy: framework
   # Tomcat Keep-Alive 配置 - 防止客户端遇到 stale connection 错误
   # 参考: https://github.com/spring-projects/spring-boot/issues/23539
   tomcat:
