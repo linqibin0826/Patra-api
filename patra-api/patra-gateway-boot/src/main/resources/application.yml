@@ -38,6 +38,10 @@ spring:
     gateway:
       server:
         webflux:
+          # 激活 XForwardedHeadersFilter 自动注入 X-Forwarded-Host/Port/Proto（host/port/proto-enabled 默认 true）。
+          # SCG 5.x 默认关闭该 filter，须设 trusted-proxies 才激活；缺它则下游 springdoc 的 servers
+          # host 还原失败、停在实例地址。patra 仅 tailscale 内网暴露，dev 信任所有上游。
+          trusted-proxies: ".*"
           routes:
             # Ingest Service Route
             # Example: /patra-ingest/plans -> lb://patra-ingest/plans
@@ -47,8 +51,6 @@ spring:
                 - Path=/patra-ingest/**
               filters:
                 - StripPrefix=1
-                # 还原对外前缀，使下游 springdoc 的 servers 指向 Gateway 而非自身实例地址
-                - SetRequestHeader=X-Forwarded-Prefix,/patra-ingest
 
             # Registry Service Route
             # Example: /patra-registry/provenance -> lb://patra-registry/provenance
@@ -58,8 +60,6 @@ spring:
                 - Path=/patra-registry/**
               filters:
                 - StripPrefix=1
-                # 还原对外前缀，使下游 springdoc 的 servers 指向 Gateway 而非自身实例地址
-                - SetRequestHeader=X-Forwarded-Prefix,/patra-registry
 
             # Catalog Service Route
             # Example: /patra-catalog/venues -> lb://patra-catalog/venues
@@ -69,8 +69,6 @@ spring:
                 - Path=/patra-catalog/**
               filters:
                 - StripPrefix=1
-                # 还原对外前缀，使下游 springdoc 的 servers 指向 Gateway 而非自身实例地址
-                - SetRequestHeader=X-Forwarded-Prefix,/patra-catalog
 
 # ----------------------------------------------------------------------------
 # API Documentation Aggregation
