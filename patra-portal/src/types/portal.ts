@@ -36,21 +36,13 @@ export interface Topic {
   delta?: string;
 }
 
-export interface JournalCoverStyle {
-  bg: string;
-  ink: string;
-  rule: string;
-}
-
 export interface Journal {
   id: string;
   name: string;
   abbr: string;
-  cover: string;
-  coverStyle: JournalCoverStyle;
-  impact: number;
-  weekly: number;
-  founded: number;
+  impactFactor: number;
+  quartile: string; // Q1–Q4
+  foundedYear: number | null;
 }
 
 export interface Paper {
