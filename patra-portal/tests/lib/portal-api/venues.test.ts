@@ -41,9 +41,7 @@ describe("fetchVenues", () => {
   });
 
   it("topN 默认 6", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await fetchVenues();

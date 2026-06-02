@@ -5,6 +5,7 @@ import { Journals } from "@/components/portal/Journals";
 import type { Journal } from "@/types/portal";
 
 vi.mock("@/lib/portal-api/venues", () => ({ fetchVenues: vi.fn() }));
+
 import { fetchVenues } from "@/lib/portal-api/venues";
 
 const SAMPLE: Journal[] = [
