@@ -24,13 +24,13 @@
       <li><a href="#file-structure">文件结构</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li data-task-status="pending"><a href="#task-1">Task 1 — 后端 infra 读链路（ReadModel/ReadPort/Row/Dao/ReadAdapter）</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — 后端 app 查询服务（QueryService/Query）</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — 后端 adapter 端点（Controller/Request/Response/Converter）</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — 前端 fetchVenues + Journal 类型</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — 前端 JournalCoverCard 改造</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — 前端 Journals 改 async RSC + 文案</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — 删 mock + 全量验证</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — 后端 infra 读链路（ReadModel/ReadPort/Row/Dao/ReadAdapter）</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 后端 app 查询服务（QueryService/Query）</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 后端 adapter 端点（Controller/Request/Response/Converter）</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — 前端 fetchVenues + Journal 类型</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — 前端 JournalCoverCard 改造</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 前端 Journals 改 async RSC + 文案</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 删 mock + 全量验证</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -118,7 +118,7 @@
       <h2>任务列表</h2>
 
       <!-- ============================== TASK 1 ============================== -->
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：后端 infra 读链路（ReadModel / ReadPort / Row / Dao / ReadAdapter）</h2>
           <dl class="files">
@@ -475,7 +475,7 @@ git commit -m "feat(catalog): 期刊榜 CQRS 读链路（ReadPort/ReadAdapter/Da
       </article>
 
       <!-- ============================== TASK 2 ============================== -->
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：后端 app 查询服务（QueryService / Query）</h2>
           <dl class="files">
@@ -642,7 +642,7 @@ git commit -m "feat(catalog): 期刊榜 QueryService（topN 归一化）"</code>
       </article>
 
       <!-- ============================== TASK 3 ============================== -->
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="done">
         <header>
           <h2>任务 3：后端 adapter 端点（Controller / Request / Response / Converter）</h2>
           <dl class="files">
@@ -877,7 +877,7 @@ git commit -m "feat(catalog): 期刊榜 REST 端点 GET /portal/venues"</code></
       </article>
 
       <!-- ============================== TASK 4 ============================== -->
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：前端 fetchVenues + Journal 类型重定义</h2>
           <dl class="files">
@@ -1030,7 +1030,7 @@ git commit -m "feat(portal): fetchVenues 期刊榜 API 封装 + Journal 类型�
       </article>
 
       <!-- ============================== TASK 5 ============================== -->
-      <article class="task" id="task-5" data-status="pending">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：前端 JournalCoverCard 改造（封面生成式 + JCR 分区）</h2>
           <dl class="files">
@@ -1207,7 +1207,7 @@ git commit -m "feat(portal): JournalCoverCard 封面生成式 + JCR 分区标签
       </article>
 
       <!-- ============================== TASK 6 ============================== -->
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：前端 Journals 改 async RSC + 文案修正</h2>
           <dl class="files">
@@ -1367,7 +1367,7 @@ git commit -m "feat(portal): Journals 改 async RSC 接入真实期刊数据 + �
       </article>
 
       <!-- ============================== TASK 7 ============================== -->
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：删除 mock + 全量验证</h2>
           <dl class="files">
@@ -1458,6 +1458,14 @@ git commit -m "refactor(portal): 删除期刊 mock 数据，首页期刊全量�
     </header>
 
     <ol class="notes-log">
+<li class="note" data-type="change" data-time="2026-06-02T09:45">
+  <header><span class="note-type">CHANGE</span><time datetime="2026-06-02T09:45">06-02 09:45</time><a href="#task-7">§ Task 7</a></header>
+  <p>Task 4/5/6 引入的前端问题在 Task 7 全量验证时才暴露：JournalCoverCard.tsx pickCover 在 noUncheckedIndexedAccess 下返回 |undefined（typecheck error）、venues/Journals 测试 import 排序与格式不过 biome。控制者已在 commit 2f99c5301 修复（pickCover 改 as const 元组、biome 格式化）。根因：各任务 commit 时 husky 只对 staged 文件跑 biome、不跑全量 typecheck，subagent 自审也未跑全量，故漏到收尾。</p>
+</li>
+<li class="note" data-type="other" data-time="2026-06-02T09:45">
+  <header><span class="note-type">OTHER</span><time datetime="2026-06-02T09:45">06-02 09:45</time><a href="#task-7">§ Task 7</a></header>
+  <p>Composer.tsx 的 typecheck(TS2769) / next build 失败是 main 上预先存在的 Zod v4 / RHF 兼容问题；git log main..HEAD 确认 feature 分支未碰该文件，与期刊 feature 无关，建议单独修，不阻塞本 feature。</p>
+</li>
       <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
 
       <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
@@ -1474,14 +1482,14 @@ git commit -m "refactor(portal): 删除期刊 mock 数据，首页期刊全量�
       -->
     </ol>
 
-    <p class="empty-state">no notes yet</p>
+
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="change">1</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="other">1</span> others
     </footer>
   </aside>
 
