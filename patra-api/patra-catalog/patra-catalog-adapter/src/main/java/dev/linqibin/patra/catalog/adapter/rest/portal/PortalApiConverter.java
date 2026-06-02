@@ -1,7 +1,9 @@
 package dev.linqibin.patra.catalog.adapter.rest.portal;
 
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperResponse;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueResponse;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.time.Duration;
 import java.time.Instant;
@@ -36,6 +38,20 @@ public class PortalApiConverter {
         null,
         model.studyType(),
         toMinutesAgo(model.lastSyncedAt()));
+  }
+
+  /// 将期刊读模型转为响应 DTO。
+  ///
+  /// @param model 期刊读模型
+  /// @return 响应 DTO
+  public PortalVenueResponse toVenueResponse(PortalVenueReadModel model) {
+    return new PortalVenueResponse(
+        Long.toString(model.id()),
+        model.name(),
+        model.abbr(),
+        model.impactFactor(),
+        model.quartile(),
+        model.foundedYear());
   }
 
   private String toSource(String provenanceCode) {

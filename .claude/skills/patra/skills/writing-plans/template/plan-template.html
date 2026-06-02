@@ -6,14 +6,15 @@
   <title><!-- FILL: 计划标题 -->[实现计划标题]</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400..700&family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <!-- CSS 外置：相对路径 ../styles/ 是从生成位置 docs/patra/plans/ 出发；
-       模板本身在 .claude-marketplace/ 下打开时此 link 会 404（接受：模板预览以生成后的 plan 为准） -->
-  <link rel="stylesheet" href="../styles/journal.css">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题（与 spec 共享 spec-theme.css）+ plan 专属 plan-extras.css。
+       相对路径 ../styles/ 从生成位置 docs/patra/plans/ 出发；
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 plan 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
   <link rel="stylesheet" href="../styles/plan-extras.css">
 </head>
 <body>
-<div class="layout">
+<div class="layout layout-with-notes">
 
   <!-- ============================================================
        左栏：目录（TOC）

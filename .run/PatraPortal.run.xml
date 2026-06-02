@@ -1,0 +1,13 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="PatraPortal" type="js.build_tools.npm" folderName="Portal">
+    <package-json value="$PROJECT_DIR$/patra-portal/package.json" />
+    <command value="run" />
+    <scripts>
+      <script value="dev" />
+    </scripts>
+    <node-interpreter value="$USER_HOME$/.local/share/mise/installs/node/lts/bin/node" />
+    <package-manager value="$USER_HOME$/Library/pnpm/pnpm" />
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>

@@ -1,9 +1,21 @@
 import { ArrowRight } from "lucide-react";
 import Image from "next/image";
 import { JournalCoverCard } from "@/components/portal/JournalCoverCard";
-import { JOURNALS } from "@/data/journals";
+import { fetchVenues } from "@/lib/portal-api/venues";
+import type { Journal } from "@/types/portal";
 
-export function Journals() {
+export async function Journals() {
+  let journals: Journal[];
+  try {
+    journals = await fetchVenues(6);
+  } catch {
+    // 期刊榜加载失败时静默隐藏整个区块，不阻塞首页其他模块的渲染
+    return null;
+  }
+  if (journals.length === 0) {
+    return null;
+  }
+
   return (
     <section
       data-section="journals"
@@ -19,7 +31,7 @@ export function Journals() {
             高影响力期刊
           </h2>
           <p className="mt-1 text-sm text-fg-3">
-            从信赖的来源切入。Patra 持续追踪 1,247 本同行评审期刊；以下为本周收录最活跃的 6 本。
+            从信赖的来源切入。Patra 持续追踪 15,434 本同行评审期刊；以下为影响因子最高的 6 本。
           </p>
         </div>
         <button
@@ -29,12 +41,12 @@ export function Journals() {
           title="功能即将上线"
           className="inline-flex items-center gap-1.5 text-sm text-clay-700 hover:text-clay-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          浏览全部 1,247 本 <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+          浏览全部期刊 <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} />
         </button>
       </div>
 
       <div className="grid grid-cols-6 gap-4 max-[1200px]:grid-cols-3 max-[720px]:grid-cols-none max-[720px]:-mx-5 max-[720px]:flex max-[720px]:gap-3 max-[720px]:overflow-x-auto max-[720px]:snap-x max-[720px]:snap-mandatory max-[720px]:px-5 max-[720px]:py-1 max-[720px]:[scrollbar-width:none] max-[720px]:[&::-webkit-scrollbar]:hidden">
-        {JOURNALS.map((j) => (
+        {journals.map((j) => (
           <JournalCoverCard
             key={j.id}
             journal={j}

@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal 首页期刊模块接入真实数据 · 实现计划</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题（与 spec 共享 spec-theme.css）+ plan 专属 plan-extras.css。 -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li data-task-status="done"><a href="#task-1">Task 1 — 后端 infra 读链路（ReadModel/ReadPort/Row/Dao/ReadAdapter）</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 后端 app 查询服务（QueryService/Query）</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 后端 adapter 端点（Controller/Request/Response/Converter）</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — 前端 fetchVenues + Journal 类型</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — 前端 JournalCoverCard 改造</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 前端 Journals 改 async RSC + 文案</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 删 mock + 全量验证</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>Portal 首页期刊模块接入真实数据 · 实现计划</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-01</span>
+        <span>🌿 feat/portal-journals-real-data</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped），同步更新左栏 TOC 的 <code>data-task-status</code>。
+        每完成一个 task 立即 commit。<strong>读写 Java 代码、运行测试一律走 idea MCP</strong>
+        （<code>read_file</code> / <code>replace_text_in_file</code> / <code>create_new_file</code> /
+        <code>get_file_problems</code> / <code>execute_run_configuration</code>），不要用内置工具碰 patra 源码。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>把 portal 首页「高影响力期刊」模块从 6 条硬编码 mock 替换为 catalog 真实数据（按影响因子降序 Top 6）。</dd>
+        <dt>架构</dt> <dd>catalog 新增 <code>GET /portal/venues</code>，完整 CQRS 读链路（Controller → QueryService → ReadPort → ReadAdapter → VenueDao native LATERAL JOIN），1:1 对齐现有 publication portal 端点。前端新增 <code>fetchVenues</code> server-only 封装，<code>Journals</code> 改 async RSC，<code>JournalCoverCard</code> 封面生成式 + JCR 分区标签。</dd>
+        <dt>技术栈</dt> <dd>Java 25 / Spring Boot 4 / Spring Data JPA（native query + 接口投影）/ PostgreSQL 17 · Next.js 15 RSC / TypeScript strict / Vitest + Testing Library</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-06-01-portal-journals-real-data-design.html">Portal 首页期刊模块接入真实数据</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>本计划仅覆盖「期刊」一个子系统，前后端贯通可独立产出可工作、可测试的软件。Hero 统计、话题云为独立子系统，各自后续 spec → plan。JCR 影响因子数据补全（用户单独爬）属数据层任务，不在本计划。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>后端 patra-api/patra-catalog/
+├── patra-catalog-domain/
+│   └── …/domain/model/read/portal/PortalVenueReadModel.java      [create] 期刊读模型 record
+│   └── …/domain/port/read/PortalVenueReadPort.java               [create] CQRS 读端口接口
+├── patra-catalog-infra/
+│   └── …/infra/adapter/read/PortalVenueRow.java                  [create] Spring Data 接口投影
+│   └── …/infra/adapter/read/PortalVenueReadAdapter.java          [create] @Repository 读适配器
+│   └── …/infra/persistence/dao/VenueDao.java                     [modify] 加 findTopVenuesByImpactFactor
+│   └── (integrationTest) …/infra/adapter/read/PortalVenueReadAdapterIT.java   [create] SQL 集成测试
+├── patra-catalog-app/
+│   └── …/app/usecase/portal/query/dto/PortalVenueQuery.java      [create] 查询入参 record
+│   └── …/app/usecase/portal/query/PortalVenueQueryService.java   [create] QueryService（无接口）
+│   └── (test) …/app/usecase/portal/query/PortalVenueQueryServiceTest.java     [create] 归一化单元测试
+├── patra-catalog-adapter/
+│   └── …/adapter/rest/portal/PortalVenueController.java          [create] GET /portal/venues
+│   └── …/adapter/rest/portal/request/PortalVenueListRequest.java [create] 请求 record + 校验
+│   └── …/adapter/rest/portal/response/PortalVenueResponse.java   [create] 响应 record（对齐前端）
+│   └── …/adapter/rest/portal/PortalApiConverter.java             [modify] 加 toVenueResponse
+│   └── (integrationTest) …/adapter/rest/portal/PortalVenueControllerIT.java   [create] WebMvc 切片测试
+
+前端 patra-portal/
+├── src/types/portal.ts                          [modify] Journal 类型重定义，删 JournalCoverStyle
+├── src/lib/portal-api/venues.ts                 [create] fetchVenues server-only 封装
+├── src/components/portal/JournalCoverCard.tsx    [modify] 封面生成式 + JCR 分区 + 字段映射
+├── src/components/portal/Journals.tsx            [modify] async RSC + fetchVenues + 文案修正
+├── src/data/journals.ts                          [delete] 删除 mock 常量
+├── src/data/index.ts                             [modify] 移除 journals re-export
+├── tests/lib/portal-api/venues.test.ts          [create] fetchVenues 单元测试
+├── tests/components/portal/JournalCoverCard.test.tsx  [modify] 改用真实 Journal 字段
+└── tests/components/portal/Journals.test.tsx     [modify] mock fetchVenues 测 async RSC</pre>
+      </div>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- ============================== TASK 1 ============================== -->
+      <article class="task" id="task-1" data-status="done">
+        <header>
+          <h2>任务 1：后端 infra 读链路（ReadModel / ReadPort / Row / Dao / ReadAdapter）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-domain/…/domain/model/read/portal/PortalVenueReadModel.java</code></dd>
+            <dt>创建</dt><dd><code>patra-catalog-domain/…/domain/port/read/PortalVenueReadPort.java</code></dd>
+            <dt>创建</dt><dd><code>patra-catalog-infra/…/infra/adapter/read/PortalVenueRow.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/…/infra/persistence/dao/VenueDao.java</code></dd>
+            <dt>创建</dt><dd><code>patra-catalog-infra/…/infra/adapter/read/PortalVenueReadAdapter.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/integrationTest/…/infra/adapter/read/PortalVenueReadAdapterIT.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：先建 domain 读模型与读端口</strong>
+            <p>这两个是 record/接口，无独立行为测试，但 IT 与 ReadAdapter 都依赖它们，先建以便测试能引用。</p>
+            <p>创建 <code>PortalVenueReadModel.java</code>：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+import java.math.BigDecimal;
+
+/// Portal 期刊卡片读模型（CQRS 读端）。
+///
+/// 字段来源 `cat_venue` + 最新年有影响因子的 `cat_venue_jcr_rating`，由 Infra 层单次 LATERAL JOIN 组装。
+///
+/// @param id 期刊主键
+/// @param name 期刊全称（cat_venue.title）
+/// @param abbr 缩写标题（cat_venue.abbreviated_title）
+/// @param impactFactor 最新年影响因子（非空，仅含有 IF 的期刊）
+/// @param quartile WOS 综合分区（Q1-Q4，可空）
+/// @param foundedYear 创刊年份（publication_profile.publicationHistory.startYear，可空）
+/// @author linqibin
+/// @since 0.1.0
+public record PortalVenueReadModel(
+    Long id,
+    String name,
+    String abbr,
+    BigDecimal impactFactor,
+    String quartile,
+    Integer foundedYear) {}</code></pre>
+            <p>创建 <code>PortalVenueReadPort.java</code>：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.port.read;
+
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
+import java.util.List;
+
+/// Portal 期刊榜 CQRS 读端口。
+///
+/// 由 Infra 层 `PortalVenueReadAdapter` 实现，单次查询组装按影响因子降序的 Top N 期刊。
+///
+/// @author linqibin
+/// @since 0.1.0
+public interface PortalVenueReadPort {
+
+  /// 按最新年影响因子降序取 Top N 期刊。
+  ///
+  /// @param topN 返回数量（已归一化，≥1）
+  /// @return 期刊读模型列表，按影响因子降序
+  List&lt;PortalVenueReadModel&gt; findTopByImpactFactor(int topN);
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED）：写 ReadAdapter 集成测试</strong>
+            <p>创建 <code>PortalVenueReadAdapterIT.java</code>（infra 的 <code>src/integrationTest</code>，照 <code>PortalFeedReadAdapterIT</code> 的 <code>@DataJpaTest</code> + Testcontainers 模式）：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
+import dev.linqibin.patra.catalog.domain.model.vo.venue.PublicationHistory;
+import dev.linqibin.patra.catalog.domain.model.vo.venue.PublicationProfile;
+import dev.linqibin.patra.catalog.infra.config.CatalogITPostgreSQLContainerInitializer;
+import dev.linqibin.patra.catalog.infra.persistence.entity.JcrRatingEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
+import dev.linqibin.starter.jpa.autoconfig.JpaAuditingConfig;
+import dev.linqibin.starter.jpa.id.SnowflakeIdGenerator;
+import java.math.BigDecimal;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
+
+@DataJpaTest
+@ContextConfiguration(initializers = CatalogITPostgreSQLContainerInitializer.class)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({PortalVenueReadAdapter.class, JpaAuditingConfig.class})
+@ActiveProfiles("test")
+@DisplayName("PortalVenueReadAdapter 期刊榜查询集成测试")
+class PortalVenueReadAdapterIT {
+
+  @Autowired private PortalVenueReadAdapter adapter;
+  @Autowired private TestEntityManager em;
+
+  @Test
+  @DisplayName("按最新年影响因子降序，组装 name/abbr/quartile/foundedYear")
+  void shouldSortByImpactFactorDescAndAssembleFields() {
+    Long high = saveJournal("High IF Journal", "High IF J", 1990);
+    saveJcr(high, 2024, new BigDecimal("50.0"), "Q1");
+    saveJcr(high, 2025, new BigDecimal("65.4"), "Q1"); // 最新年应取这条
+    Long low = saveJournal("Low IF Journal", "Low IF J", 2001);
+    saveJcr(low, 2025, new BigDecimal("3.2"), "Q3");
+    em.flush();
+    em.clear();
+
+    List&lt;PortalVenueReadModel&gt; result = adapter.findTopByImpactFactor(6);
+
+    assertThat(result).extracting(PortalVenueReadModel::id).containsExactly(high, low);
+    PortalVenueReadModel head = result.get(0);
+    assertThat(head.name()).isEqualTo("High IF Journal");
+    assertThat(head.abbr()).isEqualTo("High IF J");
+    assertThat(head.impactFactor()).isEqualByComparingTo("65.4");
+    assertThat(head.quartile()).isEqualTo("Q1");
+    assertThat(head.foundedYear()).isEqualTo(1990);
+  }
+
+  @Test
+  @DisplayName("无 JCR 记录或最新有效年无影响因子的期刊不出现在榜单")
+  void shouldExcludeJournalsWithoutImpactFactor() {
+    Long withIf = saveJournal("With IF", "With IF", 1980);
+    saveJcr(withIf, 2025, new BigDecimal("10.0"), "Q2");
+    saveJournal("No JCR at all", "No JCR", 1990); // 无 JCR 记录
+    Long nullIf = saveJournal("Null IF", "Null IF", 1995);
+    saveJcr(nullIf, 2025, null, "Q4"); // JCR 存在但 impact_factor 为 null
+    em.flush();
+    em.clear();
+
+    List&lt;PortalVenueReadModel&gt; result = adapter.findTopByImpactFactor(6);
+
+    assertThat(result).extracting(PortalVenueReadModel::id).containsExactly(withIf);
+  }
+
+  @Test
+  @DisplayName("topN 限制返回数量")
+  void shouldRespectTopN() {
+    for (int i = 0; i &lt; 5; i++) {
+      Long id = saveJournal("J" + i, "J" + i, 2000);
+      saveJcr(id, 2025, new BigDecimal(10 + i), "Q1");
+    }
+    em.flush();
+    em.clear();
+
+    List&lt;PortalVenueReadModel&gt; result = adapter.findTopByImpactFactor(3);
+
+    assertThat(result).hasSize(3);
+  }
+
+  @Test
+  @DisplayName("非 JOURNAL 类型即使影响因子很高也不出现在榜单")
+  void shouldExcludeNonJournalVenues() {
+    Long journal = saveJournal("A Journal", "A J", 1990);
+    saveJcr(journal, 2025, new BigDecimal("8.0"), "Q2");
+    Long repo = saveVenue("A Repository", "REPOSITORY", "A Repo", 1990);
+    saveJcr(repo, 2025, new BigDecimal("99.0"), "Q1");
+    em.flush();
+    em.clear();
+
+    List&lt;PortalVenueReadModel&gt; result = adapter.findTopByImpactFactor(6);
+
+    assertThat(result).extracting(PortalVenueReadModel::id).containsExactly(journal);
+  }
+
+  @Test
+  @DisplayName("foundedYear 缺失（无 publication_profile）时为 null")
+  void shouldReturnNullFoundedYearWhenMissing() {
+    Long id = saveVenueWithoutProfile("No Founded", "No F");
+    saveJcr(id, 2025, new BigDecimal("5.0"), "Q3");
+    em.flush();
+    em.clear();
+
+    List&lt;PortalVenueReadModel&gt; result = adapter.findTopByImpactFactor(6);
+
+    assertThat(result.get(0).foundedYear()).isNull();
+  }
+
+  private Long saveJournal(String title, String abbr, int foundedYear) {
+    return saveVenue(title, "JOURNAL", abbr, foundedYear);
+  }
+
+  private Long saveVenue(String title, String venueType, String abbr, int foundedYear) {
+    VenueEntity v = new VenueEntity();
+    v.setId(SnowflakeIdGenerator.getId());
+    v.setVenueType(venueType);
+    v.setTitle(title);
+    v.setAbbreviatedTitle(abbr);
+    v.setProvenanceCode("OPENALEX");
+    v.setPublicationProfile(
+        PublicationProfile.builder()
+            .abbreviatedTitle(abbr)
+            .publicationHistory(PublicationHistory.active(foundedYear))
+            .build());
+    em.persist(v);
+    return v.getId();
+  }
+
+  private Long saveVenueWithoutProfile(String title, String abbr) {
+    VenueEntity v = new VenueEntity();
+    v.setId(SnowflakeIdGenerator.getId());
+    v.setVenueType("JOURNAL");
+    v.setTitle(title);
+    v.setAbbreviatedTitle(abbr);
+    v.setProvenanceCode("OPENALEX");
+    em.persist(v);
+    return v.getId();
+  }
+
+  private void saveJcr(Long venueId, int year, BigDecimal impactFactor, String quartile) {
+    JcrRatingEntity r = new JcrRatingEntity();
+    r.setId(SnowflakeIdGenerator.getId());
+    r.setVenueId(venueId);
+    r.setYear((short) year);
+    r.setImpactFactor(impactFactor);
+    r.setWosOverallQuartile(quartile);
+    em.persist(r);
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（RED 验证）：运行 IT，确认失败</strong>
+            <p>用 idea 运行 <code>PortalVenueReadAdapterIT</code>（<code>execute_run_configuration</code> 或编辑器内右键 Run）。</p>
+            <p>预期：<strong>编译失败</strong>——<code>PortalVenueReadAdapter</code>、<code>PortalVenueRow</code> 及 <code>VenueDao#findTopVenuesByImpactFactor</code> 尚不存在。这是预期的 RED。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN）：创建投影 PortalVenueRow</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import java.math.BigDecimal;
+
+/// `VenueDao#findTopVenuesByImpactFactor` native query 的 Spring Data 接口投影。
+///
+/// getter 名与 SQL 列别名一一对应（别名在 SQL 中加双引号保持 camelCase）。
+///
+/// @author linqibin
+/// @since 0.1.0
+public interface PortalVenueRow {
+  Long getId();
+
+  String getName();
+
+  String getAbbr();
+
+  BigDecimal getImpactFactor();
+
+  String getQuartile();
+
+  Integer getFoundedYear();
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN）：VenueDao 增加查询方法</strong>
+            <p>在 <code>VenueDao</code> 接口末尾（最后一个方法后、类右括号前）追加。需要补两个 import：<code>dev.linqibin.patra.catalog.infra.adapter.read.PortalVenueRow</code>、<code>java.util.List</code>（List 已有则跳过）。</p>
+            <pre><code class="lang-java">  /// 按最新年影响因子降序取 Top N 期刊（portal 首页期刊榜）。
+  ///
+  /// INNER JOIN LATERAL 取每刊「最新的、有影响因子的」一条 JCR 评级，因而只保留有 IF 的期刊；
+  /// 按 impact_factor 降序、id 兜底排序。foundedYear 从 publication_profile JSON 的
+  /// publicationHistory.startYear 提取（缺失时为 null）。固定 venue_type='JOURNAL' 且未软删。
+  ///
+  /// @param topN 返回数量上限
+  /// @return 期刊投影，按影响因子降序
+  @Query(
+      value =
+          """
+          SELECT
+            v.id AS "id",
+            v.title AS "name",
+            v.abbreviated_title AS "abbr",
+            jcr.impact_factor AS "impactFactor",
+            jcr.wos_overall_quartile AS "quartile",
+            (v.publication_profile -&gt; 'publicationHistory' -&gt;&gt; 'startYear')::int AS "foundedYear"
+          FROM cat_venue v
+          JOIN LATERAL (
+              SELECT r.impact_factor, r.wos_overall_quartile
+              FROM cat_venue_jcr_rating r
+              WHERE r.venue_id = v.id AND r.impact_factor IS NOT NULL
+              ORDER BY r.year DESC
+              LIMIT 1
+          ) jcr ON TRUE
+          WHERE v.venue_type = 'JOURNAL'
+            AND v.deleted_at IS NULL
+          ORDER BY jcr.impact_factor DESC, v.id DESC
+          LIMIT :topN
+          """,
+      nativeQuery = true)
+  List&lt;PortalVenueRow&gt; findTopVenuesByImpactFactor(@Param("topN") int topN);</code></pre>
+            <p>说明：<code>JOIN LATERAL (…) jcr ON TRUE</code> 是 INNER JOIN，子查询带 <code>r.impact_factor IS NOT NULL</code>，故无 IF 的期刊自然被过滤（验证见 IT 的 <code>shouldExcludeJournalsWithoutImpactFactor</code>）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6（GREEN）：创建 PortalVenueReadAdapter</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
+import dev.linqibin.patra.catalog.domain.port.read.PortalVenueReadPort;
+import dev.linqibin.patra.catalog.infra.persistence.dao.VenueDao;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+/// Portal 期刊榜 CQRS 读适配器。
+///
+/// 单次 LATERAL JOIN（venue + 最新年有 IF 的 JCR），按影响因子降序取 Top N，无 N+1。
+///
+/// @author linqibin
+/// @since 0.1.0
+@Repository
+@RequiredArgsConstructor
+public class PortalVenueReadAdapter implements PortalVenueReadPort {
+
+  private final VenueDao venueDao;
+
+  @Override
+  public List&lt;PortalVenueReadModel&gt; findTopByImpactFactor(int topN) {
+    return venueDao.findTopVenuesByImpactFactor(topN).stream().map(this::toReadModel).toList();
+  }
+
+  private PortalVenueReadModel toReadModel(PortalVenueRow row) {
+    return new PortalVenueReadModel(
+        row.getId(),
+        row.getName(),
+        row.getAbbr(),
+        row.getImpactFactor(),
+        row.getQuartile(),
+        row.getFoundedYear());
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 7（GREEN 验证）：运行 IT，确认全绿</strong>
+            <p>先用 idea <code>get_file_problems</code> 确认 4 个新文件 + VenueDao 无编译/检查问题，再用 idea 运行 <code>PortalVenueReadAdapterIT</code>。</p>
+            <p>预期：5 个测试方法全部通过（排序、过滤无 IF、topN、过滤非期刊、foundedYear null）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 8：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/read/portal/PortalVenueReadModel.java \
+        patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/port/read/PortalVenueReadPort.java \
+        patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalVenueRow.java \
+        patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalVenueReadAdapter.java \
+        patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/dao/VenueDao.java \
+        patra-api/patra-catalog/patra-catalog-infra/src/integrationTest/java/dev/linqibin/patra/catalog/infra/adapter/read/PortalVenueReadAdapterIT.java
+git commit -m "feat(catalog): 期刊榜 CQRS 读链路（ReadPort/ReadAdapter/Dao 按影响因子降序）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 2 ============================== -->
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：后端 app 查询服务（QueryService / Query）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-app/…/app/usecase/portal/query/dto/PortalVenueQuery.java</code></dd>
+            <dt>创建</dt><dd><code>patra-catalog-app/…/app/usecase/portal/query/PortalVenueQueryService.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-app/src/test/…/app/usecase/portal/query/PortalVenueQueryServiceTest.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：写 QueryService 单元测试</strong>
+            <p>照 <code>PortalFeedQueryServiceTest</code> 的 Mockito 模式。验证 topN 归一化（默认 6 / 上限 50 / 非法回退）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalVenueQuery;
+import dev.linqibin.patra.catalog.domain.port.read.PortalVenueReadPort;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("PortalVenueQueryService 单元测试")
+class PortalVenueQueryServiceTest {
+
+  @Mock private PortalVenueReadPort readPort;
+  @InjectMocks private PortalVenueQueryService service;
+
+  @Test
+  @DisplayName("topN 缺省时使用默认值 6")
+  void shouldApplyDefaultTopN() {
+    when(readPort.findTopByImpactFactor(anyInt())).thenReturn(List.of());
+
+    service.listTopVenues(PortalVenueQuery.of(null));
+
+    ArgumentCaptor&lt;Integer&gt; captor = ArgumentCaptor.forClass(Integer.class);
+    verify(readPort).findTopByImpactFactor(captor.capture());
+    assertThat(captor.getValue()).isEqualTo(6);
+  }
+
+  @Test
+  @DisplayName("topN 超过上限 50 被截断为 50")
+  void shouldCapTopN() {
+    when(readPort.findTopByImpactFactor(anyInt())).thenReturn(List.of());
+
+    service.listTopVenues(PortalVenueQuery.of(999));
+
+    ArgumentCaptor&lt;Integer&gt; captor = ArgumentCaptor.forClass(Integer.class);
+    verify(readPort).findTopByImpactFactor(captor.capture());
+    assertThat(captor.getValue()).isEqualTo(50);
+  }
+
+  @Test
+  @DisplayName("topN 小于 1 时回退到默认值 6")
+  void shouldFallbackWhenTopNBelowOne() {
+    when(readPort.findTopByImpactFactor(anyInt())).thenReturn(List.of());
+
+    service.listTopVenues(PortalVenueQuery.of(0));
+
+    ArgumentCaptor&lt;Integer&gt; captor = ArgumentCaptor.forClass(Integer.class);
+    verify(readPort).findTopByImpactFactor(captor.capture());
+    assertThat(captor.getValue()).isEqualTo(6);
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED 验证）：运行测试，确认失败</strong>
+            <p>用 idea 运行 <code>PortalVenueQueryServiceTest</code>。预期：编译失败——<code>PortalVenueQuery</code>、<code>PortalVenueQueryService</code> 尚不存在。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（GREEN）：创建 PortalVenueQuery</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query.dto;
+
+/// Portal 期刊榜查询参数（未归一化的外部输入）。
+///
+/// @param topN 返回数量（可空，由服务归一化）
+/// @author linqibin
+/// @since 0.1.0
+public record PortalVenueQuery(Integer topN) {
+
+  /// 创建查询参数。
+  ///
+  /// @param topN 返回数量
+  /// @return 查询参数
+  public static PortalVenueQuery of(Integer topN) {
+    return new PortalVenueQuery(topN);
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN）：创建 PortalVenueQueryService</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
+
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalVenueQuery;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
+import dev.linqibin.patra.catalog.domain.port.read.PortalVenueReadPort;
+import java.util.List;
+import java.util.Objects;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+/// Portal 期刊榜 CQRS 查询服务。
+///
+/// 归一化 topN 后委托 [PortalVenueReadPort]。只读，无 `@Transactional`。
+///
+/// @author linqibin
+/// @since 0.1.0
+@Service
+@RequiredArgsConstructor
+public class PortalVenueQueryService {
+
+  /// 默认返回数量（首页期刊榜一屏 6 本）。
+  private static final int DEFAULT_TOP_N = 6;
+
+  /// 返回数量上限。
+  private static final int MAX_TOP_N = 50;
+
+  private final PortalVenueReadPort readPort;
+
+  /// 查询 portal 期刊榜（按影响因子降序）。
+  ///
+  /// @param query 未归一化的外部查询参数
+  /// @return 期刊读模型列表
+  public List&lt;PortalVenueReadModel&gt; listTopVenues(PortalVenueQuery query) {
+    Objects.requireNonNull(query, "query must not be null");
+    return readPort.findTopByImpactFactor(normalizeTopN(query.topN()));
+  }
+
+  private int normalizeTopN(Integer topN) {
+    if (topN == null || topN &lt; 1) {
+      return DEFAULT_TOP_N;
+    }
+    return Math.min(topN, MAX_TOP_N);
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN 验证）：运行测试，确认全绿</strong>
+            <p>idea <code>get_file_problems</code> 两个新文件无问题后，运行 <code>PortalVenueQueryServiceTest</code>，预期 3 个方法全绿。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/portal/query/dto/PortalVenueQuery.java \
+        patra-api/patra-catalog/patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/portal/query/PortalVenueQueryService.java \
+        patra-api/patra-catalog/patra-catalog-app/src/test/java/dev/linqibin/patra/catalog/app/usecase/portal/query/PortalVenueQueryServiceTest.java
+git commit -m "feat(catalog): 期刊榜 QueryService（topN 归一化）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 3 ============================== -->
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：后端 adapter 端点（Controller / Request / Response / Converter）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-adapter/…/adapter/rest/portal/request/PortalVenueListRequest.java</code></dd>
+            <dt>创建</dt><dd><code>patra-catalog-adapter/…/adapter/rest/portal/response/PortalVenueResponse.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-adapter/…/adapter/rest/portal/PortalApiConverter.java</code></dd>
+            <dt>创建</dt><dd><code>patra-catalog-adapter/…/adapter/rest/portal/PortalVenueController.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-adapter/src/integrationTest/…/adapter/rest/portal/PortalVenueControllerIT.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：写 Controller 切片测试</strong>
+            <p>照 <code>PortalPublicationControllerIT</code> 的 <code>@WebMvcTest</code> + <code>RestTestClient</code> + <code>@MockitoBean</code> 模式。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalVenueQuery;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
+import java.math.BigDecimal;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.client.RestTestClient;
+
+@WebMvcTest(controllers = PortalVenueController.class)
+@ContextConfiguration(classes = CatalogAdapterITWebMvcConfig.class)
+@Import({PortalVenueController.class, PortalApiConverter.class})
+@AutoConfigureRestTestClient
+@DisplayName("PortalVenueController REST 切片测试")
+class PortalVenueControllerIT {
+
+  @Autowired private RestTestClient restClient;
+
+  @MockitoBean private PortalVenueQueryService portalVenueQueryService;
+
+  @Test
+  @DisplayName("GET /portal/venues 返回 200 + 对齐前端的期刊卡片数组")
+  void shouldReturnVenueList() {
+    PortalVenueReadModel model =
+        new PortalVenueReadModel(
+            319041872872550658L, "Annals of oncology", "Ann Oncol", new BigDecimal("65.4"), "Q1", 1990);
+    when(portalVenueQueryService.listTopVenues(any(PortalVenueQuery.class)))
+        .thenReturn(List.of(model));
+
+    restClient
+        .get()
+        .uri("/portal/venues?topN=6")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .contentType(MediaType.APPLICATION_JSON)
+        .expectBody()
+        .jsonPath("$.length()")
+        .isEqualTo(1)
+        .jsonPath("$[0].id")
+        .isEqualTo("319041872872550658")
+        .jsonPath("$[0].name")
+        .isEqualTo("Annals of oncology")
+        .jsonPath("$[0].abbr")
+        .isEqualTo("Ann Oncol")
+        .jsonPath("$[0].quartile")
+        .isEqualTo("Q1")
+        .jsonPath("$[0].foundedYear")
+        .isEqualTo(1990);
+
+    ArgumentCaptor&lt;PortalVenueQuery&gt; captor = ArgumentCaptor.forClass(PortalVenueQuery.class);
+    verify(portalVenueQueryService).listTopVenues(captor.capture());
+    assertThat(captor.getValue().topN()).isEqualTo(6);
+  }
+
+  @Test
+  @DisplayName("topN 超过上限 50 在适配器校验层收敛为 422，不触达应用层")
+  void shouldRejectOversizedTopN() {
+    restClient
+        .get()
+        .uri("/portal/venues?topN=51")
+        .exchange()
+        .expectStatus()
+        .isEqualTo(422);
+
+    verifyNoInteractions(portalVenueQueryService);
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED 验证）：运行测试，确认失败</strong>
+            <p>用 idea 运行 <code>PortalVenueControllerIT</code>。预期：编译失败——Controller/Request/Response/Converter 方法尚不存在。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（GREEN）：创建 PortalVenueListRequest</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.request;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+
+/// Portal 期刊榜查询请求。
+///
+/// 适配器入口校验：非法参数在此收敛为 4xx。topN 可空（走服务端默认 6）。
+///
+/// @param topN 返回数量（1..50，可空 → 默认 6）
+/// @author linqibin
+/// @since 0.1.0
+public record PortalVenueListRequest(
+    @Min(value = 1, message = "topN 最小为 1") @Max(value = 50, message = "topN 最大为 50")
+        Integer topN) {}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN）：创建 PortalVenueResponse</strong>
+            <p>字段名/类型直接对齐前端 <code>Journal</code>（<code>id</code> 用 String 防 JS 精度损失；<code>impactFactor</code> BigDecimal → JSON number）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.response;
+
+import java.math.BigDecimal;
+
+/// Portal 期刊卡片响应。
+///
+/// 字段名与类型直接对齐前端 `Journal`，前端零字段映射。
+///
+/// @param id 期刊主键（String，避免 JS 超 2^53 精度损失）
+/// @param name 期刊全称
+/// @param abbr 缩写标题
+/// @param impactFactor 最新年影响因子
+/// @param quartile WOS 综合分区（Q1-Q4，可空）
+/// @param foundedYear 创刊年份（可空）
+/// @author linqibin
+/// @since 0.1.0
+public record PortalVenueResponse(
+    String id,
+    String name,
+    String abbr,
+    BigDecimal impactFactor,
+    String quartile,
+    Integer foundedYear) {}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN）：PortalApiConverter 增加 toVenueResponse</strong>
+            <p>在 <code>PortalApiConverter</code> 类内追加方法，并补两个 import：<code>…adapter.rest.portal.response.PortalVenueResponse</code>、<code>…domain.model.read.portal.PortalVenueReadModel</code>。</p>
+            <pre><code class="lang-java">  /// 将期刊读模型转为响应 DTO。
+  ///
+  /// @param model 期刊读模型
+  /// @return 响应 DTO
+  public PortalVenueResponse toVenueResponse(PortalVenueReadModel model) {
+    return new PortalVenueResponse(
+        Long.toString(model.id()),
+        model.name(),
+        model.abbr(),
+        model.impactFactor(),
+        model.quartile(),
+        model.foundedYear());
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6（GREEN）：创建 PortalVenueController</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal;
+
+import dev.linqibin.patra.catalog.adapter.rest.portal.request.PortalVenueListRequest;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueResponse;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalVenueQuery;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/// Portal C 端门户期刊榜查询控制器。
+///
+/// @author linqibin
+/// @since 0.1.0
+@Tag(name = "Portal", description = "Portal C 端门户专用接口")
+@RestController
+@RequestMapping("/portal/venues")
+@RequiredArgsConstructor
+public class PortalVenueController {
+
+  private final PortalVenueQueryService portalVenueQueryService;
+  private final PortalApiConverter portalApiConverter;
+
+  /// 查询 portal 期刊榜（按影响因子降序 Top N）。
+  ///
+  /// @param request 查询请求（Spring MVC 自动绑定 query params）
+  /// @return 期刊卡片列表
+  @GetMapping
+  public List&lt;PortalVenueResponse&gt; listTopVenues(@Valid PortalVenueListRequest request) {
+    PortalVenueQuery query = PortalVenueQuery.of(request.topN());
+    return portalVenueQueryService.listTopVenues(query).stream()
+        .map(portalApiConverter::toVenueResponse)
+        .toList();
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 7（GREEN 验证）：运行测试，确认全绿</strong>
+            <p>idea <code>get_file_problems</code> 各文件无问题后运行 <code>PortalVenueControllerIT</code>，预期 2 个方法全绿（200 信封 + 422 校验）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 8：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/portal/request/PortalVenueListRequest.java \
+        patra-api/patra-catalog/patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/portal/response/PortalVenueResponse.java \
+        patra-api/patra-catalog/patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/portal/PortalApiConverter.java \
+        patra-api/patra-catalog/patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/portal/PortalVenueController.java \
+        patra-api/patra-catalog/patra-catalog-adapter/src/integrationTest/java/dev/linqibin/patra/catalog/adapter/rest/portal/PortalVenueControllerIT.java
+git commit -m "feat(catalog): 期刊榜 REST 端点 GET /portal/venues"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 4 ============================== -->
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：前端 fetchVenues + Journal 类型重定义</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/types/portal.ts</code>（Journal 重定义，删 JournalCoverStyle）</dd>
+            <dt>创建</dt><dd><code>patra-portal/src/lib/portal-api/venues.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/portal-api/venues.test.ts</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（GREEN-first 类型）：重定义 Journal 类型</strong>
+            <p>类型变更须先行，否则测试与实现都无法引用新字段。在 <code>src/types/portal.ts</code> 中，把现有 <code>Journal</code> 接口整体替换为下方定义，并<strong>删除</strong> <code>JournalCoverStyle</code> 接口（封面配色改为前端派生，不入类型）。</p>
+            <pre><code class="lang-typescript">export interface Journal {
+  id: string;
+  name: string;
+  abbr: string;
+  impactFactor: number;
+  quartile: string; // Q1–Q4
+  foundedYear: number | null;
+}</code></pre>
+            <p>注意：<code>JournalCoverStyle</code> 删除后，旧 <code>data/journals.ts</code> 会编译报错——这是预期的，Task 7 会删除该 mock 文件；本步只管类型。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED）：写 fetchVenues 单元测试</strong>
+            <p>照 <code>tests/lib/portal-api/publications.test.ts</code> 的 <code>vi.stubGlobal("fetch", …)</code> 模式。</p>
+            <pre><code class="lang-typescript">import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchVenues } from "@/lib/portal-api/venues";
+import type { Journal } from "@/types/portal";
+
+const SAMPLE: Journal[] = [
+  {
+    id: "319041872872550658",
+    name: "Annals of oncology",
+    abbr: "Ann Oncol",
+    impactFactor: 65.4,
+    quartile: "Q1",
+    foundedYear: 1990,
+  },
+];
+
+describe("fetchVenues", () => {
+  beforeEach(() => {
+    process.env.PATRA_GATEWAY_BASE_URL = "http://gw.test:9528";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.PATRA_GATEWAY_BASE_URL;
+  });
+
+  it("拼出正确的 gateway URL 并解析 JSON", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(SAMPLE), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchVenues(6);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://gw.test:9528/patra-catalog/portal/venues?topN=6",
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(result).toEqual(SAMPLE);
+  });
+
+  it("topN 默认 6", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchVenues();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://gw.test:9528/patra-catalog/portal/venues?topN=6",
+      expect.anything(),
+    );
+  });
+
+  it("非 2xx 抛错", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("err", { status: 502 })));
+    await expect(fetchVenues()).rejects.toThrow(/502/);
+  });
+
+  it("缺 PATRA_GATEWAY_BASE_URL 抛错", async () => {
+    delete process.env.PATRA_GATEWAY_BASE_URL;
+    await expect(fetchVenues()).rejects.toThrow(/PATRA_GATEWAY_BASE_URL/);
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（RED 验证）：运行测试，确认失败</strong>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm vitest run tests/lib/portal-api/venues.test.ts</code></pre>
+            <p>预期：失败——<code>@/lib/portal-api/venues</code> 模块不存在。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN）：创建 venues.ts</strong>
+            <p>结构完全类比 <code>publications.ts</code> 的 <code>fetchFeed</code>。</p>
+            <pre><code class="lang-typescript">import "server-only";
+import type { Journal } from "@/types/portal";
+
+/** 服务端 fetch 超时（ms）：慢后端不应无限阻塞 RSC 渲染线程 */
+const FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * 在服务端拉取 portal 期刊榜（按影响因子降序 Top N）。仅 RSC / Route Handler 调用（server-only）。
+ * 通过 gateway 访问 catalog，gateway 地址只在服务端可见。
+ *
+ * 注意：响应用 `as Journal[]` 裸断言，无运行时校验。
+ * TODO(contract-validation)：API 契约稳定后可用 zod safeParse 替换以防后端字段漂移。
+ */
+export async function fetchVenues(topN = 6): Promise&lt;Journal[]&gt; {
+  const baseUrl = process.env.PATRA_GATEWAY_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("PATRA_GATEWAY_BASE_URL 未配置");
+  }
+  const url = `${baseUrl}/patra-catalog/portal/venues?topN=${topN}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`期刊榜加载失败：${res.status}`);
+  }
+  return (await res.json()) as Journal[];
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5（GREEN 验证）：运行测试，确认全绿</strong>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm vitest run tests/lib/portal-api/venues.test.ts</code></pre>
+            <p>预期：4 个用例全绿。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/types/portal.ts \
+        patra-portal/src/lib/portal-api/venues.ts \
+        patra-portal/tests/lib/portal-api/venues.test.ts
+git commit -m "feat(portal): fetchVenues 期刊榜 API 封装 + Journal 类型重定义"</code></pre>
+            <p>注：此 commit 后 <code>data/journals.ts</code> 处于编译报错状态（引用已删的 JournalCoverStyle），Task 5–7 会消解；如需保持中间可编译，可与 Task 7 连续执行。</p>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 5 ============================== -->
+      <article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：前端 JournalCoverCard 改造（封面生成式 + JCR 分区）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/JournalCoverCard.tsx</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/JournalCoverCard.test.tsx</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：改写组件测试为真实 Journal 字段</strong>
+            <p>整体替换 <code>tests/components/portal/JournalCoverCard.test.tsx</code>（不再 import <code>JOURNALS</code> mock）：</p>
+            <pre><code class="lang-typescript">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { JournalCoverCard } from "@/components/portal/JournalCoverCard";
+import type { Journal } from "@/types/portal";
+
+const journal: Journal = {
+  id: "319041872872550658",
+  name: "Annals of oncology",
+  abbr: "Ann Oncol",
+  impactFactor: 65.4,
+  quartile: "Q1",
+  foundedYear: 1990,
+};
+
+describe("JournalCoverCard", () => {
+  it("渲染期刊全名", () => {
+    render(&lt;JournalCoverCard journal={journal} /&gt;);
+    expect(screen.getByText("Annals of oncology")).toBeInTheDocument();
+  });
+
+  it("封面文字来自缩写", () => {
+    render(&lt;JournalCoverCard journal={journal} /&gt;);
+    expect(screen.getByText("Ann Oncol")).toBeInTheDocument();
+  });
+
+  it("渲染影响因子 (65.4)", () => {
+    render(&lt;JournalCoverCard journal={journal} /&gt;);
+    expect(screen.getByText("65.4")).toBeInTheDocument();
+  });
+
+  it("渲染 JCR 分区 (Q1)", () => {
+    render(&lt;JournalCoverCard journal={journal} /&gt;);
+    expect(screen.getByText("Q1")).toBeInTheDocument();
+  });
+
+  it("渲染创刊年 (est. 1990)", () => {
+    render(&lt;JournalCoverCard journal={journal} /&gt;);
+    expect(screen.getByText(/1990/)).toBeInTheDocument();
+  });
+
+  it("foundedYear 为 null 时不渲染 est. 行", () => {
+    render(&lt;JournalCoverCard journal={{ ...journal, foundedYear: null }} /&gt;);
+    expect(screen.queryByText(/est\./)).not.toBeInTheDocument();
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED 验证）：运行测试，确认失败</strong>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm vitest run tests/components/portal/JournalCoverCard.test.tsx</code></pre>
+            <p>预期：失败——组件仍读 <code>journal.cover</code>/<code>coverStyle</code>/<code>weekly</code>（已不在新类型上），编译/渲染报错。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（GREEN）：整体改写 JournalCoverCard.tsx</strong>
+            <p>封面文字取 <code>abbr</code>；配色由 <code>id</code> 稳定 hash 从预设深色调色板选取；<code>est.</code> 行在 <code>foundedYear</code> 为 null 时隐藏；右下「本周收录」位换为 JCR 分区。</p>
+            <pre><code class="lang-typescript">import type { CSSProperties } from "react";
+import type { Journal } from "@/types/portal";
+
+/** 深色学术调色板（延续原 mock 视觉质感）：bg 深底 + ink 浅字。 */
+const COVER_PALETTE: ReadonlyArray&lt;{ bg: string; ink: string }&gt; = [
+  { bg: "#3C1611", ink: "#F6E8DA" },
+  { bg: "#1F2E45", ink: "#E9EEF4" },
+  { bg: "#0E574F", ink: "#ECF5F3" },
+  { bg: "#1C1917", ink: "#F4D9B8" },
+  { bg: "#5A1A14", ink: "#F6E8DA" },
+  { bg: "#6E3216", ink: "#FBF1E8" },
+];
+
+/** 按期刊 id 稳定 hash 选取调色板（同一期刊每次同色，SSR/CSR 一致）。 */
+function pickCover(id: string): { bg: string; ink: string } {
+  let hash = 0;
+  for (let i = 0; i &lt; id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return COVER_PALETTE[Math.abs(hash) % COVER_PALETTE.length];
+}
+
+interface JournalCoverCardProps {
+  journal: Journal;
+  className?: string;
+}
+
+export function JournalCoverCard({ journal, className }: JournalCoverCardProps) {
+  const { bg, ink } = pickCover(journal.id);
+  // data-driven hex colors cannot be expressed as static Tailwind utilities;
+  // CSS variables are the canonical escape hatch per design system.
+  const coverVars = {
+    "--cover-bg": bg,
+    "--cover-ink": ink,
+  } as CSSProperties;
+
+  return (
+    &lt;button
+      type="button"
+      disabled
+      aria-disabled="true"
+      title={`${journal.name} · 功能即将上线`}
+      className={
+        "flex flex-col overflow-hidden rounded-lg border border-border-default bg-paper-50 text-inherit no-underline transition hover:-translate-y-px hover:border-ink-300 hover:shadow-[0_6px_16px_-10px_rgba(28,25,23,0.18)] disabled:cursor-not-allowed " +
+        (className ?? "")
+      }
+    &gt;
+      &lt;div
+        data-cover
+        style={coverVars}
+        className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[var(--cover-bg)] p-4 text-center text-[var(--cover-ink)] before:absolute before:inset-2 before:border before:border-current before:opacity-20 before:content-['']"
+      &gt;
+        {journal.foundedYear !== null &amp;&amp; (
+          &lt;div className="absolute left-2 right-2 top-3 text-center font-mono text-[9.5px] uppercase tracking-[0.18em] opacity-70"&gt;
+            est. {journal.foundedYear}
+          &lt;/div&gt;
+        )}
+        &lt;div className="whitespace-pre-line font-serif font-medium leading-[1.05] tracking-tight text-[clamp(20px,2.2vw,26px)]"&gt;
+          {journal.abbr}
+        &lt;/div&gt;
+        &lt;div className="absolute bottom-3 left-2 right-2 text-center font-mono text-[9px] tracking-[0.14em] opacity-60"&gt;
+          vol · 2026
+        &lt;/div&gt;
+      &lt;/div&gt;
+      &lt;div className="flex flex-col gap-1.5 border-t border-border-default bg-paper-50 p-3.5"&gt;
+        &lt;div className="text-sm font-semibold leading-snug text-fg-1"&gt;{journal.name}&lt;/div&gt;
+        &lt;div className="font-mono text-[10.5px] uppercase tracking-caps text-fg-3"&gt;
+          {journal.abbr}
+        &lt;/div&gt;
+        &lt;div className="mt-1 flex items-baseline justify-between gap-2"&gt;
+          &lt;div className="flex flex-col"&gt;
+            &lt;span className="font-serif text-xl font-medium leading-tight tracking-tight text-ink-900 tabular-nums"&gt;
+              {journal.impactFactor.toFixed(1)}
+            &lt;/span&gt;
+            &lt;span className="font-mono text-[9.5px] uppercase tracking-caps text-fg-3"&gt;
+              影响因子
+            &lt;/span&gt;
+          &lt;/div&gt;
+          &lt;div className="text-right font-mono leading-snug text-fg-2"&gt;
+            &lt;span className="block font-mono text-[9.5px] uppercase tracking-caps text-fg-3"&gt;
+              JCR 分区
+            &lt;/span&gt;
+            &lt;span className="text-[13px] font-semibold tabular-nums"&gt;{journal.quartile}&lt;/span&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/button&gt;
+  );
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN 验证）：运行测试，确认全绿</strong>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm vitest run tests/components/portal/JournalCoverCard.test.tsx</code></pre>
+            <p>预期：6 个用例全绿（含 foundedYear null 隐藏）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/JournalCoverCard.tsx \
+        patra-portal/tests/components/portal/JournalCoverCard.test.tsx
+git commit -m "feat(portal): JournalCoverCard 封面生成式 + JCR 分区标签"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 6 ============================== -->
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：前端 Journals 改 async RSC + 文案修正</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/Journals.tsx</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/Journals.test.tsx</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：改写 Journals 测试为 mock fetchVenues 的 async RSC</strong>
+            <p>整体替换 <code>tests/components/portal/Journals.test.tsx</code>。Journals 改 async 后，<code>render(await Journals())</code> 取其返回 JSX；mock <code>fetchVenues</code> 提供数据。</p>
+            <pre><code class="lang-typescript">import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { Journals } from "@/components/portal/Journals";
+import type { Journal } from "@/types/portal";
+
+vi.mock("@/lib/portal-api/venues", () => ({ fetchVenues: vi.fn() }));
+import { fetchVenues } from "@/lib/portal-api/venues";
+
+const SAMPLE: Journal[] = [
+  {
+    id: "1",
+    name: "Annals of oncology",
+    abbr: "Ann Oncol",
+    impactFactor: 65.4,
+    quartile: "Q1",
+    foundedYear: 1990,
+  },
+  {
+    id: "2",
+    name: "Annals of internal medicine",
+    abbr: "Ann Intern Med",
+    impactFactor: 51.6,
+    quartile: "Q1",
+    foundedYear: 1927,
+  },
+];
+
+describe("Journals", () => {
+  beforeEach(() => {
+    vi.mocked(fetchVenues).mockReset();
+  });
+
+  it("渲染来自 fetchVenues 的期刊卡片", async () => {
+    vi.mocked(fetchVenues).mockResolvedValue(SAMPLE);
+    render(await Journals());
+    expect(screen.getByText("Annals of oncology")).toBeInTheDocument();
+    expect(screen.getByText("Annals of internal medicine")).toBeInTheDocument();
+  });
+
+  it("含 '高影响力期刊' 标题", async () => {
+    vi.mocked(fetchVenues).mockResolvedValue(SAMPLE);
+    render(await Journals());
+    expect(screen.getByRole("heading", { name: /高影响力期刊/ })).toBeInTheDocument();
+  });
+
+  it("fetchVenues 失败时不渲染区块（返回 null）", async () => {
+    vi.mocked(fetchVenues).mockRejectedValue(new Error("boom"));
+    const ui = await Journals();
+    expect(ui).toBeNull();
+  });
+
+  it("空列表时不渲染区块（返回 null）", async () => {
+    vi.mocked(fetchVenues).mockResolvedValue([]);
+    const ui = await Journals();
+    expect(ui).toBeNull();
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2（RED 验证）：运行测试，确认失败</strong>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm vitest run tests/components/portal/Journals.test.tsx</code></pre>
+            <p>预期：失败——<code>Journals</code> 仍是同步组件、仍 import <code>JOURNALS</code> mock，未调用 <code>fetchVenues</code>。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3（GREEN）：整体改写 Journals.tsx</strong>
+            <p>改为 async RSC：调 <code>fetchVenues(6)</code>，失败或空列表返回 <code>null</code>（区块隐藏，不影响首页其他模块）；文案数字按 spec 改真实（追踪 15,434 本 / 影响因子最高的 6 本）。</p>
+            <pre><code class="lang-typescript">import { ArrowRight } from "lucide-react";
+import Image from "next/image";
+import { JournalCoverCard } from "@/components/portal/JournalCoverCard";
+import { fetchVenues } from "@/lib/portal-api/venues";
+import type { Journal } from "@/types/portal";
+
+export async function Journals() {
+  let journals: Journal[];
+  try {
+    journals = await fetchVenues(6);
+  } catch {
+    // 期刊榜加载失败时静默隐藏整个区块，不阻塞首页其他模块的渲染
+    return null;
+  }
+  if (journals.length === 0) {
+    return null;
+  }
+
+  return (
+    &lt;section
+      data-section="journals"
+      className="container mx-auto max-w-[1200px] px-6 py-14 max-[880px]:py-10"
+    &gt;
+      &lt;div className="mb-6 flex items-end justify-between gap-3 max-[880px]:flex-col max-[880px]:items-start"&gt;
+        &lt;div&gt;
+          &lt;span className="inline-flex items-center gap-1.5 font-sans text-2xs font-semibold uppercase tracking-caps text-fg-3"&gt;
+            &lt;Image src="/brand/patra-mark.svg" alt="" aria-hidden width={4} height={14} /&gt;
+            按期刊浏览
+          &lt;/span&gt;
+          &lt;h2 className="mt-1 font-serif text-3xl font-medium leading-tight tracking-tight text-ink-900"&gt;
+            高影响力期刊
+          &lt;/h2&gt;
+          &lt;p className="mt-1 text-sm text-fg-3"&gt;
+            从信赖的来源切入。Patra 持续追踪 15,434 本同行评审期刊；以下为影响因子最高的 6 本。
+          &lt;/p&gt;
+        &lt;/div&gt;
+        &lt;button
+          type="button"
+          disabled
+          aria-disabled="true"
+          title="功能即将上线"
+          className="inline-flex items-center gap-1.5 text-sm text-clay-700 hover:text-clay-800 disabled:cursor-not-allowed disabled:opacity-60"
+        &gt;
+          浏览全部期刊 &lt;ArrowRight className="h-3.5 w-3.5" strokeWidth={1.5} /&gt;
+        &lt;/button&gt;
+      &lt;/div&gt;
+
+      &lt;div className="grid grid-cols-6 gap-4 max-[1200px]:grid-cols-3 max-[720px]:grid-cols-none max-[720px]:-mx-5 max-[720px]:flex max-[720px]:gap-3 max-[720px]:overflow-x-auto max-[720px]:snap-x max-[720px]:snap-mandatory max-[720px]:px-5 max-[720px]:py-1 max-[720px]:[scrollbar-width:none] max-[720px]:[&amp;::-webkit-scrollbar]:hidden"&gt;
+        {journals.map((j) =&gt; (
+          &lt;JournalCoverCard
+            key={j.id}
+            journal={j}
+            className="max-[720px]:shrink-0 max-[720px]:min-w-[200px] max-[720px]:basis-[56vw] max-[720px]:snap-start"
+          /&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/section&gt;
+  );
+}</code></pre>
+            <p>说明：「追踪 15,434 本」为当前 SQL 核验的真实期刊总数硬编码；待统计模块（后续 PR）提供期刊总数接口后可改为动态。区块标题「高影响力期刊」与「影响因子最高的 6 本」与排序策略一致，无需改动。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4（GREEN 验证）：运行测试，确认全绿</strong>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm vitest run tests/components/portal/Journals.test.tsx</code></pre>
+            <p>预期：4 个用例全绿（渲染卡片 / 标题 / 失败返回 null / 空列表返回 null）。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/Journals.tsx \
+        patra-portal/tests/components/portal/Journals.test.tsx
+git commit -m "feat(portal): Journals 改 async RSC 接入真实期刊数据 + 文案修正"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 7 ============================== -->
+      <article class="task" id="task-7" data-status="done">
+        <header>
+          <h2>任务 7：删除 mock + 全量验证</h2>
+          <dl class="files">
+            <dt>删除</dt><dd><code>patra-portal/src/data/journals.ts</code></dd>
+            <dt>修改</dt><dd><code>patra-portal/src/data/index.ts</code>（移除 journals re-export）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：确认无残留引用</strong>
+            <p>用 idea <code>search_in_files_by_text</code>（或编辑器全局搜索）在 <code>patra-portal/src</code> + <code>patra-portal/tests</code> 内搜索 <code>JOURNALS</code> 与 <code>from "@/data/journals"</code>，确认仅剩 <code>data/journals.ts</code> 自身与 <code>data/index.ts</code> 的 re-export。</p>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; rg -n "JOURNALS|@/data/journals|JournalCoverStyle" src tests</code></pre>
+            <p>预期：命中只剩 <code>src/data/journals.ts</code> 与 <code>src/data/index.ts</code>。若组件/测试仍有命中，说明 Task 5/6 未清干净，需回头修。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：删除 mock 文件并清理 re-export</strong>
+            <pre><code class="lang-bash">cd patra-portal &amp;&amp; rm src/data/journals.ts</code></pre>
+            <p>编辑 <code>src/data/index.ts</code>，删除 journals 的 re-export 行（形如 <code>export * from "./journals";</code> 或具名 <code>export { JOURNALS } from "./journals";</code>）。其余 re-export（topics / portal-stats 等）保持不动。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：前端全量验证</strong>
+            <pre><code class="lang-bash">cd patra-portal
+pnpm typecheck          # tsc --noEmit，预期 0 error（含 Journal 类型与已删 mock 无悬挂引用）
+pnpm vitest run         # 全量单测，预期全绿
+pnpm biome check .      # 格式 + lint，预期 0 error
+pnpm build              # next build，预期成功</code></pre>
+            <p>预期：四条命令全部通过。typecheck 能兜住「删 mock 后是否还有悬挂 import」。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 4：后端全量验证</strong>
+            <p>用 idea 运行 catalog 三个模块的测试（或 <code>execute_run_configuration</code> 跑对应 test/integrationTest 任务）：<code>patra-catalog-app:test</code>、<code>patra-catalog-infra:integrationTest</code>、<code>patra-catalog-adapter:integrationTest</code>。预期：新增 3 个测试类全绿，且无既有测试回归。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 5：端到端联调（可选但推荐）</strong>
+            <p>用 idea <code>execute_run_configuration</code> 启动 <code>PatraCatalogApplication</code> + <code>PatraGatewayApplication</code>，curl 验证真实数据（<code>--noproxy</code> 走 tailscale 直连，见 shell no_proxy 配置）：</p>
+            <pre><code class="lang-bash">curl -s "http://localhost:9528/patra-catalog/portal/venues?topN=6" | jq '.[0]'</code></pre>
+            <p>预期：返回按影响因子降序的期刊数组，首条含 <code>name/abbr/impactFactor/quartile/foundedYear</code>。再启动 portal（IDE 的 <code>PatraPortal</code> run config，dev 端口 4000）肉眼确认首页期刊区块渲染真实数据。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/data/journals.ts patra-portal/src/data/index.ts
+git commit -m "refactor(portal): 删除期刊 mock 数据，首页期刊全量切真实数据"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec 改造清单 18 项逐项映射：后端 9 个新类 + VenueDao/PortalApiConverter 修改 → Task 1–3；前端 venues.ts/Journals/JournalCoverCard/types/journals.ts/index.ts → Task 4–7；后端测试（ReadAdapterIT/QueryServiceTest/ControllerIT）→ Task 1/2/3；前端测试（venues/JournalCoverCard/Journals）→ Task 4/5/6。Done 判定 5 条由 Task 7 全量验证 + 步骤 5 联调覆盖。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无 TODO/待补/"类似任务 N"。每个代码步骤均含完整可编译代码（Java/TS/SQL/测试）。仅保留两处与 spec 一致的<strong>运行时</strong> TODO 注释（venues.ts 的 zod 校验、Journals 文案的统计接口替代），非计划占位。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>后端读模型字段 <code>id/name/abbr/impactFactor(BigDecimal)/quartile/foundedYear</code> 贯穿 ReadModel→Row→Response 一致；Port 方法 <code>findTopByImpactFactor(int)</code> 与 Dao <code>findTopVenuesByImpactFactor(int)</code>、QueryService <code>listTopVenues</code> 调用一致。前端 <code>Journal</code> 类型字段与后端 Response 同名（前端零映射），<code>fetchVenues</code> 返回 <code>Journal[]</code> 与组件消费一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>7 个 <code>&lt;article class="task"&gt;</code> 均有唯一 <code>id="task-1..7"</code> 与初始 <code>data-status="pending"</code>；所有 <code>&lt;li class="step"&gt;</code> 均 <code>data-status="pending"</code>；TOC <code>toc-tasks</code> 7 条 <code>data-task-status="pending"</code> 与中栏一一对应；头部 <code>dl.meta</code> 含目标/架构/技术栈/关联 spec 四项；<code>&lt;head&gt;</code> 两个 link 指向 spec-theme.css + plan-extras.css，无 inline <code>&lt;style&gt;</code>；5 状态渲染规则由 plan-extras.css 提供。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：Implementation Notes（实施期由 Claude Code 维护）
+       ============================================================ -->
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+<li class="note" data-type="change" data-time="2026-06-02T09:45">
+  <header><span class="note-type">CHANGE</span><time datetime="2026-06-02T09:45">06-02 09:45</time><a href="#task-7">§ Task 7</a></header>
+  <p>Task 4/5/6 引入的前端问题在 Task 7 全量验证时才暴露：JournalCoverCard.tsx pickCover 在 noUncheckedIndexedAccess 下返回 |undefined（typecheck error）、venues/Journals 测试 import 排序与格式不过 biome。控制者已在 commit 2f99c5301 修复（pickCover 改 as const 元组、biome 格式化）。根因：各任务 commit 时 husky 只对 staged 文件跑 biome、不跑全量 typecheck，subagent 自审也未跑全量，故漏到收尾。</p>
+</li>
+<li class="note" data-type="other" data-time="2026-06-02T09:45">
+  <header><span class="note-type">OTHER</span><time datetime="2026-06-02T09:45">06-02 09:45</time><a href="#task-7">§ Task 7</a></header>
+  <p>Composer.tsx 的 typecheck(TS2769) / next build 失败是 main 上预先存在的 Zod v4 / RHF 兼容问题；git log main..HEAD 确认 feature 分支未碰该文件，与期刊 feature 无关，建议单独修，不阻塞本 feature。</p>
+</li>
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+    </ol>
+
+
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">1</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">1</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>
