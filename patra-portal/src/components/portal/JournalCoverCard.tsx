@@ -1,13 +1,32 @@
 import type { CSSProperties } from "react";
 import type { Journal } from "@/types/portal";
 
+/** 深色学术调色板（延续原 mock 视觉质感）：bg 深底 + ink 浅字。 */
+const COVER_PALETTE: ReadonlyArray<{ bg: string; ink: string }> = [
+  { bg: "#3C1611", ink: "#F6E8DA" },
+  { bg: "#1F2E45", ink: "#E9EEF4" },
+  { bg: "#0E574F", ink: "#ECF5F3" },
+  { bg: "#1C1917", ink: "#F4D9B8" },
+  { bg: "#5A1A14", ink: "#F6E8DA" },
+  { bg: "#6E3216", ink: "#FBF1E8" },
+];
+
+/** 按期刊 id 稳定 hash 选取调色板（同一期刊每次同色，SSR/CSR 一致）。 */
+function pickCover(id: string): { bg: string; ink: string } {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return COVER_PALETTE[Math.abs(hash) % COVER_PALETTE.length];
+}
+
 interface JournalCoverCardProps {
   journal: Journal;
   className?: string;
 }
 
 export function JournalCoverCard({ journal, className }: JournalCoverCardProps) {
-  const { bg, ink } = journal.coverStyle;
+  const { bg, ink } = pickCover(journal.id);
   // data-driven hex colors cannot be expressed as static Tailwind utilities;
   // CSS variables are the canonical escape hatch per design system.
   const coverVars = {
@@ -31,11 +50,13 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
         style={coverVars}
         className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[var(--cover-bg)] p-4 text-center text-[var(--cover-ink)] before:absolute before:inset-2 before:border before:border-current before:opacity-20 before:content-['']"
       >
-        <div className="absolute left-2 right-2 top-3 text-center font-mono text-[9.5px] uppercase tracking-[0.18em] opacity-70">
-          est. {journal.founded}
-        </div>
+        {journal.foundedYear !== null && (
+          <div className="absolute left-2 right-2 top-3 text-center font-mono text-[9.5px] uppercase tracking-[0.18em] opacity-70">
+            est. {journal.foundedYear}
+          </div>
+        )}
         <div className="whitespace-pre-line font-serif font-medium leading-[1.05] tracking-tight text-[clamp(20px,2.2vw,26px)]">
-          {journal.cover}
+          {journal.abbr}
         </div>
         <div className="absolute bottom-3 left-2 right-2 text-center font-mono text-[9px] tracking-[0.14em] opacity-60">
           vol · 2026
@@ -49,17 +70,17 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
         <div className="mt-1 flex items-baseline justify-between gap-2">
           <div className="flex flex-col">
             <span className="font-serif text-xl font-medium leading-tight tracking-tight text-ink-900 tabular-nums">
-              {journal.impact.toFixed(1)}
+              {journal.impactFactor.toFixed(1)}
             </span>
             <span className="font-mono text-[9.5px] uppercase tracking-caps text-fg-3">
               影响因子
             </span>
           </div>
-          <div className="text-right font-mono text-[11px] leading-snug tabular-nums text-fg-2">
+          <div className="text-right font-mono leading-snug text-fg-2">
             <span className="block font-mono text-[9.5px] uppercase tracking-caps text-fg-3">
-              本周收录
+              JCR 分区
             </span>
-            {journal.weekly}
+            <span className="text-[13px] font-semibold tabular-nums">{journal.quartile}</span>
           </div>
         </div>
       </div>

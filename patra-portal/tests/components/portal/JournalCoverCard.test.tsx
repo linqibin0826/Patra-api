@@ -2,29 +2,46 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { JournalCoverCard } from "@/components/portal/JournalCoverCard";
-import { JOURNALS } from "@/data/journals";
+import type { Journal } from "@/types/portal";
+
+const journal: Journal = {
+  id: "319041872872550658",
+  name: "Annals of oncology",
+  abbr: "Ann Oncol",
+  impactFactor: 65.4,
+  quartile: "Q1",
+  foundedYear: 1990,
+};
 
 describe("JournalCoverCard", () => {
-  const nejm = JOURNALS.find((j) => j.id === "nejm");
-  if (!nejm) throw new Error("unreachable");
-
   it("渲染期刊全名", () => {
-    render(<JournalCoverCard journal={nejm} />);
-    expect(screen.getByText("New England Journal of Medicine")).toBeInTheDocument();
+    render(<JournalCoverCard journal={journal} />);
+    expect(screen.getByText("Annals of oncology")).toBeInTheDocument();
   });
 
-  it("渲染封面文字 (NEJM)", () => {
-    render(<JournalCoverCard journal={nejm} />);
-    expect(screen.getByText("NEJM")).toBeInTheDocument();
+  it("封面文字来自缩写", () => {
+    render(<JournalCoverCard journal={journal} />);
+    // abbr 在封面与信息区各出现一次
+    expect(screen.getAllByText("Ann Oncol").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("渲染影响因子 (158.5)", () => {
-    render(<JournalCoverCard journal={nejm} />);
-    expect(screen.getByText("158.5")).toBeInTheDocument();
+  it("渲染影响因子 (65.4)", () => {
+    render(<JournalCoverCard journal={journal} />);
+    expect(screen.getByText("65.4")).toBeInTheDocument();
   });
 
-  it("渲染本周收录数 (312)", () => {
-    render(<JournalCoverCard journal={nejm} />);
-    expect(screen.getByText("312")).toBeInTheDocument();
+  it("渲染 JCR 分区 (Q1)", () => {
+    render(<JournalCoverCard journal={journal} />);
+    expect(screen.getByText("Q1")).toBeInTheDocument();
+  });
+
+  it("渲染创刊年 (est. 1990)", () => {
+    render(<JournalCoverCard journal={journal} />);
+    expect(screen.getByText(/1990/)).toBeInTheDocument();
+  });
+
+  it("foundedYear 为 null 时不渲染 est. 行", () => {
+    render(<JournalCoverCard journal={{ ...journal, foundedYear: null }} />);
+    expect(screen.queryByText(/est\./)).not.toBeInTheDocument();
   });
 });
