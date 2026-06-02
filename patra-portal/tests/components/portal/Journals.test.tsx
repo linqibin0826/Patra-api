@@ -1,23 +1,58 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { Journals } from "@/components/portal/Journals";
+import type { Journal } from "@/types/portal";
+
+vi.mock("@/lib/portal-api/venues", () => ({ fetchVenues: vi.fn() }));
+import { fetchVenues } from "@/lib/portal-api/venues";
+
+const SAMPLE: Journal[] = [
+  {
+    id: "1",
+    name: "Annals of oncology",
+    abbr: "Ann Oncol",
+    impactFactor: 65.4,
+    quartile: "Q1",
+    foundedYear: 1990,
+  },
+  {
+    id: "2",
+    name: "Annals of internal medicine",
+    abbr: "Ann Intern Med",
+    impactFactor: 51.6,
+    quartile: "Q1",
+    foundedYear: 1927,
+  },
+];
 
 describe("Journals", () => {
-  it("渲染 6 张封面卡片", () => {
-    render(<Journals />);
-    const buttons = screen.getAllByRole("button");
-    // 6 张 JournalCoverCard（每张渲染为 button）+ 1 个"浏览全部"button
-    expect(buttons).toHaveLength(7);
+  beforeEach(() => {
+    vi.mocked(fetchVenues).mockReset();
   });
 
-  it("包含 NEJM 封面文字", () => {
-    render(<Journals />);
-    expect(screen.getByText("NEJM")).toBeInTheDocument();
+  it("渲染来自 fetchVenues 的期刊卡片", async () => {
+    vi.mocked(fetchVenues).mockResolvedValue(SAMPLE);
+    render(await Journals());
+    expect(screen.getByText("Annals of oncology")).toBeInTheDocument();
+    expect(screen.getByText("Annals of internal medicine")).toBeInTheDocument();
   });
 
-  it("含 '高影响力期刊' 标题", () => {
-    render(<Journals />);
+  it("含 '高影响力期刊' 标题", async () => {
+    vi.mocked(fetchVenues).mockResolvedValue(SAMPLE);
+    render(await Journals());
     expect(screen.getByRole("heading", { name: /高影响力期刊/ })).toBeInTheDocument();
+  });
+
+  it("fetchVenues 失败时不渲染区块（返回 null）", async () => {
+    vi.mocked(fetchVenues).mockRejectedValue(new Error("boom"));
+    const ui = await Journals();
+    expect(ui).toBeNull();
+  });
+
+  it("空列表时不渲染区块（返回 null）", async () => {
+    vi.mocked(fetchVenues).mockResolvedValue([]);
+    const ui = await Journals();
+    expect(ui).toBeNull();
   });
 });
