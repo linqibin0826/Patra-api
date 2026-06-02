@@ -64,7 +64,9 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
         </div>
       </div>
       <div className="flex flex-col gap-1.5 border-t border-border-default bg-paper-50 p-3.5">
-        <div className="text-sm font-semibold leading-snug text-fg-1">{journal.name}</div>
+        <div className="line-clamp-2 min-h-[2.6rem] text-sm font-semibold leading-snug text-fg-1">
+          {journal.name}
+        </div>
         <div className="font-mono text-[10.5px] uppercase tracking-caps text-fg-3">
           {journal.abbr}
         </div>
