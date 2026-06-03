@@ -59,9 +59,6 @@ export interface VenueBrowse {
   issnL: string | null;
 }
 
-/** @deprecated 迁移到 `VenueBrowse`，保留别名供平滑过渡（下次清理时删除） */
-export type Journal = VenueBrowse;
-
 export interface Paper {
   id: string;
   title: string;
