@@ -1,17 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchVenues } from "@/lib/portal-api/venues";
-import type { Journal } from "@/types/portal";
+import type { PageResult, VenueBrowse } from "@/types/portal";
 
-const SAMPLE: Journal[] = [
-  {
-    id: "319041872872550658",
-    name: "Annals of oncology",
-    abbr: "Ann Oncol",
-    impactFactor: 65.4,
-    quartile: "Q1",
-    foundedYear: 1990,
-  },
-];
+const SAMPLE_VENUE: VenueBrowse = {
+  id: "319041872872550658",
+  name: "Annals of oncology",
+  abbr: "Ann Oncol",
+  cover: null,
+  impactFactor: 65.4,
+  jcrQuartile: "Q1",
+  jcrSubject: null,
+  casMajorCategory: null,
+  casMajorQuartile: null,
+  casIsTop: null,
+  countryCode: null,
+  citedByCount: null,
+  foundedYear: 1990,
+  isOpenAccess: null,
+  isInDoaj: null,
+  issnL: null,
+};
+
+const SAMPLE_PAGE: PageResult<VenueBrowse> = {
+  page: 1,
+  pageSize: 6,
+  total: 1,
+  totalPages: 1,
+  items: [SAMPLE_VENUE],
+};
 
 describe("fetchVenues", () => {
   beforeEach(() => {
@@ -22,32 +38,41 @@ describe("fetchVenues", () => {
     delete process.env.PATRA_GATEWAY_BASE_URL;
   });
 
-  it("拼出正确的 gateway URL 并解析 JSON", async () => {
+  it("拼出正确的 gateway URL 并解析 PageResult.items", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValue(new Response(JSON.stringify(SAMPLE), { status: 200 }));
+      .mockResolvedValue(new Response(JSON.stringify(SAMPLE_PAGE), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await fetchVenues(6);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://gw.test:9528/patra-catalog/portal/venues?topN=6",
+      "http://gw.test:9528/patra-catalog/portal/venues?sort=impactFactor&pageSize=6",
       expect.objectContaining({
         cache: "no-store",
         signal: expect.any(AbortSignal),
       }),
     );
-    expect(result).toEqual(SAMPLE);
+    expect(result).toEqual([SAMPLE_VENUE]);
   });
 
-  it("topN 默认 6", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }));
+  it("pageSize 默认 6", async () => {
+    const emptyPage: PageResult<VenueBrowse> = {
+      page: 1,
+      pageSize: 6,
+      total: 0,
+      totalPages: 0,
+      items: [],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(emptyPage), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await fetchVenues();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://gw.test:9528/patra-catalog/portal/venues?topN=6",
+      "http://gw.test:9528/patra-catalog/portal/venues?sort=impactFactor&pageSize=6",
       expect.anything(),
     );
   });

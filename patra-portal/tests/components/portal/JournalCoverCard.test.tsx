@@ -2,15 +2,25 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { JournalCoverCard } from "@/components/portal/JournalCoverCard";
-import type { Journal } from "@/types/portal";
+import type { VenueBrowse } from "@/types/portal";
 
-const journal: Journal = {
+const journal: VenueBrowse = {
   id: "319041872872550658",
   name: "Annals of oncology",
   abbr: "Ann Oncol",
+  cover: null,
   impactFactor: 65.4,
-  quartile: "Q1",
+  jcrQuartile: "Q1",
+  jcrSubject: null,
+  casMajorCategory: null,
+  casMajorQuartile: null,
+  casIsTop: null,
+  countryCode: null,
+  citedByCount: null,
   foundedYear: 1990,
+  isOpenAccess: null,
+  isInDoaj: null,
+  issnL: null,
 };
 
 describe("JournalCoverCard", () => {

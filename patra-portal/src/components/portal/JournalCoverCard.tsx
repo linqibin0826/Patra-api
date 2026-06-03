@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { Journal } from "@/types/portal";
+import type { VenueBrowse } from "@/types/portal";
 
 /** 深色学术调色板（延续原 mock 视觉质感）：bg 深底 + ink 浅字。 */
 const COVER_PALETTE = [
@@ -22,7 +22,7 @@ function pickCover(id: string): { bg: string; ink: string } {
 }
 
 interface JournalCoverCardProps {
-  journal: Journal;
+  journal: VenueBrowse;
   className?: string;
 }
 
@@ -83,7 +83,7 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
             <span className="block font-mono text-[9.5px] uppercase tracking-caps text-fg-3">
               JCR 分区
             </span>
-            <span className="text-[13px] font-semibold tabular-nums">{journal.quartile}</span>
+            <span className="text-[13px] font-semibold tabular-nums">{journal.jcrQuartile}</span>
           </div>
         </div>
       </div>

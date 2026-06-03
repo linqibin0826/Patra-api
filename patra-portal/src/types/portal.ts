@@ -36,14 +36,31 @@ export interface Topic {
   delta?: string;
 }
 
-export interface Journal {
+/**
+ * 期刊浏览端点 `GET /portal/venues` 单条响应结构（VenueBrowse）。
+ * 对应后端 `VenueBrowseDTO`，字段为首页卡片字段的超集。
+ */
+export interface VenueBrowse {
   id: string;
   name: string;
   abbr: string;
+  cover: string | null;
   impactFactor: number;
-  quartile: string; // Q1–Q4
+  jcrQuartile: string | null; // Q1–Q4
+  jcrSubject: string | null;
+  casMajorCategory: string | null;
+  casMajorQuartile: string | null;
+  casIsTop: boolean | null;
+  countryCode: string | null;
+  citedByCount: number | null;
   foundedYear: number | null;
+  isOpenAccess: boolean | null;
+  isInDoaj: boolean | null;
+  issnL: string | null;
 }
+
+/** @deprecated 迁移到 `VenueBrowse`，保留别名供平滑过渡（下次清理时删除） */
+export type Journal = VenueBrowse;
 
 export interface Paper {
   id: string;

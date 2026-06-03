@@ -2,28 +2,48 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { Journals } from "@/components/portal/Journals";
-import type { Journal } from "@/types/portal";
+import type { VenueBrowse } from "@/types/portal";
 
 vi.mock("@/lib/portal-api/venues", () => ({ fetchVenues: vi.fn() }));
 
 import { fetchVenues } from "@/lib/portal-api/venues";
 
-const SAMPLE: Journal[] = [
+const SAMPLE: VenueBrowse[] = [
   {
     id: "1",
     name: "Annals of oncology",
     abbr: "Ann Oncol",
+    cover: null,
     impactFactor: 65.4,
-    quartile: "Q1",
+    jcrQuartile: "Q1",
+    jcrSubject: null,
+    casMajorCategory: null,
+    casMajorQuartile: null,
+    casIsTop: null,
+    countryCode: null,
+    citedByCount: null,
     foundedYear: 1990,
+    isOpenAccess: null,
+    isInDoaj: null,
+    issnL: null,
   },
   {
     id: "2",
     name: "Annals of internal medicine",
     abbr: "Ann Intern Med",
+    cover: null,
     impactFactor: 51.6,
-    quartile: "Q1",
+    jcrQuartile: "Q1",
+    jcrSubject: null,
+    casMajorCategory: null,
+    casMajorQuartile: null,
+    casIsTop: null,
+    countryCode: null,
+    citedByCount: null,
     foundedYear: 1927,
+    isOpenAccess: null,
+    isInDoaj: null,
+    issnL: null,
   },
 ];
 
