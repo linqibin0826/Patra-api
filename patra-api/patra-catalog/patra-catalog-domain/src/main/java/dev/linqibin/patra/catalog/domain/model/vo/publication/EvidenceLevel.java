@@ -76,7 +76,7 @@ public enum EvidenceLevel {
 
   /// 由出版类型词汇列表衍生证据等级（取最强档）。
   ///
-  /// @param typeValues `cat_publication_type.type_value` 列表（可空 / 可含 null 元素）
+  /// @param typeValues `cat_publication_type.type_value` 列表（可空；含 null 元素时静默跳过）
   /// @return 最强证据等级；无命中返回 [#UNKNOWN]
   public static EvidenceLevel classify(Collection<String> typeValues) {
     if (typeValues == null || typeValues.isEmpty()) {
@@ -87,8 +87,9 @@ public enum EvidenceLevel {
       if (typeValue == null) {
         continue;
       }
-      EvidenceLevel level = TYPE_TO_LEVEL.get(typeValue.trim().toLowerCase(Locale.ROOT));
-      if (level != null && level.rank > best.rank) {
+      EvidenceLevel level =
+          TYPE_TO_LEVEL.getOrDefault(typeValue.trim().toLowerCase(Locale.ROOT), UNKNOWN);
+      if (level.rank > best.rank) {
         best = level;
       }
     }

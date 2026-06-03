@@ -17,10 +17,15 @@ class EvidenceLevelTest {
   }
 
   @Test
-  @DisplayName("系统综述 / Meta 分析 → 5 档")
-  void systematicReview() {
+  @DisplayName("Meta 分析 → 5 档")
+  void metaAnalysis() {
     assertThat(EvidenceLevel.classify(List.of("Meta-Analysis")))
         .isEqualTo(EvidenceLevel.SYSTEMATIC_REVIEW);
+  }
+
+  @Test
+  @DisplayName("系统综述 → 5 档")
+  void systematicReview() {
     assertThat(EvidenceLevel.classify(List.of("Systematic Review")))
         .isEqualTo(EvidenceLevel.SYSTEMATIC_REVIEW);
   }
@@ -30,6 +35,13 @@ class EvidenceLevelTest {
   void takesStrongest() {
     assertThat(EvidenceLevel.classify(List.of("Journal Article", "Meta-Analysis")))
         .isEqualTo(EvidenceLevel.SYSTEMATIC_REVIEW);
+  }
+
+  @Test
+  @DisplayName("观察性研究 → 3 档")
+  void cohortOrCaseControl() {
+    assertThat(EvidenceLevel.classify(List.of("Observational Study")))
+        .isEqualTo(EvidenceLevel.COHORT_OR_CASE_CONTROL);
   }
 
   @Test
@@ -47,9 +59,14 @@ class EvidenceLevelTest {
   }
 
   @Test
-  @DisplayName("空 / null → UNKNOWN")
-  void emptyOrNull() {
+  @DisplayName("空列表 → UNKNOWN")
+  void emptyList_returnsUnknown() {
     assertThat(EvidenceLevel.classify(List.of())).isEqualTo(EvidenceLevel.UNKNOWN);
+  }
+
+  @Test
+  @DisplayName("null → UNKNOWN")
+  void nullCollection_returnsUnknown() {
     assertThat(EvidenceLevel.classify(null)).isEqualTo(EvidenceLevel.UNKNOWN);
   }
 
