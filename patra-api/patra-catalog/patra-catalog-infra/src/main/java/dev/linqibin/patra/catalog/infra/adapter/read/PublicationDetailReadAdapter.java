@@ -11,7 +11,6 @@ import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailRead
 import dev.linqibin.patra.catalog.domain.model.vo.publication.EvidenceLevel;
 import dev.linqibin.patra.catalog.domain.port.read.PublicationDetailReadPort;
 import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationDetailDao;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -81,7 +80,7 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
     if (agg == null || agg.isBlank()) {
       return List.of();
     }
-    return Arrays.asList(agg.split(DELIMITER, -1));
+    return List.of(agg.split(DELIMITER, -1));
   }
 
   private List<AbstractSectionView> parseSections(String json) {

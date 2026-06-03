@@ -146,8 +146,8 @@ class PortalPublicationControllerIT {
             .isOa(true)
             .abstractSections(
                 List.of(
-                    dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel
-                        .AbstractSectionView.of("BACKGROUND", "Background text.")))
+                    PublicationDetailReadModel.AbstractSectionView.of(
+                        "BACKGROUND", "Background text.")))
             .build();
     when(portalPublicationDetailQueryService.getById(319041872872550658L)).thenReturn(model);
 
@@ -170,6 +170,8 @@ class PortalPublicationControllerIT {
         .isEqualTo("RANDOMIZED_CONTROLLED_TRIAL")
         .jsonPath("$.abstractSections[0].label")
         .isEqualTo("BACKGROUND")
+        .jsonPath("$.isOa")
+        .isEqualTo(true)
         .jsonPath("$.aiSummary")
         .isEmpty();
   }
