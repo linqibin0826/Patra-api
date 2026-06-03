@@ -29,7 +29,7 @@
           <li data-task-status="done"><a href="#task-1">Task 1 — EvidenceLevel 领域值对象</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — 期刊详情端点</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 文献详情端点</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — 期刊浏览端点 + topN 归并</a></li>
+          <li data-task-status="in-progress"><a href="#task-4">Task 4 — 期刊浏览端点 + topN 归并</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — 首页 FE 取数迁移</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — 集成验证与收尾</a></li>
         </ol>
@@ -1058,7 +1058,7 @@ git commit -m "feat(catalog): 文献详情读端点 GET /portal/publications/{id
       </article>
 
       <!-- ===================== TASK 4 ===================== -->
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="in-progress">
         <header>
           <h2>任务 4：期刊浏览端点 GET /portal/venues + topN 归并</h2>
           <dl class="files">
@@ -1069,7 +1069,7 @@ git commit -m "feat(catalog): 文献详情读端点 GET /portal/publications/{id
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：domain filter / sort / 读模型 / 端口</strong>
             <pre><code class="lang-java">// VenueBrowseSort.java
 package dev.linqibin.patra.catalog.domain.model.read.portal;
@@ -1128,7 +1128,7 @@ public interface VenueBrowseReadPort {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：VenueDao 新增 portal 浏览 native query（投影 + 刊名/CAS分区排序）</strong>
             <p>基于既有 <code>findFilteredJournalPage</code> 的 LATERAL JOIN 结构，但 SELECT portal 卡片字段、返回投影 <code>VenueBrowseRow</code>、补 TITLE / CAS_QUARTILE 排序与 subject/doaj facet。CAS 分区按 Q1&lt;Q2&lt;Q3&lt;Q4 文本升序即强→弱。</p>
             <pre><code class="lang-java">  @Query(
@@ -1189,7 +1189,7 @@ public interface VenueBrowseReadPort {
             <p>注：<code>ESCAPE '!'</code> 与既有约定一致，调用方需先 <code>StringUtils.escapeLike()</code> 转义 keyword。投影 <code>VenueBrowseRow</code> getter 对齐别名。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：VenueBrowseReadAdapter</strong>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
 
@@ -1232,7 +1232,7 @@ public class VenueBrowseReadAdapter implements VenueBrowseReadPort {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：app QueryService（归一化 + escapeLike）</strong>
             <p>参照 <code>PortalFeedQueryService</code> 用 <code>PagingParams.normalize</code>；keyword 用 <code>StringUtils.escapeLike</code>（与 DAO 既有约定一致，确认其包路径后 import）。默认 pageSize 12（浏览页一屏）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
@@ -1283,7 +1283,7 @@ public class PortalVenueBrowseQueryService {
             <p>注：如 commons 已有 <code>StringUtils.escapeLike</code> 工具（DAO 注释提到的契约），优先复用它替换 <code>escapeKeyword</code>；实施时确认其存在与签名，否则保留上面内联实现（转义符 <code>!</code>）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Request 改造 + Response + Controller GET / + 删 topN</strong>
             <p><code>PortalVenueListRequest</code> 改为浏览入参（topN 移除）：</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.request;
@@ -1310,7 +1310,7 @@ public record PortalVenueListRequest(
             <p><strong>删除 topN 链路全部文件/方法</strong>（见任务头「删除」清单）。删除后全局搜索确认无残留引用：<code>grep -rn "PortalVenueReadPort\|PortalVenueResponse\|findTopByImpactFactor\|toVenueResponse\|PortalVenueQuery\b" patra-api/patra-catalog/src</code> 应无命中（FE 引用在 Task 5 处理）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：测试（浏览 adapter / service / controller）+ Commit</strong>
             <p><code>VenueBrowseReadAdapterIT</code>：建多刊（不同 IF / CAS 分区 / 国家 / OA）；断言 ① sort=TITLE 按刊名升序 ② sort=CAS_QUARTILE Q1 在前 ③ subject facet 过滤 ④ keyword 前缀命中 ⑤ 分页 total/items。<code>PortalVenueBrowseQueryServiceTest</code>（Mockito）：默认 pageSize=12、escapeKeyword 转义 <code>%</code>、sort 解析。<code>PortalVenueControllerIT</code>：删原 topN 用例，加 <code>GET /portal/venues?sort=title&amp;page=1&amp;pageSize=12</code> 返回 PageResult（断言 <code>$.items</code>、<code>$.total</code>、<code>$.page</code>），pageSize=51 → 422。</p>
             <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-infra:test :patra-api:patra-catalog:patra-catalog-app:test :patra-api:patra-catalog:patra-catalog-adapter:test --tests "*VenueBrowse*" --tests "*PortalVenueControllerIT"
