@@ -30,8 +30,8 @@
           <li data-task-status="done"><a href="#task-2">Task 2 — 期刊详情端点</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 文献详情端点</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — 期刊浏览端点 + topN 归并</a></li>
-          <li data-task-status="in-progress"><a href="#task-5">Task 5 — 首页 FE 取数迁移</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — 集成验证与收尾</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — 首页 FE 取数迁移</a></li>
+          <li data-task-status="in-progress"><a href="#task-6">Task 6 — 集成验证与收尾</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -1321,7 +1321,7 @@ git commit -m "feat(catalog): 期刊浏览检索端点 GET /portal/venues 并归
       </article>
 
       <!-- ===================== TASK 5 ===================== -->
-      <article class="task" id="task-5" data-status="in-progress">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：首页期刊模块取数迁移到浏览端点</h2>
           <dl class="files">
@@ -1349,7 +1349,7 @@ git commit -m "refactor(portal): 首页期刊模块迁移到浏览端点取数 (
       </article>
 
       <!-- ===================== TASK 6 ===================== -->
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="in-progress">
         <header>
           <h2>任务 6：集成验证与收尾</h2>
           <dl class="files">
@@ -1357,11 +1357,11 @@ git commit -m "refactor(portal): 首页期刊模块迁移到浏览端点取数 (
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：catalog 全量构建 + 测试</strong>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-boot:build</code>（含全模块 test）。预期：BUILD SUCCESSFUL，无 SpotBugs/Spotless 告警（pre-commit 亦会校验）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：端到端手测（经 gateway）</strong>
             <p>启动 catalog + gateway，验证：</p>
             <pre><code class="lang-bash"># 期刊详情（取一个真实 venue id）
@@ -1374,11 +1374,11 @@ curl -s "http://&lt;gateway&gt;/patra-catalog/portal/venues?sort=title&pageSize=
 curl -s -o /dev/null -w "%{http_code}" "http://&lt;gateway&gt;/patra-catalog/portal/venues/999999999"  # 期望 404</code></pre>
             <p>预期：详情返回完整数据集；evidenceLevel 含 level/label/derived；浏览返回 PageResult；不存在 id → 404 + <code>CATALOG-0404</code>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：对照 Done 判定 + 更新 Issue</strong>
             <p>逐条核对 spec「Done 判定」6 条。在 Linear PAP-42 评论标注完成状态。确认 homepageUrl/aiSummary 恒 null、收藏不返回。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：最终 Commit（如有收尾改动）</strong>
             <pre><code class="lang-bash">git add -A
 git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code></pre>
