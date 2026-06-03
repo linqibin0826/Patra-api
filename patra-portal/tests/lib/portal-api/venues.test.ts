@@ -6,7 +6,7 @@ const SAMPLE_VENUE: VenueBrowse = {
   id: "319041872872550658",
   name: "Annals of oncology",
   abbr: "Ann Oncol",
-  cover: null,
+  coverObjectKey: null,
   impactFactor: 65.4,
   jcrQuartile: "Q1",
   jcrSubject: null,
