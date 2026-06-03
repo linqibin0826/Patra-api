@@ -958,7 +958,7 @@ public interface PublicationDetailDao extends JpaRepository&lt;PublicationEntity
 
           <li class="step" data-status="pending">
             <strong>步骤 3：PublicationDetailReadAdapter（解析摘要 + 衍生证据等级）</strong>
-            <p>结构化摘要：jsonb 不保留 key 序 → 用规范节序 <code>SECTION_ORDER</code> 排序，未知节附后（稳定）。注入 Spring <code>ObjectMapper</code> 解析 JSON 文本。证据等级用 <code>EvidenceLevel.classify(types)</code>。</p>
+            <p>结构化摘要：按<strong>有序数组契约</strong>消费——<code>structured_sections</code> 为有序 JSON 数组 <code>[{label,text}]</code>，注入 Spring <code>ObjectMapper</code> 直接反序列化为 <code>List&lt;AbstractSectionView&gt;</code>，<strong>保留节序、不重排</strong>。存储格式改造（旧扁平对象 → 有序数组）见 <a href="https://linear.app/papertrace/issue/PAP-48">PAP-48</a>；落地前真实数据 <code>structured_sections</code> 仍是旧对象格式、走 <code>plainText</code> 兜底。证据等级用 <code>EvidenceLevel.classify(types)</code>。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -980,15 +980,6 @@ import org.springframework.stereotype.Repository;
 public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
 
   private static final String DELIMITER = "";
-
-  /// 规范节序（PubMed 常见结构化摘要阅读顺序）；未列出的节按出现顺序附后。
-  private static final List&lt;String&gt; SECTION_ORDER = List.of(
-      "IMPORTANCE", "BACKGROUND", "CONTEXT", "OBJECTIVE", "OBJECTIVES", "PURPOSE", "AIM", "AIMS",
-      "INTRODUCTION", "DESIGN", "SETTING", "PARTICIPANTS", "PATIENT SELECTION CRITERIA",
-      "INTERVENTIONS", "INTERVENTIONS OR EXPOSURES", "METHODS", "MATERIALS AND METHODS",
-      "MAIN OUTCOMES AND MEASURES", "OUTCOME MEASURES AND COMPARISONS", "OUTCOME MEASURES",
-      "RESULTS", "FINDINGS", "DISCUSSION", "CONCLUSION", "CONCLUSIONS", "RELEVANCE",
-      "LEVEL OF EVIDENCE");
 
   private final PublicationDetailDao dao;
   private final ObjectMapper objectMapper;
@@ -1027,34 +1018,25 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
     return List.of(agg.split(DELIMITER, -1));
   }
 
-  /// 解析 structured_sections JSON（扁平 kv）为有序 section list。jsonb 不保留 key 序，
-  /// 故按 SECTION_ORDER 排序，未知节稳定附后。解析失败返回空（plainText 兜底）。
+  /// 解析 structured_sections JSON 为有序 section list。
+  /// 存储契约（见 PAP-48）：structured_sections 为有序 JSON 数组 [{"label":..,"text":..}]，
+  /// 直接按数组顺序反序列化，保留节序、不做任何重排。解析失败返回空（plainText 兜底）。
   private List&lt;AbstractSectionView&gt; parseSections(String json) {
     if (json == null || json.isBlank()) return List.of();
-    Map&lt;String, String&gt; raw;
     try {
-      raw = objectMapper.readValue(json, new TypeReference&lt;LinkedHashMap&lt;String, String&gt;&gt;() {});
+      return objectMapper.readValue(json, new TypeReference&lt;List&lt;AbstractSectionView&gt;&gt;() {});
     } catch (Exception e) {
       log.warn("解析 structured_sections 失败，降级为空 section list", e);
       return List.of();
     }
-    return raw.entrySet().stream()
-        .sorted(Comparator.comparingInt(en -> orderOf(en.getKey())))
-        .map(en -> new AbstractSectionView(en.getKey(), en.getValue()))
-        .toList();
-  }
-
-  private int orderOf(String label) {
-    int idx = SECTION_ORDER.indexOf(label == null ? "" : label.toUpperCase(Locale.ROOT));
-    return idx &lt; 0 ? Integer.MAX_VALUE : idx;
   }
 }</code></pre>
-            <p>注：<code>.sorted</code> 对 Stream 是稳定排序，未知节（idx=MAX_VALUE）保留相对出现顺序。</p>
+            <p>注：节序由存储数组直接保证（见 <a href="https://linear.app/papertrace/issue/PAP-48">PAP-48</a> 入库改造）；<code>AbstractSectionView</code> 是 Java record，Jackson 按 JSON 数组元素 <code>{label,text}</code> 直接反序列化为组件，无需自定义。</p>
           </li>
 
           <li class="step" data-status="pending">
             <strong>步骤 4：Adapter 切片测（含摘要排序 + 证据等级）</strong>
-            <p><code>PublicationDetailReadAdapterIT</code>（@DataJpaTest + Testcontainers）：建 publication + abstract（structured_sections 乱序 JSON）+ 多条 publication_type（含 RCT）+ 作者；断言 abstractSections 按规范序、evidenceLevel=RANDOMIZED_CONTROLLED_TRIAL、authors 顺序、not-found empty。需 <code>@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class})</code> 且 ObjectMapper 由 @DataJpaTest 上下文提供（若未提供则在测试 @Import 一个 <code>new ObjectMapper()</code> 的 @TestConfiguration bean）。</p>
+            <p><code>PublicationDetailReadAdapterIT</code>（@DataJpaTest + Testcontainers）：建 publication + abstract（structured_sections 存为有序数组 JSON <code>[{"label":"BACKGROUND",..},{"label":"METHODS",..},{"label":"RESULTS",..}]</code>）+ 多条 publication_type（含 RCT）+ 作者；断言 abstractSections <strong>顺序与入库数组一致</strong>（BACKGROUND→METHODS→RESULTS）、evidenceLevel=RANDOMIZED_CONTROLLED_TRIAL、authors 顺序、not-found empty。需 <code>@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class})</code> 且 ObjectMapper 由 @DataJpaTest 上下文提供（若未提供则在测试 @Import 一个 <code>new ObjectMapper()</code> 的 @TestConfiguration bean）。</p>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-infra:test --tests "*PublicationDetailReadAdapterIT"</code></p>
           </li>
 
@@ -1411,7 +1393,7 @@ git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code
 
       <aside class="callout success">
         <span class="title">1. 规格覆盖度</span>
-        <p>spec §3 端点 → Task 2/3/4；§4 DTO 分层 → 各端点 Response（Task 2/3/4 步骤含完整字段）；§5 六边形 → 各 Task 的 domain/infra/app/adapter 分层；§6 evidenceLevel → Task 1 + Task 3；§决策1 topN 归并 → Task 4 删除清单 + Task 5 FE 迁移；§决策2 读时衍生 → Task 1/3；§决策3 摘要有序数组 → Task 3 SECTION_ORDER；§决策4 homepageUrl null → Task 2 Response 字段；§决策5 facet 计数不做 → 未建聚合查询（浏览仅过滤）；§决策6 学科=JCR subject → Task 4 query 用 jcr.subject。无遗漏。</p>
+        <p>spec §3 端点 → Task 2/3/4；§4 DTO 分层 → 各端点 Response（Task 2/3/4 步骤含完整字段）；§5 六边形 → 各 Task 的 domain/infra/app/adapter 分层；§6 evidenceLevel → Task 1 + Task 3；§决策1 topN 归并 → Task 4 删除清单 + Task 5 FE 迁移；§决策2 读时衍生 → Task 1/3；§决策3 摘要有序数组 → Task 3 直接按数组顺序解析（存储改造见 PAP-48）；§决策4 homepageUrl null → Task 2 Response 字段；§决策5 facet 计数不做 → 未建聚合查询（浏览仅过滤）；§决策6 学科=JCR subject → Task 4 query 用 jcr.subject。无遗漏。</p>
       </aside>
 
       <aside class="callout success">

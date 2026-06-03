@@ -153,7 +153,7 @@
       <p>id, name, abbr, cover, impactFactor, jcrQuartile, jcrSubject, casMajor, casQuartile, casIsTop, country, citedTotal, publisher, foundedYear, isOpenAccess, isInDoaj, issn。</p>
 
       <h3>4.4 结构化摘要映射</h3>
-      <p><code>cat_publication_abstract.structured_sections</code> 是 JSONB 扁平 kv（key=节标题如 <code>BACKGROUND</code>，value=节文本），节名来自 PubMed 无固定枚举。→ DTO 映射为<strong>有序数组</strong> <code>sections: [{label, text}]</code> 保留原始/入库节序；<code>plainText</code> 作无结构摘要 fallback。前端不依赖固定枚举。</p>
+      <p><code>cat_publication_abstract.structured_sections</code> 的<strong>目标存储形态为有序 JSON 数组</strong> <code>[{label, text}]</code>，读端直接按数组顺序反序列化为 <code>sections</code>，保留节序、不重排；<code>plainText</code> 作无结构摘要 fallback。注：当前存量数据为扁平 JSONB 对象（PostgreSQL jsonb 不保留 key 序，节序已丢失），入库改为有序数组存储的改造在 <a href="https://linear.app/papertrace/issue/PAP-48">PAP-48</a> 跟踪；本端点按数组契约实现，PAP-48 落地前真实数据走 <code>plainText</code> 兜底。</p>
     </section>
 
     <section id="hexagonal">
