@@ -1472,12 +1472,20 @@ git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code
         </header>
         <p>去掉 PublicationAbstractEntity / PublicationAlternativeAbstractEntity 的 @Lob —— 对 TEXT 列错误映射，Hibernate7+PG 下内容存入 large object、TEXT 列存 OID 串。改普通 String↔TEXT，文献详情用 a.plain_text 普通列读取（曾误用 lo_get 已还原）。</p>
       </li>
+      <li class="note" data-type="decision" data-time="2026-06-04T01:10">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-06-04T01:10">06-04 01:10</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>VenueBrowseSort.fromCode 用 Locale.ROOT 做 toLowerCase（SpotBugs DM_CONVERT_CASE 强制 + 避免土耳其语 i 问题），与 EvidenceLevel 一致。标准做法，无功能影响。</p>
+      </li>
 </ol>
 
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">1</span> decisions /
+      <span data-counter="decision">2</span> decisions /
       <span data-counter="change">3</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
