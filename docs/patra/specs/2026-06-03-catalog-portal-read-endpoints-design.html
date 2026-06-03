@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catalog Portal 读端点设计：期刊/文献详情 + 期刊浏览检索（PAP-42）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题。相对路径 ../styles/ 从生成位置 docs/patra/specs/ 出发；
+       放进子目录的 spec（如 docs/patra/specs/<feature>/）改成 ../../styles/。
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 spec 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#endpoints">端点设计</a></li>
+      <li><a href="#dto">DTO 字段分层</a></li>
+      <li><a href="#hexagonal">六边形落地</a></li>
+      <li><a href="#evidence">evidenceLevel 衍生</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>Catalog Portal 读端点设计：期刊/文献详情 + 期刊浏览检索</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-03</span>
+        <span>🌿 pap-42-be-portal-read-endpoints</span>
+        <span>👤 Lin</span>
+        <span>🎫 PAP-42</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>为 v0.5 门户在 catalog 服务新增三条 portal 读端点：期刊详情 <code>GET /portal/venues/{id}</code>、文献详情 <code>GET /portal/publications/{id}</code>、期刊浏览/检索 <code>GET /portal/venues</code>（PageResult）。沿用既有 CQRS 读侧模式（domain ReadPort → infra ReadAdapter+JPA projection → app QueryService → adapter controller）。<strong>归并 topN 端点</strong>：浏览端点 subsumes 原 <code>?topN</code>，首页改读 <code>?sort=impactFactor&amp;pageSize=6</code>。详情端点按渐进式披露策略<strong>一次返回完整数据集</strong>（含深数据层）。<code>evidenceLevel</code> 为读时 Domain 层衍生（不落库），<code>homepageUrl</code> 本版恒 null（采集另开 ingest issue）。全程 TDD。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>v0.5「Portal Detail Pages」要让访客从首页点开期刊/文献进入详情页、并提供期刊浏览检索页（Design 阶段 PAP-40/41/46 的 Claude Design hi-fi 已交付）。catalog 服务当前 portal 读侧仅有两个端点：<code>GET /portal/venues?topN</code>（首页 Top 期刊，返回 <code>List&lt;PortalVenueResponse&gt;</code>）与 <code>GET /portal/publications</code>（首页 explore-feed，返回 <code>PageResult&lt;PortalPaperResponse&gt;</code>）。</p>
+      <p>读侧已是成熟的 CQRS 模式：Domain 层定义 <code>XxxReadModel</code>（record）+ <code>XxxReadPort</code>（domain/port/read），Infra 层用 native query + JPA interface projection 一次性组装（无 <code>@Entity</code> 聚合加载、无 N+1），App 层 <code>XxxQueryService</code>（无接口、无 <code>@Transactional</code>）编排并归一化分页，Adapter 层 controller + <code>PortalApiConverter</code> 映射 response。分页统一用 <code>PagingParams</code> / <code>PageResult&lt;T&gt;</code>（linqibin-commons-core）。</p>
+      <p>DB（catalog 库）数据齐备：期刊有 <code>cat_venue</code> 主表 + JCR/CAS/Scopus 三套评级表 + 年度趋势 <code>cat_venue_publication_stats</code> + 标识符/期号表，<code>publication_profile</code>/<code>citation_metrics</code>/<code>open_access</code> 以 JSONB 存于主表；文献有 <code>cat_publication</code> 主表 + 摘要（<code>structured_sections</code> JSONB 扁平 kv）/作者+机构/标识符/类型(MeSH)/MeSH heading/关键词/资助/多类型日期等子表，<code>cat_publication.venue_id</code> 直挂 <code>cat_venue</code>。<strong>关键缺口</strong>：全库无期刊官网 <code>homepageUrl</code> 列；<code>evidenceLevel</code> 为衍生概念（DB 无此字段，但 <code>cat_publication_type</code> 的 MeSH 类型词汇足以推算）。<code>VenueDao.findFilteredJournalPage()</code> 已实现带 facet 过滤 + 四维排序的分页查询，仅未被 portal 端点暴露。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>期刊详情 <code>GET /portal/venues/{id}</code> + 文献详情 <code>GET /portal/publications/{id}</code>（各配独立大而全详情 DTO，含深数据层）</li>
+            <li>期刊浏览/检索 <code>GET /portal/venues</code>（分页 + 刊名搜索 q + 排序 + facet 过滤），返回 <code>PageResult</code></li>
+            <li>归并 topN：删除原 topN List 端点形态；首页 FE 取数迁移到浏览端点（与本 BE 改动同批落地）</li>
+            <li><code>evidenceLevel</code> 读时衍生（Domain 层 <code>EvidenceLevel.classify()</code>）</li>
+            <li><code>VenueDao</code> 扩排序维度（刊名 A–Z、中科院分区）</li>
+            <li>by-id not-found → <code>CATALOG-0404</code> 错误映射</li>
+            <li>三端点 TDD：Domain 单测 + Adapter 切片测 + Controller 测</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li><strong>homepageUrl 采集</strong>：详情 DTO 带字段但恒 null；不加 DB 列、不碰 ingest。采集另开 ingest issue。</li>
+            <li><strong>facet 计数（cross-facet count）</strong>：本版 facet 仅作过滤，不做服务端聚合计数；FE 角标占位但不接数。</li>
+            <li><code>aiSummary</code>（边界 B，恒 null）、收藏/书签（边界 C，不返回）</li>
+            <li>FE 详情页/浏览页实现（PAP-44/45/47）、全局 404/错误屏 FE 落地</li>
+            <li>文献检索结果页 / 主题聚合页 / 该刊收录文献列表（非本版）</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="endpoints">
+      <h2>3. 端点设计</h2>
+      <table>
+        <thead>
+          <tr><th>端点</th><th>用途</th><th>返回</th><th>查不到 / 空</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /portal/venues/{id}</code></td>
+            <td>期刊详情</td>
+            <td><code>PortalVenueDetailResponse</code></td>
+            <td>404（<code>CATALOG-0404</code>）</td>
+          </tr>
+          <tr>
+            <td><code>GET /portal/publications/{id}</code></td>
+            <td>文献详情</td>
+            <td><code>PortalPublicationDetailResponse</code></td>
+            <td>404（<code>CATALOG-0404</code>）</td>
+          </tr>
+          <tr>
+            <td><code>GET /portal/venues</code></td>
+            <td>期刊浏览/检索（含首页 Top）</td>
+            <td><code>PageResult&lt;PortalVenueBrowseResponse&gt;</code></td>
+            <td>空 <code>PageResult</code>（200，<code>items:[]</code>）</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><strong>浏览端点入参</strong>：<code>q</code>（刊名/缩写模糊）、<code>sort</code>（<code>impactFactor</code> | <code>casQuartile</code> | <code>title</code> | <code>citedBy</code>）、<code>page</code> / <code>pageSize</code>（<code>PagingParams.normalize</code> 归一化）、facet：<code>subject</code>（JCR subject）、<code>jcrQuartile</code>、<code>casQuartile</code>、<code>casTop</code>、<code>openAccess</code>、<code>doaj</code>、<code>country</code>。</p>
+      <p><strong>topN 归并</strong>：原 <code>GET /portal/venues?topN=6</code>（返回 <code>List</code>）删除；首页「IF Top 6」改为 <code>GET /portal/venues?sort=impactFactor&amp;pageSize=6</code> 取 <code>.items</code>。浏览卡片字段是首页卡片的超集，兼容。经 gateway 实际路径为 <code>/patra-catalog/portal/venues</code>（StripPrefix=1）。</p>
+      <aside class="callout info">
+        <span class="title">为什么详情端点一次返回全量</span>
+        <p>按 <code>patra-portal/CLAUDE.md</code> 渐进式披露策略的 BE 连带含义：详情类端点一次返回完整数据集（含深数据层），由前端按需折叠披露，避免多次往返。故两个详情 DTO 是「大而全」结构。</p>
+      </aside>
+    </section>
+
+    <section id="dto">
+      <h2>4. DTO 字段分层</h2>
+      <p>详情 DTO 在结构上不区分「默认/深数据」（一次返回全量），下表的分层仅标注 FE 的披露层级，便于核对字段来源。</p>
+
+      <h3>4.1 <code>PortalVenueDetailResponse</code>（期刊详情）</h3>
+      <table>
+        <thead><tr><th>层级</th><th>字段</th><th>来源</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill keep">默认层</span></td><td>id, title, abbreviatedTitle, venueType, issnList, country/countryName, primaryLanguage, foundedYear, subjectAreas, coverUrl, isOpenAccess, <strong>homepageUrl=null</strong></td><td><code>cat_venue</code> 主表 + <code>cat_venue_identifier</code> + <code>publication_profile</code> JSONB</td></tr>
+          <tr><td><span class="pill keep">默认层</span></td><td>metrics：jcr{impactFactor,quartile,percentile,rank,subject}、cas{majorCategory,majorQuartile,minorSubject,minorQuartile,isTop,isReview}、scopus{citeScore,sjr,snip,percentile}、bibliometric{hIndex,i10Index,citedByCount,worksCount}</td><td>三套评级表最新年 + <code>citation_metrics</code> JSONB</td></tr>
+          <tr><td><span class="pill create">深数据层</span></td><td>completeRatings（多年 JCR/CAS/Scopus 列表）、yearlyStats（年度发文/被引）、publicationProfile（frequency/medlineIndexed/languages/startYear）、openAccess（oaType/apcUsd/isInDoaj）、affiliatedSocieties、identifiers、casWarning</td><td>评级表全量 + <code>cat_venue_publication_stats</code> + JSONB</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4.2 <code>PortalPublicationDetailResponse</code>（文献详情）</h3>
+      <table>
+        <thead><tr><th>层级</th><th>字段</th><th>来源</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill keep">默认层</span></td><td>id, title, originalTitle, venue{id,name,year}, publicationYear, <strong>evidenceLevel{level,derived:true,label}</strong>, abstract{type, sections[{label,text}], plainText}, identifiers{doi,pmid,pmcid,pii}, primaryType, authorCount + 前 N 位作者</td><td><code>cat_publication</code> + <code>cat_publication_abstract</code> + <code>cat_publication_identifier</code> + <code>cat_publication_type</code> + 衍生</td></tr>
+          <tr><td><span class="pill create">深数据层</span></td><td>authors[]（order/isFirst/isCorresponding/affiliation）、meshHeadings[]（term,major）、keywords[]、funding[]、dates（received/accepted/published/ePublished）、numberOfReferences、conflictOfInterest、isOa/oaUrl、全部 identifiers、publicationTypes[]</td><td>作者/机构/MeSH/关键词/资助/日期 各子表</td></tr>
+          <tr><td><span class="pill delete">边界</span></td><td>aiSummary=null（边界 B）、收藏不返回（边界 C）</td><td>—</td></tr>
+        </tbody>
+      </table>
+
+      <h3>4.3 <code>PortalVenueBrowseResponse</code>（浏览卡片）</h3>
+      <p>id, name, abbr, cover, impactFactor, jcrQuartile, jcrSubject, casMajor, casQuartile, casIsTop, country, citedTotal, publisher, foundedYear, isOpenAccess, isInDoaj, issn。</p>
+
+      <h3>4.4 结构化摘要映射</h3>
+      <p><code>cat_publication_abstract.structured_sections</code> 是 JSONB 扁平 kv（key=节标题如 <code>BACKGROUND</code>，value=节文本），节名来自 PubMed 无固定枚举。→ DTO 映射为<strong>有序数组</strong> <code>sections: [{label, text}]</code> 保留原始/入库节序；<code>plainText</code> 作无结构摘要 fallback。前端不依赖固定枚举。</p>
+    </section>
+
+    <section id="hexagonal">
+      <h2>5. 六边形落地</h2>
+      <p>三条读流各自一套，沿用现有读侧分层；包路径见 <code>.claude/rules/tech/port-service.md</code>（ReadPort 在 <code>domain/port/read</code>，ReadAdapter 在 <code>infra/adapter/read</code>）。</p>
+      <h3>5.1 期刊详情</h3>
+      <p><code>VenueDetailReadModel</code>(domain/model/read/portal) → <code>VenueDetailReadPort</code>(domain/port/read，<code>Optional&lt;VenueDetailReadModel&gt; findById(long)</code>) → <code>VenueDetailReadAdapter</code> + projection(infra/adapter/read，主表 + 多评级表 + 年度趋势 LATERAL/批量子查询) → <code>VenueDao</code> 扩查 → <code>PortalVenueDetailQueryService</code>(app，空 Optional 抛 NOT_FOUND) → <code>PortalVenueController#getById</code> + <code>PortalVenueDetailResponse</code>。</p>
+      <h3>5.2 文献详情</h3>
+      <p><code>PublicationDetailReadModel</code>（含 <code>EvidenceLevel</code> 衍生字段）→ <code>PublicationDetailReadPort</code> → <code>PublicationDetailReadAdapter</code>（abstract / authors+affiliation / types / mesh / keywords / funding / dates 子查询，<code>structured_sections</code> JSONB→有序数组）→ <code>PortalPublicationDetailQueryService</code> → <code>PortalPublicationController#getById</code> + <code>PortalPublicationDetailResponse</code>。</p>
+      <h3>5.3 期刊浏览</h3>
+      <p><code>VenueBrowseFilter</code>(record) + <code>VenueBrowseSort</code>(enum：IMPACT_FACTOR/CAS_QUARTILE/TITLE/CITED_BY) → <code>VenueBrowseReadPort</code>(<code>PageResult&lt;VenueBrowseReadModel&gt; search(filter, PagingParams)</code>) → <code>VenueBrowseReadAdapter</code> 复用 <code>VenueDao.findFilteredJournalPage</code>（<strong>扩 TITLE / CAS_QUARTILE 两种 ORDER BY</strong>）→ <code>PortalVenueQueryService</code> 扩展 → <code>PortalVenueController#list</code>(PageResult) + <code>PortalVenueBrowseResponse</code>。原 <code>PortalVenueResponse</code> / <code>findTopByImpactFactor</code> 链路删除/重写。</p>
+    </section>
+
+    <section id="evidence">
+      <h2>6. evidenceLevel 衍生</h2>
+      <p>Domain 层 <code>EvidenceLevel.classify(List&lt;String&gt; typeCodes)</code>，输入取 <code>cat_publication_type</code>（MeSH UI + 标准词汇，多值），多类型取最强档；带 <code>derived=true</code> 标记，无法判定 → <code>UNKNOWN</code>（降级态，绝不臆造）。映射表（已确认）：</p>
+      <table>
+        <thead><tr><th>档（设计稿格数）</th><th>证据等级</th><th>命中类型（MeSH 词汇）</th></tr></thead>
+        <tbody>
+          <tr><td>5 格</td><td>系统综述 / Meta 分析</td><td>Systematic Review, Meta-Analysis, Scoping Review</td></tr>
+          <tr><td>4 格</td><td>随机对照试验</td><td>Randomized Controlled Trial</td></tr>
+          <tr><td>3 格</td><td>队列 / 病例对照</td><td>Cohort Study, Case-Control Study, Observational Study</td></tr>
+          <tr><td>2 格</td><td>非系统综述 / 横断面</td><td>Review, Cross-Sectional Study, Clinical Trial（非 RCT）</td></tr>
+          <tr><td>1 格</td><td>病例报告</td><td>Case Reports</td></tr>
+          <tr><td>unknown</td><td>无法判定</td><td>其余（Editorial / Letter / Comment…）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="decisions">
+      <h2>关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：归并 topN，浏览端点 subsume 首页 Top</h3>
+        <p><code>GET /portal/venues</code> 改为浏览端点（PageResult），删除原 topN List 形态；首页 Top 6 改读 <code>?sort=impactFactor&amp;pageSize=6</code>。</p>
+        <p class="alternatives"><strong>备选 A：</strong>浏览另用同路径 + 首页保留 <code>GET /portal/venues/top</code>(List) 并存 — 否决：两个期刊列表端点并存，违背绿地「不留并行实现」。<br>
+        <strong>代价：</strong>首页 FE 取数须同批迁移（删端点后首页会断），smoke test 验首页。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：evidenceLevel 读时衍生（Domain 层），不落库</h3>
+        <p>读模型组装时调 <code>EvidenceLevel.classify()</code> 实时推算。</p>
+        <p class="alternatives"><strong>备选 A：</strong>ingest 时计算并持久化 — 否决：规则调整须全量回填；绿地+详情低 QPS 无须预计算。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：结构化摘要映射为有序数组</h3>
+        <p>JSONB 扁平 kv → <code>sections: [{label, text}]</code> 保留节序 + <code>plainText</code> fallback。</p>
+        <p class="alternatives"><strong>备选 A：</strong><code>Map&lt;String,String&gt;</code> 原样透传 — 否决：丢失节序，阅读体验差。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：homepageUrl 读端恒 null，不加列、采集另开</h3>
+        <p>详情 DTO 带 <code>homepageUrl</code> 字段但恒 null，FE 降级（按钮 disabled + tooltip）。</p>
+        <p class="alternatives"><strong>备选 A：</strong>本版加列 + 从 OpenAlex source 回填 — 否决：超出读端范围、引入 ingest 工作量。<br>
+        <strong>备选 B：</strong>彻底删字段 — 否决：与已交付设计（按钮含 null 降级）不一致。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：facet 计数本版不实现</h3>
+        <p>facet 仅作过滤；FE 角标占位但不接数。</p>
+        <p class="alternatives"><strong>备选 A：</strong>服务端 cross-facet 聚合计数 — 否决：handoff 的计数属「锦上添花」（不在简报），分页下需额外聚合查询，非本版必要。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 6：「学科」facet 用 JCR subject</h3>
+        <p>浏览 <code>subject</code> facet 取 JCR rating 的 <code>subject</code>。</p>
+        <p class="alternatives"><strong>备选 A：</strong>CAS <code>major_category</code>（中文学科大类）— 用户选定 JCR subject。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>删 topN 端点后首页未同步改取数 → 首页期刊模块断</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>BE 删端点与首页 FE 取数迁移同 PR/同批落地；smoke test 验首页 Top 6 渲染</td>
+          </tr>
+          <tr>
+            <td>evidenceLevel 衍生误判（临床敏感标签）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>带「衍生」标记 + UNKNOWN 降级；映射表经人工确认；Domain 单测覆盖各档 + 多类型取最强 + unknown</td>
+          </tr>
+          <tr>
+            <td>structured_sections 节名跨文章不一致、无固定枚举</td>
+            <td><span class="pill low">low</span></td>
+            <td>有序数组原样透传 label，前端不依赖固定枚举</td>
+          </tr>
+          <tr>
+            <td>文献详情多子查询（authors/mesh/funding/dates）性能/N+1</td>
+            <td><span class="pill low">low</span></td>
+            <td>详情低 QPS；projection + 批量子查询/LATERAL JOIN，避免循环单查</td>
+          </tr>
+          <tr>
+            <td>homepageUrl 恒 null 影响期刊页主操作观感</td>
+            <td><span class="pill low">low</span></td>
+            <td>FE 已设计 disabled + tooltip 降级；采集 backlog 跟进</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>改造文件清单</h2>
+      <p>均在 <code>patra-api/patra-catalog/</code>，最后一行为 <code>patra-portal</code> 首页迁移。具体类按 TDD 增量创建。</p>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件 / 类</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>domain/…/EvidenceLevel</code></td><td><span class="pill create">create</span></td><td>证据等级 VO/enum + <code>classify(typeCodes)</code></td></tr>
+          <tr><td>2</td><td><code>domain/model/read/portal/VenueDetailReadModel</code></td><td><span class="pill create">create</span></td><td>期刊详情读模型（嵌套评级/趋势/profile record）</td></tr>
+          <tr><td>3</td><td><code>domain/model/read/portal/PublicationDetailReadModel</code></td><td><span class="pill create">create</span></td><td>文献详情读模型（含 evidenceLevel、有序摘要节）</td></tr>
+          <tr><td>4</td><td><code>domain/model/read/portal/VenueBrowseFilter</code> / <code>VenueBrowseSort</code></td><td><span class="pill create">create</span></td><td>浏览过滤 record + 排序枚举</td></tr>
+          <tr><td>5</td><td><code>domain/port/read/VenueDetailReadPort</code> / <code>PublicationDetailReadPort</code> / <code>VenueBrowseReadPort</code></td><td><span class="pill create">create</span></td><td>三条读端口</td></tr>
+          <tr><td>6</td><td><code>infra/adapter/read/VenueDetailReadAdapter</code> + projection</td><td><span class="pill create">create</span></td><td>期刊详情组装</td></tr>
+          <tr><td>7</td><td><code>infra/adapter/read/PublicationDetailReadAdapter</code> + projection</td><td><span class="pill create">create</span></td><td>文献详情组装（含 JSONB→有序数组）</td></tr>
+          <tr><td>8</td><td><code>infra/adapter/read/VenueBrowseReadAdapter</code> + projection</td><td><span class="pill create">create</span></td><td>复用 findFilteredJournalPage</td></tr>
+          <tr><td>9</td><td><code>infra/persistence/dao/VenueDao</code></td><td><span class="pill modify">modify</span></td><td>加详情查询 + TITLE / CAS_QUARTILE 排序维度</td></tr>
+          <tr><td>10</td><td><code>app/usecase/portal/query/PortalVenueDetailQueryService</code> / <code>PortalPublicationDetailQueryService</code></td><td><span class="pill create">create</span></td><td>详情编排 + not-found 抛 NOT_FOUND</td></tr>
+          <tr><td>11</td><td><code>app/usecase/portal/query/PortalVenueQueryService</code></td><td><span class="pill modify">modify</span></td><td>topN→浏览（filter+分页归一化）；删 findTop 链路</td></tr>
+          <tr><td>12</td><td><code>adapter/rest/portal/PortalVenueController</code></td><td><span class="pill modify">modify</span></td><td>加 <code>GET /{id}</code>；<code>GET /</code> 改浏览（PageResult）；删 topN</td></tr>
+          <tr><td>13</td><td><code>adapter/rest/portal/PortalPublicationController</code></td><td><span class="pill modify">modify</span></td><td>加 <code>GET /{id}</code></td></tr>
+          <tr><td>14</td><td><code>adapter/rest/portal/response/PortalVenueDetailResponse</code> / <code>PortalVenueBrowseResponse</code> / <code>PortalPublicationDetailResponse</code></td><td><span class="pill create">create</span></td><td>三个 response DTO</td></tr>
+          <tr><td>15</td><td><code>adapter/rest/portal/request/PortalVenueListRequest</code></td><td><span class="pill modify">modify</span></td><td>topN → q/sort/facets/page/pageSize</td></tr>
+          <tr><td>16</td><td><code>adapter/rest/portal/response/PortalVenueResponse</code></td><td><span class="pill delete">delete</span></td><td>旧 topN List DTO，被 BrowseResponse 取代</td></tr>
+          <tr><td>17</td><td><code>adapter/rest/portal/PortalApiConverter</code></td><td><span class="pill modify">modify</span></td><td>加详情/浏览映射</td></tr>
+          <tr><td>18</td><td>Boot 层 <code>ErrorMappingContributor</code>（catalog）</td><td><span class="pill modify">modify</span></td><td>确认/补 NOT_FOUND→<code>CATALOG-0404</code> 映射</td></tr>
+          <tr><td>19</td><td>各层对应单测 / 切片测 / Controller 测</td><td><span class="pill create">create</span></td><td>TDD Red-Green-Refactor</td></tr>
+          <tr><td>20</td><td><code>patra-portal</code> 首页期刊模块取数</td><td><span class="pill modify">modify</span></td><td>改读 <code>/portal/venues?sort=impactFactor&amp;pageSize=6</code> 的 <code>.items</code> + 字段映射</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>三端点按契约返回；详情 by-id not-found → <code>CATALOG-0404</code>，浏览无匹配 → 空 PageResult(200)</li>
+        <li>详情端点一次返回完整数据集（含深数据层全部字段）；evidenceLevel 按映射表正确衍生、unknown 降级</li>
+        <li>浏览支持 q + 四种排序（含刊名/中科院分区）+ 全部 facet 过滤 + 分页</li>
+        <li>topN 端点已删；首页 Top 6 经迁移仍正常渲染（smoke 验证）</li>
+        <li>homepageUrl 恒 null、aiSummary 恒 null、收藏不返回</li>
+        <li>Domain/Adapter/Controller 测试全绿；CI 全绿；遵循 TDD</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       由 ../styles/user-notes.js 驱动，仅本机本浏览器、不进 git；
+       放子目录的 spec 把下方 <script src> 同改成 ../../styles/
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
