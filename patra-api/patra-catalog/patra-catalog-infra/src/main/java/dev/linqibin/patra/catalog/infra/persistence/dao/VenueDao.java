@@ -2,8 +2,8 @@ package dev.linqibin.patra.catalog.infra.persistence.dao;
 
 import dev.linqibin.patra.catalog.infra.adapter.read.CasRatingRow;
 import dev.linqibin.patra.catalog.infra.adapter.read.JcrRatingRow;
-import dev.linqibin.patra.catalog.infra.adapter.read.PortalVenueRow;
 import dev.linqibin.patra.catalog.infra.adapter.read.ScopusRatingRow;
+import dev.linqibin.patra.catalog.infra.adapter.read.VenueBrowseRow;
 import dev.linqibin.patra.catalog.infra.adapter.read.VenueDetailRow;
 import dev.linqibin.patra.catalog.infra.adapter.read.VenueIdentifierRow;
 import dev.linqibin.patra.catalog.infra.adapter.read.VenueStatRow;
@@ -253,39 +253,84 @@ public interface VenueDao extends JpaRepository<VenueEntity, Long> {
       @Param("sortBy") String sortBy,
       Pageable pageable);
 
-  /// 按最新年影响因子降序取 Top N 期刊（portal 首页期刊榜）。
+  /// 分页检索期刊（portal 浏览/搜索）。
   ///
-  /// INNER JOIN LATERAL 取每刊「最新的、有影响因子的」一条 JCR 评级，因而只保留有 IF 的期刊；
-  /// 按 impact_factor 降序、id 兜底排序。foundedYear 从 publication_profile JSON 的
-  /// publicationHistory.startYear 提取（缺失时为 null）。固定 venue_type='JOURNAL' 且未软删。
+  /// 支持多维度过滤（关键词前缀/JCR 学科与分区/CAS 分区与顶刊/OA 类型/DOAJ/国家码）
+  /// 和四种排序（影响因子降序/CAS 分区升序/标题升序/被引量降序）。
   ///
-  /// @param topN 返回数量上限
-  /// @return 期刊投影，按影响因子降序
+  /// @param keyword 标题前缀模糊匹配（已转义 LIKE 特殊字符，`!` 为转义符），null 时不过滤
+  /// @param sort 排序键，对应 [VenueBrowseSort] 枚举名称字符串
+  /// @param subject JCR 学科，null 时不过滤
+  /// @param jcrQuartile JCR 分区，null 时不过滤
+  /// @param casQuartile CAS 大类分区，null 时不过滤
+  /// @param casTop 是否 CAS 顶刊，null 时不过滤
+  /// @param oaType OA 类型，null 时不过滤
+  /// @param doaj 是否收录于 DOAJ，null 时不过滤
+  /// @param countryCode 国家/地区码，null 时不过滤
+  /// @param pageable 分页参数
+  /// @return 期刊分页投影
   @Query(
       value =
           """
-          SELECT
-            v.id AS "id",
-            v.title AS "name",
-            v.abbreviated_title AS "abbr",
-            jcr.impact_factor AS "impactFactor",
-            jcr.wos_overall_quartile AS "quartile",
-            (v.publication_profile -> 'publicationHistory' ->> 'startYear')::int AS "foundedYear"
-          FROM cat_venue v
-          JOIN LATERAL (
-              SELECT r.impact_factor, r.wos_overall_quartile
-              FROM cat_venue_jcr_rating r
-              WHERE r.venue_id = v.id AND r.impact_factor IS NOT NULL
-              ORDER BY r.year DESC
-              LIMIT 1
-          ) jcr ON TRUE
-          WHERE v.venue_type = 'JOURNAL'
-            AND v.deleted_at IS NULL
-          ORDER BY jcr.impact_factor DESC, v.id DESC
-          LIMIT :topN
-          """,
+      SELECT v.id AS "id", v.title AS "name", v.abbreviated_title AS "abbr",
+             v.image_object_key AS "coverObjectKey",
+             jcr.impact_factor AS "impactFactor", jcr.jif_quartile AS "jcrQuartile", jcr.subject AS "jcrSubject",
+             cas.major_category AS "casMajorCategory", cas.major_quartile AS "casMajorQuartile",
+             cas.is_top_journal AS "casIsTop", v.country_code AS "countryCode",
+             v.cited_by_count AS "citedByCount",
+             (v.publication_profile -> 'publicationHistory' ->> 'startYear')::int AS "foundedYear",
+             (v.open_access ->> 'isOa')::boolean AS "isOpenAccess",
+             (v.open_access ->> 'isInDoaj')::boolean AS "isInDoaj", v.issn_l AS "issnL"
+      FROM cat_venue v
+      LEFT JOIN LATERAL (SELECT r.impact_factor, r.jif_quartile, r.subject
+          FROM cat_venue_jcr_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) jcr ON TRUE
+      LEFT JOIN LATERAL (SELECT r.major_category, r.major_quartile, r.is_top_journal
+          FROM cat_venue_cas_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC, r.edition ASC LIMIT 1) cas ON TRUE
+      WHERE v.venue_type = 'JOURNAL' AND v.deleted_at IS NULL
+        AND (:keyword IS NULL OR v.title ILIKE CONCAT(:keyword, '%') ESCAPE '!')
+        AND (:subject IS NULL OR jcr.subject = :subject)
+        AND (:jcrQuartile IS NULL OR jcr.jif_quartile = :jcrQuartile)
+        AND (:casQuartile IS NULL OR cas.major_quartile = :casQuartile)
+        AND (:casTop IS NULL OR cas.is_top_journal = :casTop)
+        AND (:oaType IS NULL OR v.open_access ->> 'oaType' = :oaType)
+        AND (:doaj IS NULL OR (v.open_access ->> 'isInDoaj')::boolean = :doaj)
+        AND (:countryCode IS NULL OR v.country_code = :countryCode)
+      ORDER BY
+        CASE WHEN :sort = 'IMPACT_FACTOR' THEN COALESCE(jcr.impact_factor, 0) ELSE NULL END DESC,
+        CASE WHEN :sort = 'CITED_BY' THEN COALESCE(v.cited_by_count, 0) ELSE NULL END DESC,
+        CASE WHEN :sort = 'CAS_QUARTILE' THEN cas.major_quartile ELSE NULL END ASC NULLS LAST,
+        CASE WHEN :sort = 'TITLE' THEN v.title ELSE NULL END ASC,
+        v.id DESC
+      """,
+      countQuery =
+          """
+      SELECT COUNT(*) FROM cat_venue v
+      LEFT JOIN LATERAL (SELECT r.jif_quartile, r.subject
+          FROM cat_venue_jcr_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) jcr ON TRUE
+      LEFT JOIN LATERAL (SELECT r.major_quartile, r.is_top_journal
+          FROM cat_venue_cas_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC, r.edition ASC LIMIT 1) cas ON TRUE
+      WHERE v.venue_type = 'JOURNAL' AND v.deleted_at IS NULL
+        AND (:keyword IS NULL OR v.title ILIKE CONCAT(:keyword, '%') ESCAPE '!')
+        AND (:subject IS NULL OR jcr.subject = :subject)
+        AND (:jcrQuartile IS NULL OR jcr.jif_quartile = :jcrQuartile)
+        AND (:casQuartile IS NULL OR cas.major_quartile = :casQuartile)
+        AND (:casTop IS NULL OR cas.is_top_journal = :casTop)
+        AND (:oaType IS NULL OR v.open_access ->> 'oaType' = :oaType)
+        AND (:doaj IS NULL OR (v.open_access ->> 'isInDoaj')::boolean = :doaj)
+        AND (:countryCode IS NULL OR v.country_code = :countryCode)
+      """,
       nativeQuery = true)
-  List<PortalVenueRow> findTopVenuesByImpactFactor(@Param("topN") int topN);
+  Page<VenueBrowseRow> findPortalVenueBrowsePage(
+      @Param("keyword") String keyword,
+      @Param("sort") String sort,
+      @Param("subject") String subject,
+      @Param("jcrQuartile") String jcrQuartile,
+      @Param("casQuartile") String casQuartile,
+      @Param("casTop") Boolean casTop,
+      @Param("oaType") String oaType,
+      @Param("doaj") Boolean doaj,
+      @Param("countryCode") String countryCode,
+      Pageable pageable);
 
   /// 按 ID 查询期刊详情主行（含最新年 JCR/CAS/Scopus LATERAL JOIN）。
   ///

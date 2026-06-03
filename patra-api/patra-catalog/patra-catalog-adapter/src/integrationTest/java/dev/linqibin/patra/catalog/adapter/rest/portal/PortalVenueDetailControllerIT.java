@@ -3,8 +3,8 @@ package dev.linqibin.patra.catalog.adapter.rest.portal;
 import static org.mockito.Mockito.when;
 
 import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueBrowseQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
-import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService;
 import dev.linqibin.patra.catalog.domain.exception.VenueNotFoundException;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
 import java.math.BigDecimal;
@@ -32,8 +32,8 @@ class PortalVenueDetailControllerIT {
 
   @MockitoBean private PortalVenueDetailQueryService portalVenueDetailQueryService;
 
-  // PortalVenueQueryService 也需要 mock（Controller 里已注入）
-  @MockitoBean private PortalVenueQueryService portalVenueQueryService;
+  // PortalVenueBrowseQueryService 也需要 mock（Controller 里已注入）
+  @MockitoBean private PortalVenueBrowseQueryService portalVenueBrowseQueryService;
 
   @Test
   @DisplayName("GET /portal/venues/{id} 返回 200 + 对齐前端的期刊详情")

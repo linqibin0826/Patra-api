@@ -1,21 +1,20 @@
 package dev.linqibin.patra.catalog.adapter.rest.portal;
 
+import dev.linqibin.commons.query.PageResult;
 import dev.linqibin.patra.catalog.adapter.rest.portal.request.PortalVenueListRequest;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueBrowseResponse;
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueDetailResponse;
-import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueResponse;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueBrowseQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
-import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService;
-import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalVenueQuery;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/// Portal C 端门户期刊榜查询控制器。
+/// Portal C 端门户期刊浏览/检索控制器。
 ///
 /// @author linqibin
 /// @since 0.1.0
@@ -25,20 +24,30 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class PortalVenueController {
 
-  private final PortalVenueQueryService portalVenueQueryService;
+  private final PortalVenueBrowseQueryService portalVenueBrowseQueryService;
   private final PortalVenueDetailQueryService portalVenueDetailQueryService;
   private final PortalApiConverter portalApiConverter;
 
-  /// 查询 portal 期刊榜（按影响因子降序 Top N）。
+  /// 浏览/检索期刊（支持多维度过滤和分页）。
   ///
-  /// @param request 查询请求（Spring MVC 自动绑定 query params）
-  /// @return 期刊卡片列表
+  /// @param req 浏览请求（Spring MVC 自动绑定 query params）
+  /// @return 分页期刊卡片列表
   @GetMapping
-  public List<PortalVenueResponse> listTopVenues(@Valid PortalVenueListRequest request) {
-    PortalVenueQuery query = PortalVenueQuery.of(request.topN());
-    return portalVenueQueryService.listTopVenues(query).stream()
-        .map(portalApiConverter::toVenueResponse)
-        .toList();
+  public PageResult<PortalVenueBrowseResponse> browse(@Valid PortalVenueListRequest req) {
+    return portalVenueBrowseQueryService
+        .browse(
+            req.q(),
+            req.sort(),
+            req.subject(),
+            req.jcrQuartile(),
+            req.casQuartile(),
+            req.casTop(),
+            req.oaType(),
+            req.doaj(),
+            req.country(),
+            req.page(),
+            req.pageSize())
+        .map(portalApiConverter::toVenueBrowseResponse);
   }
 
   /// 查询期刊详情。

@@ -2,11 +2,11 @@ package dev.linqibin.patra.catalog.adapter.rest.portal;
 
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperResponse;
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPublicationDetailResponse;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueBrowseResponse;
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueDetailResponse;
-import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueResponse;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
-import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.time.Duration;
@@ -44,18 +44,29 @@ public class PortalApiConverter {
         toMinutesAgo(model.lastSyncedAt()));
   }
 
-  /// 将期刊读模型转为响应 DTO。
+  /// 将期刊浏览读模型转为响应 DTO。
   ///
-  /// @param model 期刊读模型
+  /// @param model 期刊浏览读模型
   /// @return 响应 DTO
-  public PortalVenueResponse toVenueResponse(PortalVenueReadModel model) {
-    return new PortalVenueResponse(
-        Long.toString(model.id()),
-        model.name(),
-        model.abbr(),
-        model.impactFactor(),
-        model.quartile(),
-        model.foundedYear());
+  public PortalVenueBrowseResponse toVenueBrowseResponse(VenueBrowseReadModel model) {
+    return PortalVenueBrowseResponse.builder()
+        .id(Long.toString(model.id()))
+        .name(model.name())
+        .abbr(model.abbr())
+        .coverObjectKey(model.coverObjectKey())
+        .impactFactor(model.impactFactor())
+        .jcrQuartile(model.jcrQuartile())
+        .jcrSubject(model.jcrSubject())
+        .casMajorCategory(model.casMajorCategory())
+        .casMajorQuartile(model.casMajorQuartile())
+        .casIsTop(model.casIsTop())
+        .countryCode(model.countryCode())
+        .citedByCount(model.citedByCount())
+        .foundedYear(model.foundedYear())
+        .isOpenAccess(model.isOpenAccess())
+        .isInDoaj(model.isInDoaj())
+        .issnL(model.issnL())
+        .build();
   }
 
   /// 将期刊详情读模型转为响应 DTO。
