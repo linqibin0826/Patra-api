@@ -1,6 +1,12 @@
 package dev.linqibin.patra.catalog.infra.persistence.dao;
 
+import dev.linqibin.patra.catalog.infra.adapter.read.CasRatingRow;
+import dev.linqibin.patra.catalog.infra.adapter.read.JcrRatingRow;
 import dev.linqibin.patra.catalog.infra.adapter.read.PortalVenueRow;
+import dev.linqibin.patra.catalog.infra.adapter.read.ScopusRatingRow;
+import dev.linqibin.patra.catalog.infra.adapter.read.VenueDetailRow;
+import dev.linqibin.patra.catalog.infra.adapter.read.VenueIdentifierRow;
+import dev.linqibin.patra.catalog.infra.adapter.read.VenueStatRow;
 import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
 import java.util.Collection;
 import java.util.List;
@@ -280,4 +286,121 @@ public interface VenueDao extends JpaRepository<VenueEntity, Long> {
           """,
       nativeQuery = true)
   List<PortalVenueRow> findTopVenuesByImpactFactor(@Param("topN") int topN);
+
+  /// 按 ID 查询期刊详情主行（含最新年 JCR/CAS/Scopus LATERAL JOIN）。
+  ///
+  /// 软删除过滤：`deleted_at IS NULL`。
+  ///
+  /// @param id 期刊 ID
+  /// @return 期刊详情投影
+  @Query(
+      value =
+          """
+      SELECT v.id AS "id", v.title AS "title", v.abbreviated_title AS "abbreviatedTitle",
+        v.venue_type AS "venueType", v.issn_l AS "issnL", v.country_code AS "countryCode",
+        v.primary_language AS "primaryLanguage",
+        (v.publication_profile -> 'publicationHistory' ->> 'startYear')::int AS "foundedYear",
+        v.image_object_key AS "coverObjectKey",
+        (v.open_access ->> 'isOa')::boolean AS "isOpenAccess",
+        jcr.impact_factor AS "impactFactor", jcr.jif_quartile AS "jcrQuartile", jcr.subject AS "jcrSubject",
+        cas.major_category AS "casMajorCategory", cas.major_quartile AS "casMajorQuartile",
+        cas.is_top_journal AS "casIsTop", scopus.cite_score AS "citeScore",
+        (v.citation_metrics ->> 'hIndex')::int AS "hIndex", v.cited_by_count AS "citedByCount",
+        (v.citation_metrics ->> 'worksCount')::int AS "worksCount",
+        v.publication_profile ->> 'frequency' AS "frequency",
+        (v.publication_profile -> 'indexingInfo' ->> 'medlineTa') IS NOT NULL AS "medlineIndexed",
+        v.open_access ->> 'oaType' AS "oaType", (v.open_access ->> 'apcUsd')::int AS "apcUsd",
+        (v.open_access ->> 'isInDoaj')::boolean AS "isInDoaj"
+      FROM cat_venue v
+      LEFT JOIN LATERAL (SELECT r.impact_factor, r.jif_quartile, r.subject FROM cat_venue_jcr_rating r
+          WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) jcr ON TRUE
+      LEFT JOIN LATERAL (SELECT r.major_category, r.major_quartile, r.is_top_journal FROM cat_venue_cas_rating r
+          WHERE r.venue_id = v.id ORDER BY r.year DESC, r.edition ASC LIMIT 1) cas ON TRUE
+      LEFT JOIN LATERAL (SELECT r.cite_score FROM cat_venue_scopus_rating r
+          WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) scopus ON TRUE
+      WHERE v.id = :id AND v.deleted_at IS NULL
+      """,
+      nativeQuery = true)
+  Optional<VenueDetailRow> findVenueDetailById(@Param("id") long id);
+
+  /// 按 venue_id 查询所有 JCR 评级，按年份降序。
+  ///
+  /// @param id 期刊 ID
+  /// @return JCR 评级投影列表
+  @Query(
+      value =
+          """
+      SELECT year AS "year", impact_factor AS "impactFactor", wos_overall_quartile AS "quartile",
+        subject AS "subject", jif_rank AS "jifRank", jif_percentile AS "jifPercentile"
+      FROM cat_venue_jcr_rating
+      WHERE venue_id = :id
+      ORDER BY year DESC
+      """,
+      nativeQuery = true)
+  List<JcrRatingRow> findJcrRatingsByVenueId(@Param("id") long id);
+
+  /// 按 venue_id 查询所有 CAS 评级，按年份降序、版本升序。
+  ///
+  /// @param id 期刊 ID
+  /// @return CAS 评级投影列表
+  @Query(
+      value =
+          """
+      SELECT year AS "year", edition AS "edition", major_category AS "majorCategory",
+        major_quartile AS "majorQuartile", minor_subject AS "minorSubject",
+        minor_quartile AS "minorQuartile", is_top_journal AS "isTop",
+        is_review_journal AS "isReview"
+      FROM cat_venue_cas_rating
+      WHERE venue_id = :id
+      ORDER BY year DESC, edition ASC
+      """,
+      nativeQuery = true)
+  List<CasRatingRow> findCasRatingsByVenueId(@Param("id") long id);
+
+  /// 按 venue_id 查询所有 Scopus 评级，按年份降序。
+  ///
+  /// @param id 期刊 ID
+  /// @return Scopus 评级投影列表
+  @Query(
+      value =
+          """
+      SELECT year AS "year", cite_score AS "citeScore", sjr AS "sjr", snip AS "snip",
+        quartile AS "quartile", percentile AS "percentile"
+      FROM cat_venue_scopus_rating
+      WHERE venue_id = :id
+      ORDER BY year DESC
+      """,
+      nativeQuery = true)
+  List<ScopusRatingRow> findScopusRatingsByVenueId(@Param("id") long id);
+
+  /// 按 venue_id 查询所有年度发文量统计，按年份升序。
+  ///
+  /// @param id 期刊 ID
+  /// @return 年度统计投影列表
+  @Query(
+      value =
+          """
+      SELECT year AS "year", works_count AS "worksCount", cited_by_count AS "citedByCount",
+        oa_works_count AS "oaWorksCount"
+      FROM cat_venue_publication_stats
+      WHERE venue_id = :id
+      ORDER BY year ASC
+      """,
+      nativeQuery = true)
+  List<VenueStatRow> findPublicationStatsByVenueId(@Param("id") long id);
+
+  /// 按 venue_id 查询所有标识符，主标识符优先，按 id 升序兜底。
+  ///
+  /// @param id 期刊 ID
+  /// @return 标识符投影列表
+  @Query(
+      value =
+          """
+      SELECT identifier_type AS "type", identifier_value AS "value", is_primary AS "primary"
+      FROM cat_venue_identifier
+      WHERE venue_id = :id
+      ORDER BY is_primary DESC, id ASC
+      """,
+      nativeQuery = true)
+  List<VenueIdentifierRow> findIdentifiersByVenueId(@Param("id") long id);
 }

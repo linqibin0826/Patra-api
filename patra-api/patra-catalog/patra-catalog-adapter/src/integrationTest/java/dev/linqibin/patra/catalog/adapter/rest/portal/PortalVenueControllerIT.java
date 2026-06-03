@@ -35,6 +35,10 @@ class PortalVenueControllerIT {
 
   @MockitoBean private PortalVenueQueryService portalVenueQueryService;
 
+  @MockitoBean
+  private dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService
+      portalVenueDetailQueryService;
+
   @Test
   @DisplayName("GET /portal/venues 返回 200 + 对齐前端的期刊卡片数组")
   void shouldReturnVenueList() {

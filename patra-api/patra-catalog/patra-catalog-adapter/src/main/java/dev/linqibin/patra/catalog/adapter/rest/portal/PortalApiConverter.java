@@ -1,9 +1,11 @@
 package dev.linqibin.patra.catalog.adapter.rest.portal;
 
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperResponse;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueDetailResponse;
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueResponse;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.time.Duration;
 import java.time.Instant;
@@ -52,6 +54,79 @@ public class PortalApiConverter {
         model.impactFactor(),
         model.quartile(),
         model.foundedYear());
+  }
+
+  /// 将期刊详情读模型转为响应 DTO。
+  ///
+  /// @param model 期刊详情读模型
+  /// @return 响应 DTO
+  public PortalVenueDetailResponse toVenueDetailResponse(VenueDetailReadModel model) {
+    return new PortalVenueDetailResponse(
+        Long.toString(model.id()),
+        model.title(),
+        model.abbreviatedTitle(),
+        model.venueType(),
+        model.issnL(),
+        model.countryCode(),
+        model.primaryLanguage(),
+        model.foundedYear(),
+        model.coverObjectKey(),
+        null, // homepageUrl：当前无数据源，恒为 null
+        model.isOpenAccess(),
+        model.impactFactor(),
+        model.jcrQuartile(),
+        model.jcrSubject(),
+        model.casMajorCategory(),
+        model.casMajorQuartile(),
+        model.casIsTop(),
+        model.citeScore(),
+        model.hIndex(),
+        model.citedByCount(),
+        model.worksCount(),
+        model.frequency(),
+        model.medlineIndexed(),
+        model.oaType(),
+        model.apcUsd(),
+        model.isInDoaj(),
+        model.jcrRatings().stream()
+            .map(
+                v ->
+                    new PortalVenueDetailResponse.JcrRating(
+                        v.year(),
+                        v.impactFactor(),
+                        v.quartile(),
+                        v.subject(),
+                        v.jifRank(),
+                        v.jifPercentile()))
+            .toList(),
+        model.casRatings().stream()
+            .map(
+                v ->
+                    new PortalVenueDetailResponse.CasRating(
+                        v.year(),
+                        v.edition(),
+                        v.majorCategory(),
+                        v.majorQuartile(),
+                        v.minorSubject(),
+                        v.minorQuartile(),
+                        v.isTop(),
+                        v.isReview()))
+            .toList(),
+        model.scopusRatings().stream()
+            .map(
+                v ->
+                    new PortalVenueDetailResponse.ScopusRating(
+                        v.year(), v.citeScore(), v.sjr(), v.snip(), v.quartile(), v.percentile()))
+            .toList(),
+        model.yearlyStats().stream()
+            .map(
+                v ->
+                    new PortalVenueDetailResponse.YearlyStat(
+                        v.year(), v.worksCount(), v.citedByCount(), v.oaWorksCount()))
+            .toList(),
+        model.identifiers().stream()
+            .map(v -> new PortalVenueDetailResponse.Identifier(v.type(), v.value(), v.primary()))
+            .toList());
   }
 
   private String toSource(String provenanceCode) {

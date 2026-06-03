@@ -1,0 +1,109 @@
+package dev.linqibin.patra.catalog.adapter.rest.portal;
+
+import static org.mockito.Mockito.when;
+
+import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
+import dev.linqibin.patra.catalog.domain.exception.VenueNotFoundException;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
+import java.math.BigDecimal;
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.client.RestTestClient;
+
+@WebMvcTest(controllers = PortalVenueController.class)
+@ContextConfiguration(classes = CatalogAdapterITWebMvcConfig.class)
+@Import({PortalVenueController.class, PortalApiConverter.class})
+@AutoConfigureRestTestClient
+@org.springframework.test.context.TestPropertySource(
+    properties = "linqibin.starter.core.error.context-prefix=CATALOG")
+@DisplayName("PortalVenueController 期刊详情 REST 切片测试")
+class PortalVenueDetailControllerIT {
+
+  @Autowired private RestTestClient restClient;
+
+  @MockitoBean private PortalVenueDetailQueryService portalVenueDetailQueryService;
+
+  // PortalVenueQueryService 也需要 mock（Controller 里已注入）
+  @MockitoBean
+  private dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService
+      portalVenueQueryService;
+
+  @Test
+  @DisplayName("GET /portal/venues/{id} 返回 200 + 对齐前端的期刊详情")
+  void shouldReturnVenueDetail() {
+    VenueDetailReadModel model =
+        new VenueDetailReadModel(
+            319041872872550658L,
+            "Annals of Oncology",
+            "Ann Oncol",
+            "JOURNAL",
+            "1569-8041",
+            "NL",
+            "ENG",
+            1990,
+            null,
+            true,
+            new BigDecimal("51.1"),
+            "Q1",
+            "ONCOLOGY",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of());
+    when(portalVenueDetailQueryService.getById(319041872872550658L)).thenReturn(model);
+
+    restClient
+        .get()
+        .uri("/portal/venues/319041872872550658")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .contentType(MediaType.APPLICATION_JSON)
+        .expectBody()
+        .jsonPath("$.id")
+        .isEqualTo("319041872872550658")
+        .jsonPath("$.title")
+        .isEqualTo("Annals of Oncology")
+        .jsonPath("$.homepageUrl")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("期刊不存在时返回 404 + CATALOG-0404 错误码")
+  void shouldReturn404WhenVenueNotFound() {
+    when(portalVenueDetailQueryService.getById(999L)).thenThrow(new VenueNotFoundException(999L));
+
+    restClient
+        .get()
+        .uri("/portal/venues/999")
+        .exchange()
+        .expectStatus()
+        .isNotFound()
+        .expectBody()
+        .jsonPath("$.code")
+        .isEqualTo("CATALOG-0404");
+  }
+}

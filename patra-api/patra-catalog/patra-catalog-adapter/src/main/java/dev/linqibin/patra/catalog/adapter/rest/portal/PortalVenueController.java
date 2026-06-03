@@ -1,7 +1,9 @@
 package dev.linqibin.patra.catalog.adapter.rest.portal;
 
 import dev.linqibin.patra.catalog.adapter.rest.portal.request.PortalVenueListRequest;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueDetailResponse;
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueResponse;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalVenueQuery;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -9,6 +11,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PortalVenueController {
 
   private final PortalVenueQueryService portalVenueQueryService;
+  private final PortalVenueDetailQueryService portalVenueDetailQueryService;
   private final PortalApiConverter portalApiConverter;
 
   /// 查询 portal 期刊榜（按影响因子降序 Top N）。
@@ -35,5 +39,14 @@ public class PortalVenueController {
     return portalVenueQueryService.listTopVenues(query).stream()
         .map(portalApiConverter::toVenueResponse)
         .toList();
+  }
+
+  /// 查询期刊详情。
+  ///
+  /// @param id 期刊 ID
+  /// @return 期刊详情
+  @GetMapping("/{id}")
+  public PortalVenueDetailResponse getVenueDetail(@PathVariable long id) {
+    return portalApiConverter.toVenueDetailResponse(portalVenueDetailQueryService.getById(id));
   }
 }
