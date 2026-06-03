@@ -26,9 +26,9 @@
       <li><a href="#file-structure">文件结构</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li data-task-status="pending"><a href="#task-1">Task 1 — EvidenceLevel 领域值对象</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — 期刊详情端点</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — 文献详情端点</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — EvidenceLevel 领域值对象</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 期刊详情端点</a></li>
+          <li data-task-status="in-progress"><a href="#task-3">Task 3 — 文献详情端点</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — 期刊浏览端点 + topN 归并</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — 首页 FE 取数迁移</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — 集成验证与收尾</a></li>
@@ -132,7 +132,7 @@ patra-portal/  ......................................................  [modify] 
       -->
 
       <!-- ===================== TASK 1 ===================== -->
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：EvidenceLevel 领域值对象 + 衍生规则</h2>
           <dl class="files">
@@ -141,7 +141,7 @@ patra-portal/  ......................................................  [modify] 
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试 EvidenceLevelTest</strong>
             <p>映射依据规格 §6 已确认的分档表，键为 <code>cat_publication_type.type_value</code> 实际枚举（MeSH 词汇，规范化为小写）。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.vo.publication;
@@ -214,12 +214,12 @@ class EvidenceLevelTest {
   }
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败</strong>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-domain:test --tests "*EvidenceLevelTest"</code></p>
             <p>预期：编译失败（EvidenceLevel 未定义）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：实现 EvidenceLevel</strong>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.vo.publication;
 
@@ -319,12 +319,12 @@ public enum EvidenceLevel {
   }
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：运行确认通过</strong>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-domain:test --tests "*EvidenceLevelTest"</code></p>
             <p>预期：8 个测试方法全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/vo/publication/EvidenceLevel.java \
         patra-api/patra-catalog/patra-catalog-domain/src/test/java/dev/linqibin/patra/catalog/domain/model/vo/publication/EvidenceLevelTest.java
@@ -334,7 +334,7 @@ git commit -m "feat(catalog): 新增 EvidenceLevel 证据等级衍生值对象 (
       </article>
 
       <!-- ===================== TASK 2 ===================== -->
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：期刊详情端点 GET /portal/venues/{id}</h2>
           <dl class="files">
@@ -344,7 +344,7 @@ git commit -m "feat(catalog): 新增 EvidenceLevel 证据等级衍生值对象 (
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：定义 domain 读模型 + 端口 + 异常</strong>
             <p><code>VenueDetailReadModel.java</code>（嵌套 view record 收纳深数据层列表）：</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
@@ -449,7 +449,7 @@ public class VenueNotFoundException extends CatalogException {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：Infra 投影接口（6 个）</strong>
             <p>同包 <code>infra/adapter/read/</code>，getter 名对齐 SQL 别名（驼峰加双引号）。</p>
             <pre><code class="lang-java">// VenueDetailRow.java —— 主行（含 JSON 标量提取）
@@ -512,7 +512,7 @@ public interface VenueIdentifierRow {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：VenueDao 增加详情 native query（主行 + 5 个子表查询）</strong>
             <p>追加到现有 <code>VenueDao</code> 接口（import 新增 6 个 Row 类）。主行用 LATERAL 取最新年评级 + JSON 标量提取；子表查询按 venue_id 取全部。</p>
             <pre><code class="lang-java">  @Query(
@@ -585,7 +585,7 @@ public interface VenueIdentifierRow {
   List&lt;dev.linqibin.patra.catalog.infra.adapter.read.VenueIdentifierRow&gt; findIdentifiersByVenueId(@Param("id") long id);</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：VenueDetailReadAdapter（组装读模型）</strong>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
 
@@ -665,7 +665,7 @@ public class VenueDetailReadAdapter implements VenueDetailReadPort {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：写失败的 Adapter 切片测 VenueDetailReadAdapterIT</strong>
             <p>遵循既有 <code>PortalVenueReadAdapterIT</code> 风格（@DataJpaTest + Testcontainers + TestEntityManager 编程建数）。核心断言：主行字段、最新年评级、子表列表、not-found 返回 empty。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
@@ -745,7 +745,7 @@ class VenueDetailReadAdapterIT {
             <p>运行确认失败：<code>./gradlew :patra-api:patra-catalog:patra-catalog-infra:test --tests "*VenueDetailReadAdapterIT"</code></p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：app QueryService + not-found 测试</strong>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
 
@@ -777,7 +777,7 @@ public class PortalVenueDetailQueryService {
             <p>单测 <code>PortalVenueDetailQueryServiceTest</code>（Mockito，参照既有 <code>PortalVenueQueryServiceTest</code>）：present 返回模型；empty 抛 <code>VenueNotFoundException</code>（<code>assertThatThrownBy(...).isInstanceOf(VenueNotFoundException.class)</code>）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Response DTO + Converter + Controller GET /{id}</strong>
             <p><code>PortalVenueDetailResponse.java</code>（id 转 String 防精度损失；嵌套 view 直接复用 domain view 形态，用独立 response record 保持适配层解耦）：</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.response;
@@ -815,7 +815,7 @@ public record PortalVenueDetailResponse(
             <p>Controller 切片测 <code>PortalVenueControllerIT</code> 新增：<code>GET /portal/venues/{id}</code> 200 + 字段断言；mock service 抛 <code>VenueNotFoundException</code> → 期望 404、错误码 <code>CATALOG-0404</code>（<code>.expectStatus().isNotFound()</code> + body jsonPath 校验 code）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 8：运行全部测试 + Commit</strong>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-infra:test :patra-api:patra-catalog:patra-catalog-app:test :patra-api:patra-catalog:patra-catalog-adapter:test --tests "*VenueDetail*" --tests "*PortalVenueControllerIT"</code></p>
             <p>预期：全绿。</p>
@@ -826,7 +826,7 @@ git commit -m "feat(catalog): 期刊详情读端点 GET /portal/venues/{id} (PAP
       </article>
 
       <!-- ===================== TASK 3 ===================== -->
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="in-progress">
         <header>
           <h2>任务 3：文献详情端点 GET /portal/publications/{id}</h2>
           <dl class="files">
@@ -836,7 +836,7 @@ git commit -m "feat(catalog): 期刊详情读端点 GET /portal/venues/{id} (PAP
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：domain 读模型 + 端口</strong>
             <p><code>PublicationDetailReadModel.java</code>（evidenceLevel 用 Task 1 的 VO；摘要为有序 section list；其余子表为嵌套 view）：</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
@@ -877,7 +877,7 @@ public record PublicationDetailReadModel(
             <p><code>PublicationDetailReadPort.java</code>：<code>Optional&lt;PublicationDetailReadModel&gt; findById(long publicationId);</code>（结构同 VenueDetailReadPort）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：PublicationDetailDao native query（主行 + 5 个子表）</strong>
             <p>主行：cat_publication + venue join + abstract join（structured_sections 取整 JSONB 文本，adapter 解析）；类型用 string_agg 拼全部。投影接口 <code>PublicationDetailRow</code> 等同包置于 <code>infra/adapter/read/</code>。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
@@ -956,7 +956,7 @@ public interface PublicationDetailDao extends JpaRepository&lt;PublicationEntity
             <p>投影接口（同包 infra/adapter/read/，各一文件）：<code>PublicationDetailRow</code>（getId/getTitle/getOriginalTitle/getVenueId/getVenueName/getPublicationYear/getAbstractType/getStructuredSectionsJson/getAbstractPlainText/getDoi/getPmid/getPmcid/getCitationCount/getNumberOfReferences/getConflictOfInterest/getIsOa/getOaStatus/getPublicationTypesAgg，全 String/Long/Integer/Boolean）；<code>PublicationAuthorRow</code>（getOrder:Integer/getFirst:Boolean/getCorresponding:Boolean/getName/getAffiliation）；<code>PublicationMeshRow</code>（getDescriptorUi/getTerm/getMajor:Boolean）；<code>PublicationKeywordRow</code>（getTerm）；<code>PublicationFundingRow</code>（getFunder/getGrantId/getCountry）；<code>PublicationDateRow</code>（getType/getDate:java.time.LocalDate）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：PublicationDetailReadAdapter（解析摘要 + 衍生证据等级）</strong>
             <p>结构化摘要：按<strong>有序数组契约</strong>消费——<code>structured_sections</code> 为有序 JSON 数组 <code>[{label,text}]</code>，注入 Spring <code>ObjectMapper</code> 直接反序列化为 <code>List&lt;AbstractSectionView&gt;</code>，<strong>保留节序、不重排</strong>。存储格式改造（旧扁平对象 → 有序数组）见 <a href="https://linear.app/papertrace/issue/PAP-48">PAP-48</a>；落地前真实数据 <code>structured_sections</code> 仍是旧对象格式、走 <code>plainText</code> 兜底。证据等级用 <code>EvidenceLevel.classify(types)</code>。</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
@@ -1034,13 +1034,13 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
             <p>注：节序由存储数组直接保证（见 <a href="https://linear.app/papertrace/issue/PAP-48">PAP-48</a> 入库改造）；<code>AbstractSectionView</code> 是 Java record，Jackson 按 JSON 数组元素 <code>{label,text}</code> 直接反序列化为组件，无需自定义。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Adapter 切片测（含摘要排序 + 证据等级）</strong>
             <p><code>PublicationDetailReadAdapterIT</code>（@DataJpaTest + Testcontainers）：建 publication + abstract（structured_sections 存为有序数组 JSON <code>[{"label":"BACKGROUND",..},{"label":"METHODS",..},{"label":"RESULTS",..}]</code>）+ 多条 publication_type（含 RCT）+ 作者；断言 abstractSections <strong>顺序与入库数组一致</strong>（BACKGROUND→METHODS→RESULTS）、evidenceLevel=RANDOMIZED_CONTROLLED_TRIAL、authors 顺序、not-found empty。需 <code>@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class})</code> 且 ObjectMapper 由 @DataJpaTest 上下文提供（若未提供则在测试 @Import 一个 <code>new ObjectMapper()</code> 的 @TestConfiguration bean）。</p>
             <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-infra:test --tests "*PublicationDetailReadAdapterIT"</code></p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：QueryService + Response + Controller + 测试 + Commit</strong>
             <p><code>PortalPublicationDetailQueryService</code>（结构同 venue：<code>findById().orElseThrow(() -> new PublicationNotFoundException(id))</code>，复用既有异常）。</p>
             <p><code>PortalPublicationDetailResponse</code>（id/venueId 转 String；evidenceLevel 映射为 <code>{level:name(), rank, label, derived}</code> 嵌套 record；aiSummary 字段恒 null；dates 中仅 published 有值其余 null；嵌套 author/mesh/funding/date/abstractSection response record）。Converter 新增 <code>toPublicationDetailResponse</code>。</p>
@@ -1432,14 +1432,53 @@ git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code
       </li>
       data-type 4 类：decision / change / tradeoff / other
       -->
-    </ol>
+          <li class="note" data-type="change" data-time="2026-06-04T00:42">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T00:42">06-04 00:42</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>去掉 PublicationAbstractEntity / PublicationAlternativeAbstractEntity 的 @Lob —— 对 TEXT 列错误映射，Hibernate 7 + PG 下导致内容存入 large object、TEXT 列里存的是 OID 串。改为普通 String↔TEXT 映射，文献详情按 a.plain_text 普通列读取（曾误用 lo_get，已还原）。plan 未预见此实体修复。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>VenueNotFoundException 已存在于代码库（构造器入参 Long），直接复用未重建。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>Controller IT 加 @TestPropertySource(error.context-prefix=CATALOG) 以在 @WebMvcTest 切片验证 CATALOG-0404（否则降级 UNKNOWN-0404）。不影响生产代码。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>旧 PortalVenueControllerIT 追加 @MockitoBean PortalVenueDetailQueryService —— Controller 注入新字段后切片需 mock，否则装配失败。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>去掉 PublicationAbstractEntity / PublicationAlternativeAbstractEntity 的 @Lob —— 对 TEXT 列错误映射，Hibernate7+PG 下内容存入 large object、TEXT 列存 OID 串。改普通 String↔TEXT，文献详情用 a.plain_text 普通列读取（曾误用 lo_get 已还原）。</p>
+      </li>
+</ol>
 
-    <p class="empty-state">no notes yet</p>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="decision">1</span> decisions /
+      <span data-counter="change">3</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
