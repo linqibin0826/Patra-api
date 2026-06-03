@@ -23,6 +23,20 @@
 
 详细规范见 `.claude/rules/` 下的具体规则文件（Claude Code 自动加载）。
 
+## 页面设计策略：服务全体用户 + 渐进式披露
+
+Patra 门户面向**所有类型用户**（临床医生、科研人员、研究生、投稿作者……），不为某一类用户裁剪页面。统一采用**渐进式披露（progressive disclosure）**：
+
+- **默认层**：每个页面默认只呈现"绝大多数用户都需要"的核心信息，保持干净、低密度、快速可读。
+- **深数据层**：专业 / 重度信息（完整指标、明细、可选维度）默认收起，由用户**主动展开**（折叠区 / Tab / 抽屉，按页选定）。
+
+**为什么**：访客类型差异极大，一刀切要么信息过载、要么信息不足。渐进式披露让普通访客看概览即走、重度用户按需深挖，同一页面同时服务两端。
+
+**落地约束**：
+
+1. 每次页面设计（Claude Design 简报 + FE 实现）必须显式区分「默认层 / 深数据层」，并点名各模块归属。
+2. **BE 连带含义**：详情类端点应一次返回**完整数据集（含深数据层）**供前端按需披露；不要因为"默认页用不到"就在端点裁掉深层字段。
+
 ## patra plugin 自动加载
 
 `patra:` 与 `patra-backend:` 命名空间下的流程方法论与后端专属 skill（brainstorming / writing-plans / TDD / debugging / code review / hexagonal / jpa / events / troubleshooter 等）已放在**仓库根** `.claude/skills/patra/` 与 `.claude/skills/patra-backend/`。
