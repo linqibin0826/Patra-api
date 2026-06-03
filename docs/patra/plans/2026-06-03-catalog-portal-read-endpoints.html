@@ -29,8 +29,8 @@
           <li data-task-status="done"><a href="#task-1">Task 1 — EvidenceLevel 领域值对象</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — 期刊详情端点</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 文献详情端点</a></li>
-          <li data-task-status="in-progress"><a href="#task-4">Task 4 — 期刊浏览端点 + topN 归并</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — 首页 FE 取数迁移</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — 期刊浏览端点 + topN 归并</a></li>
+          <li data-task-status="in-progress"><a href="#task-5">Task 5 — 首页 FE 取数迁移</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — 集成验证与收尾</a></li>
         </ol>
       </li>
@@ -1058,7 +1058,7 @@ git commit -m "feat(catalog): 文献详情读端点 GET /portal/publications/{id
       </article>
 
       <!-- ===================== TASK 4 ===================== -->
-      <article class="task" id="task-4" data-status="in-progress">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：期刊浏览端点 GET /portal/venues + topN 归并</h2>
           <dl class="files">
@@ -1321,7 +1321,7 @@ git commit -m "feat(catalog): 期刊浏览检索端点 GET /portal/venues 并归
       </article>
 
       <!-- ===================== TASK 5 ===================== -->
-      <article class="task" id="task-5" data-status="pending">
+      <article class="task" id="task-5" data-status="in-progress">
         <header>
           <h2>任务 5：首页期刊模块取数迁移到浏览端点</h2>
           <dl class="files">
@@ -1330,16 +1330,16 @@ git commit -m "feat(catalog): 期刊浏览检索端点 GET /portal/venues 并归
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：定位首页期刊取数</strong>
             <p>运行：<code>grep -rn "portal/venues" patra-portal/src</code> 与 <code>grep -rn "topN" patra-portal/src</code> 定位取数函数（fetch / server action / API client）与其 TS 类型、调用处（首页期刊模块组件）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：改造取数（契约变更）</strong>
             <p>契约变化：<code>GET /portal/venues</code> 从「<code>?topN=6</code> 返回 <code>Journal[]</code>」变为「<code>?sort=impactFactor&amp;pageSize=6</code> 返回 <code>PageResult&lt;VenueBrowse&gt;</code>」。改动点：① 请求参数 <code>topN=6</code> → <code>sort=impactFactor&amp;pageSize=6</code>；② 响应取 <code>data.items</code>（而非整体数组）；③ 字段映射：浏览响应是原首页卡片字段超集（含 <code>name/abbr/impactFactor/jcrQuartile/foundedYear/...</code>），原卡片组件按 <code>name/abbr/impactFactor/quartile/foundedYear</code> 取值——把 <code>quartile</code> 来源改为 <code>jcrQuartile</code>，其余沿用。更新对应 zod schema / TS 类型为 PageResult 形态（<code>{ items, page, pageSize, total, totalPages }</code>）。</p>
             <p>注：homepageUrl/cover 等新字段首页不用，忽略即可。保持首页组件其余逻辑不变（仅取数与字段名）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：本地联调 + smoke + Commit</strong>
             <p>启动 catalog + portal，访问首页确认期刊模块渲染 6 本（按 IF 降序）。跑既有首页 smoke/组件测试。</p>
             <pre><code class="lang-bash">git add -A patra-portal/
