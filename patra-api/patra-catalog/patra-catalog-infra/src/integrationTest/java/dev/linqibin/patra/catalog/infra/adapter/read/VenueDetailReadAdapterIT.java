@@ -65,11 +65,11 @@ class VenueDetailReadAdapterIT {
   }
 
   @Test
-  @DisplayName("jcrRatings 列表按年份降序，包含所有年度记录")
+  @DisplayName("jcrRatings 列表按年份降序，包含所有年度记录，quartile 来自 jif_quartile 字段")
   void shouldReturnJcrRatingsSortedByYearDesc() {
     Long venueId = saveJournal("Cell", "Cell");
     saveJcr(venueId, 2023, new BigDecimal("45.0"), "Q1");
-    saveJcr(venueId, 2025, new BigDecimal("66.8"), "Q1");
+    saveJcr(venueId, 2025, new BigDecimal("66.8"), "Q2");
     em.flush();
     em.clear();
 
@@ -79,12 +79,29 @@ class VenueDetailReadAdapterIT {
     assertThat(model.jcrRatings())
         .extracting(JcrRatingView::year)
         .containsExactly(2025, 2023); // DESC
+    assertThat(model.jcrRatings().get(0).quartile()).isEqualTo("Q2"); // jif_quartile 字段
   }
 
   @Test
   @DisplayName("ID 不存在时返回 empty")
   void shouldReturnEmptyWhenNotFound() {
     Optional<VenueDetailReadModel> result = adapter.findById(Long.MAX_VALUE);
+    assertThat(result).isEmpty();
+  }
+
+  @Test
+  @DisplayName("软删除后 findById 返回 empty")
+  void shouldReturnEmptyWhenSoftDeleted() {
+    Long venueId = saveJournal("PLOS ONE", "PLOS ONE");
+    em.flush();
+    em.clear();
+
+    VenueEntity venue = em.find(VenueEntity.class, venueId);
+    em.remove(venue); // Hibernate @SoftDelete 自动转为 UPDATE deleted_at = now()
+    em.flush();
+    em.clear();
+
+    Optional<VenueDetailReadModel> result = adapter.findById(venueId);
     assertThat(result).isEmpty();
   }
 

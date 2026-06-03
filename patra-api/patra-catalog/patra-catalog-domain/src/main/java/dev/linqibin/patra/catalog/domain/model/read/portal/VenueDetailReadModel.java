@@ -7,6 +7,7 @@ import java.util.List;
 ///
 /// @author linqibin
 /// @since 0.1.0
+@lombok.Builder
 public record VenueDetailReadModel(
     Long id,
     String title,
@@ -55,6 +56,7 @@ public record VenueDetailReadModel(
   /// @param subject JIF 学科分类
   /// @param jifRank JIF 排名
   /// @param jifPercentile JIF 百分位
+  @lombok.Builder
   public record JcrRatingView(
       int year,
       BigDecimal impactFactor,
@@ -73,6 +75,7 @@ public record VenueDetailReadModel(
   /// @param minorQuartile 小类分区
   /// @param isTop 是否 Top 期刊
   /// @param isReview 是否综述期刊
+  @lombok.Builder
   public record CasRatingView(
       int year,
       String edition,
@@ -91,6 +94,7 @@ public record VenueDetailReadModel(
   /// @param snip SNIP 值
   /// @param quartile 分区
   /// @param percentile 百分位
+  @lombok.Builder
   public record ScopusRatingView(
       int year,
       BigDecimal citeScore,
@@ -106,12 +110,36 @@ public record VenueDetailReadModel(
   /// @param citedByCount 被引次数
   /// @param oaWorksCount OA 发文量
   public record YearlyStatView(
-      int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {}
+      int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {
+
+    /// 创建年度统计视图。
+    ///
+    /// @param year 统计年份
+    /// @param worksCount 发文量
+    /// @param citedByCount 被引次数
+    /// @param oaWorksCount OA 发文量
+    /// @return 年度统计视图
+    public static YearlyStatView of(
+        int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {
+      return new YearlyStatView(year, worksCount, citedByCount, oaWorksCount);
+    }
+  }
 
   /// 期刊标识符视图。
   ///
   /// @param type 标识符类型
   /// @param value 标识符值
   /// @param primary 是否主标识符
-  public record IdentifierView(String type, String value, boolean primary) {}
+  public record IdentifierView(String type, String value, boolean primary) {
+
+    /// 创建标识符视图。
+    ///
+    /// @param type 标识符类型
+    /// @param value 标识符值
+    /// @param primary 是否主标识符
+    /// @return 标识符视图
+    public static IdentifierView of(String type, String value, boolean primary) {
+      return new IdentifierView(type, value, primary);
+    }
+  }
 }

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.dto.PortalVenueQuery;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
@@ -35,9 +36,7 @@ class PortalVenueControllerIT {
 
   @MockitoBean private PortalVenueQueryService portalVenueQueryService;
 
-  @MockitoBean
-  private dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService
-      portalVenueDetailQueryService;
+  @MockitoBean private PortalVenueDetailQueryService portalVenueDetailQueryService;
 
   @Test
   @DisplayName("GET /portal/venues 返回 200 + 对齐前端的期刊卡片数组")

@@ -61,72 +61,86 @@ public class PortalApiConverter {
   /// @param model 期刊详情读模型
   /// @return 响应 DTO
   public PortalVenueDetailResponse toVenueDetailResponse(VenueDetailReadModel model) {
-    return new PortalVenueDetailResponse(
-        Long.toString(model.id()),
-        model.title(),
-        model.abbreviatedTitle(),
-        model.venueType(),
-        model.issnL(),
-        model.countryCode(),
-        model.primaryLanguage(),
-        model.foundedYear(),
-        model.coverObjectKey(),
-        null, // homepageUrl：当前无数据源，恒为 null
-        model.isOpenAccess(),
-        model.impactFactor(),
-        model.jcrQuartile(),
-        model.jcrSubject(),
-        model.casMajorCategory(),
-        model.casMajorQuartile(),
-        model.casIsTop(),
-        model.citeScore(),
-        model.hIndex(),
-        model.citedByCount(),
-        model.worksCount(),
-        model.frequency(),
-        model.medlineIndexed(),
-        model.oaType(),
-        model.apcUsd(),
-        model.isInDoaj(),
-        model.jcrRatings().stream()
-            .map(
-                v ->
-                    new PortalVenueDetailResponse.JcrRating(
-                        v.year(),
-                        v.impactFactor(),
-                        v.quartile(),
-                        v.subject(),
-                        v.jifRank(),
-                        v.jifPercentile()))
-            .toList(),
-        model.casRatings().stream()
-            .map(
-                v ->
-                    new PortalVenueDetailResponse.CasRating(
-                        v.year(),
-                        v.edition(),
-                        v.majorCategory(),
-                        v.majorQuartile(),
-                        v.minorSubject(),
-                        v.minorQuartile(),
-                        v.isTop(),
-                        v.isReview()))
-            .toList(),
-        model.scopusRatings().stream()
-            .map(
-                v ->
-                    new PortalVenueDetailResponse.ScopusRating(
-                        v.year(), v.citeScore(), v.sjr(), v.snip(), v.quartile(), v.percentile()))
-            .toList(),
-        model.yearlyStats().stream()
-            .map(
-                v ->
-                    new PortalVenueDetailResponse.YearlyStat(
-                        v.year(), v.worksCount(), v.citedByCount(), v.oaWorksCount()))
-            .toList(),
-        model.identifiers().stream()
-            .map(v -> new PortalVenueDetailResponse.Identifier(v.type(), v.value(), v.primary()))
-            .toList());
+    return PortalVenueDetailResponse.builder()
+        .id(Long.toString(model.id()))
+        .title(model.title())
+        .abbreviatedTitle(model.abbreviatedTitle())
+        .venueType(model.venueType())
+        .issnL(model.issnL())
+        .countryCode(model.countryCode())
+        .primaryLanguage(model.primaryLanguage())
+        .foundedYear(model.foundedYear())
+        .coverObjectKey(model.coverObjectKey())
+        .homepageUrl(null) // 当前无数据源，恒为 null
+        .isOpenAccess(model.isOpenAccess())
+        .impactFactor(model.impactFactor())
+        .jcrQuartile(model.jcrQuartile())
+        .jcrSubject(model.jcrSubject())
+        .casMajorCategory(model.casMajorCategory())
+        .casMajorQuartile(model.casMajorQuartile())
+        .casIsTop(model.casIsTop())
+        .citeScore(model.citeScore())
+        .hIndex(model.hIndex())
+        .citedByCount(model.citedByCount())
+        .worksCount(model.worksCount())
+        .frequency(model.frequency())
+        .medlineIndexed(model.medlineIndexed())
+        .oaType(model.oaType())
+        .apcUsd(model.apcUsd())
+        .isInDoaj(model.isInDoaj())
+        .jcrRatings(
+            model.jcrRatings().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.JcrRating.builder()
+                            .year(v.year())
+                            .impactFactor(v.impactFactor())
+                            .quartile(v.quartile())
+                            .subject(v.subject())
+                            .jifRank(v.jifRank())
+                            .jifPercentile(v.jifPercentile())
+                            .build())
+                .toList())
+        .casRatings(
+            model.casRatings().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.CasRating.builder()
+                            .year(v.year())
+                            .edition(v.edition())
+                            .majorCategory(v.majorCategory())
+                            .majorQuartile(v.majorQuartile())
+                            .minorSubject(v.minorSubject())
+                            .minorQuartile(v.minorQuartile())
+                            .isTop(v.isTop())
+                            .isReview(v.isReview())
+                            .build())
+                .toList())
+        .scopusRatings(
+            model.scopusRatings().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.ScopusRating.builder()
+                            .year(v.year())
+                            .citeScore(v.citeScore())
+                            .sjr(v.sjr())
+                            .snip(v.snip())
+                            .quartile(v.quartile())
+                            .percentile(v.percentile())
+                            .build())
+                .toList())
+        .yearlyStats(
+            model.yearlyStats().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.YearlyStat.of(
+                            v.year(), v.worksCount(), v.citedByCount(), v.oaWorksCount()))
+                .toList())
+        .identifiers(
+            model.identifiers().stream()
+                .map(v -> PortalVenueDetailResponse.Identifier.of(v.type(), v.value(), v.primary()))
+                .toList())
+        .build();
   }
 
   private String toSource(String provenanceCode) {

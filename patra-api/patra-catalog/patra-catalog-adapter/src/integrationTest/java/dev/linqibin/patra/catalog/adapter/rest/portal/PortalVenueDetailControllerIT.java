@@ -4,10 +4,10 @@ import static org.mockito.Mockito.when;
 
 import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
+import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService;
 import dev.linqibin.patra.catalog.domain.exception.VenueNotFoundException;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
 import java.math.BigDecimal;
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,45 +33,26 @@ class PortalVenueDetailControllerIT {
   @MockitoBean private PortalVenueDetailQueryService portalVenueDetailQueryService;
 
   // PortalVenueQueryService 也需要 mock（Controller 里已注入）
-  @MockitoBean
-  private dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueQueryService
-      portalVenueQueryService;
+  @MockitoBean private PortalVenueQueryService portalVenueQueryService;
 
   @Test
   @DisplayName("GET /portal/venues/{id} 返回 200 + 对齐前端的期刊详情")
   void shouldReturnVenueDetail() {
     VenueDetailReadModel model =
-        new VenueDetailReadModel(
-            319041872872550658L,
-            "Annals of Oncology",
-            "Ann Oncol",
-            "JOURNAL",
-            "1569-8041",
-            "NL",
-            "ENG",
-            1990,
-            null,
-            true,
-            new BigDecimal("51.1"),
-            "Q1",
-            "ONCOLOGY",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+        VenueDetailReadModel.builder()
+            .id(319041872872550658L)
+            .title("Annals of Oncology")
+            .abbreviatedTitle("Ann Oncol")
+            .venueType("JOURNAL")
+            .issnL("1569-8041")
+            .countryCode("NL")
+            .primaryLanguage("ENG")
+            .foundedYear(1990)
+            .isOpenAccess(true)
+            .impactFactor(new BigDecimal("51.1"))
+            .jcrQuartile("Q1")
+            .jcrSubject("ONCOLOGY")
+            .build();
     when(portalVenueDetailQueryService.getById(319041872872550658L)).thenReturn(model);
 
     restClient

@@ -330,7 +330,7 @@ public interface VenueDao extends JpaRepository<VenueEntity, Long> {
   @Query(
       value =
           """
-      SELECT year AS "year", impact_factor AS "impactFactor", wos_overall_quartile AS "quartile",
+      SELECT year AS "year", impact_factor AS "impactFactor", jif_quartile AS "quartile",
         subject AS "subject", jif_rank AS "jifRank", jif_percentile AS "jifPercentile"
       FROM cat_venue_jcr_rating
       WHERE venue_id = :id

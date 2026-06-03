@@ -7,7 +7,6 @@ import static org.mockito.Mockito.when;
 import dev.linqibin.patra.catalog.domain.exception.VenueNotFoundException;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
 import dev.linqibin.patra.catalog.domain.port.read.VenueDetailReadPort;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,9 +44,13 @@ class PortalVenueDetailQueryServiceTest {
   }
 
   private VenueDetailReadModel stubModel(long id) {
-    return new VenueDetailReadModel(
-        id, "Nature", "Nat", "JOURNAL", null, null, null, 1869, null, true, null, null, null, null,
-        null, null, null, null, null, null, null, null, null, null, null, List.of(), List.of(),
-        List.of(), List.of(), List.of());
+    return VenueDetailReadModel.builder()
+        .id(id)
+        .title("Nature")
+        .abbreviatedTitle("Nat")
+        .venueType("JOURNAL")
+        .foundedYear(1869)
+        .isOpenAccess(true)
+        .build();
   }
 }

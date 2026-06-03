@@ -40,6 +40,7 @@ import java.util.List;
 /// @param identifiers 期刊标识符列表
 /// @author linqibin
 /// @since 0.1.0
+@lombok.Builder
 public record PortalVenueDetailResponse(
     String id,
     String title,
@@ -73,6 +74,14 @@ public record PortalVenueDetailResponse(
     List<YearlyStat> yearlyStats,
     List<Identifier> identifiers) {
 
+  public PortalVenueDetailResponse {
+    jcrRatings = jcrRatings != null ? List.copyOf(jcrRatings) : List.of();
+    casRatings = casRatings != null ? List.copyOf(casRatings) : List.of();
+    scopusRatings = scopusRatings != null ? List.copyOf(scopusRatings) : List.of();
+    yearlyStats = yearlyStats != null ? List.copyOf(yearlyStats) : List.of();
+    identifiers = identifiers != null ? List.copyOf(identifiers) : List.of();
+  }
+
   /// JCR 年度评级响应。
   ///
   /// @param year 评级年份
@@ -81,6 +90,7 @@ public record PortalVenueDetailResponse(
   /// @param subject JIF 学科分类
   /// @param jifRank JIF 排名
   /// @param jifPercentile JIF 百分位
+  @lombok.Builder
   public record JcrRating(
       int year,
       BigDecimal impactFactor,
@@ -99,6 +109,7 @@ public record PortalVenueDetailResponse(
   /// @param minorQuartile 小类分区
   /// @param isTop 是否 Top 期刊
   /// @param isReview 是否综述期刊
+  @lombok.Builder
   public record CasRating(
       int year,
       String edition,
@@ -117,6 +128,7 @@ public record PortalVenueDetailResponse(
   /// @param snip SNIP 值
   /// @param quartile 分区
   /// @param percentile 百分位
+  @lombok.Builder
   public record ScopusRating(
       int year,
       BigDecimal citeScore,
@@ -132,12 +144,36 @@ public record PortalVenueDetailResponse(
   /// @param citedByCount 被引次数
   /// @param oaWorksCount OA 发文量
   public record YearlyStat(
-      int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {}
+      int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {
+
+    /// 创建年度统计响应。
+    ///
+    /// @param year 统计年份
+    /// @param worksCount 发文量
+    /// @param citedByCount 被引次数
+    /// @param oaWorksCount OA 发文量
+    /// @return 年度统计响应
+    public static YearlyStat of(
+        int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {
+      return new YearlyStat(year, worksCount, citedByCount, oaWorksCount);
+    }
+  }
 
   /// 期刊标识符响应。
   ///
   /// @param type 标识符类型
   /// @param value 标识符值
   /// @param primary 是否主标识符
-  public record Identifier(String type, String value, boolean primary) {}
+  public record Identifier(String type, String value, boolean primary) {
+
+    /// 创建标识符响应。
+    ///
+    /// @param type 标识符类型
+    /// @param value 标识符值
+    /// @param primary 是否主标识符
+    /// @return 标识符响应
+    public static Identifier of(String type, String value, boolean primary) {
+      return new Identifier(type, value, primary);
+    }
+  }
 }
