@@ -299,7 +299,7 @@ public interface VenueDao extends JpaRepository<VenueEntity, Long> {
         CASE WHEN :sort = 'IMPACT_FACTOR' THEN COALESCE(jcr.impact_factor, 0) ELSE NULL END DESC,
         CASE WHEN :sort = 'CITED_BY' THEN COALESCE(v.cited_by_count, 0) ELSE NULL END DESC,
         CASE WHEN :sort = 'CAS_QUARTILE' THEN cas.major_quartile ELSE NULL END ASC NULLS LAST,
-        CASE WHEN :sort = 'TITLE' THEN v.title ELSE NULL END ASC,
+        CASE WHEN :sort = 'TITLE' THEN v.title ELSE NULL END ASC NULLS LAST,
         v.id DESC
       """,
       countQuery =

@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Min;
 /// 适配器入口校验：非法参数在此收敛为 4xx。
 ///
 /// @param q 关键词（标题前缀），可空
-/// @param sort 排序码（impactfactor/cas_quartile/title/cited_by），可空
+/// @param sort 排序码：cas_quartile / title / cited_by（其余值或不传，默认按影响因子降序 impact_factor）
 /// @param subject JCR 学科，可空
 /// @param jcrQuartile JCR 分区，可空
 /// @param casQuartile CAS 大类分区，可空
