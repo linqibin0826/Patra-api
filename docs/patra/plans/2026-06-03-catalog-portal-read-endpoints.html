@@ -1480,13 +1480,21 @@ git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code
         </header>
         <p>VenueBrowseSort.fromCode 用 Locale.ROOT 做 toLowerCase（SpotBugs DM_CONVERT_CASE 强制 + 避免土耳其语 i 问题），与 EvidenceLevel 一致。标准做法，无功能影响。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-04T02:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T02:30">06-04 02:30</time>
+          <a href="#task-6">§ 最终审查修复</a>
+        </header>
+        <p>最终整体审查接缝修复：① 补 pii 标识符字段（spec §4.2 列了但 plan/初版漏了，全链路 Dao→Model→Response→Converter）；② FE VenueBrowse.cover 改名 coverObjectKey 对齐 BE 契约（曾错位致 FE 读 undefined）；③ 4 个详情文件 @lombok.Builder 全类名改 import+@Builder（去 FQN，与 Browse* 一致）；④ VenueBrowseSort.fromCode 文档补 impactFactor 别名。</p>
+      </li>
 </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">2</span> decisions /
-      <span data-counter="change">3</span> changes /
+      <span data-counter="change">4</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
