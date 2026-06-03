@@ -4,7 +4,6 @@ import dev.linqibin.starter.jpa.entity.ValueObjectJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Index;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDate;
@@ -71,7 +70,6 @@ public class PublicationAlternativeAbstractEntity extends ValueObjectJpaEntity {
   private String languageName;
 
   /// 纯文本摘要
-  @Lob
   @Column(name = "plain_text", columnDefinition = "TEXT")
   private String plainText;
 

@@ -33,7 +33,7 @@ public interface PublicationDetailDao extends JpaRepository<PublicationEntity, L
       SELECT p.id AS "id", p.title AS "title", p.original_title AS "originalTitle",
         p.venue_id AS "venueId", v.title AS "venueName", p.publication_year AS "publicationYear",
         a.abstract_type AS "abstractType", a.structured_sections::text AS "structuredSectionsJson",
-        convert_from(lo_get(a.plain_text::oid), 'UTF8') AS "abstractPlainText", p.doi AS "doi", p.pmid AS "pmid",
+        a.plain_text AS "abstractPlainText", p.doi AS "doi", p.pmid AS "pmid",
         (SELECT i.identifier_value FROM cat_publication_identifier i
            WHERE i.publication_id = p.id AND i.type = 'pmc' LIMIT 1) AS "pmcid",
         p.citation_count AS "citationCount", p.number_of_references AS "numberOfReferences",
