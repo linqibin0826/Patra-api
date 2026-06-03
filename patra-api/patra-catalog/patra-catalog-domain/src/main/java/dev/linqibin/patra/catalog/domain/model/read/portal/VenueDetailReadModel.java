@@ -2,12 +2,13 @@ package dev.linqibin.patra.catalog.domain.model.read.portal;
 
 import java.math.BigDecimal;
 import java.util.List;
+import lombok.Builder;
 
 /// 期刊详情读模型（CQRS 读端，一次返回完整数据集，含深数据层）。
 ///
 /// @author linqibin
 /// @since 0.1.0
-@lombok.Builder
+@Builder
 public record VenueDetailReadModel(
     Long id,
     String title,
@@ -56,7 +57,7 @@ public record VenueDetailReadModel(
   /// @param subject JIF 学科分类
   /// @param jifRank JIF 排名
   /// @param jifPercentile JIF 百分位
-  @lombok.Builder
+  @Builder
   public record JcrRatingView(
       int year,
       BigDecimal impactFactor,
@@ -75,7 +76,7 @@ public record VenueDetailReadModel(
   /// @param minorQuartile 小类分区
   /// @param isTop 是否 Top 期刊
   /// @param isReview 是否综述期刊
-  @lombok.Builder
+  @Builder
   public record CasRatingView(
       int year,
       String edition,
@@ -94,7 +95,7 @@ public record VenueDetailReadModel(
   /// @param snip SNIP 值
   /// @param quartile 分区
   /// @param percentile 百分位
-  @lombok.Builder
+  @Builder
   public record ScopusRatingView(
       int year,
       BigDecimal citeScore,

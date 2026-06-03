@@ -36,6 +36,8 @@ public interface PublicationDetailDao extends JpaRepository<PublicationEntity, L
         a.plain_text AS "abstractPlainText", p.doi AS "doi", p.pmid AS "pmid",
         (SELECT i.identifier_value FROM cat_publication_identifier i
            WHERE i.publication_id = p.id AND i.type = 'pmc' LIMIT 1) AS "pmcid",
+        (SELECT i.identifier_value FROM cat_publication_identifier i
+           WHERE i.publication_id = p.id AND i.type = 'pii' LIMIT 1) AS "pii",
         p.citation_count AS "citationCount", p.number_of_references AS "numberOfReferences",
         p.conflict_of_interest AS "conflictOfInterest", p.is_oa AS "isOa", p.oa_status AS "oaStatus",
         (SELECT string_agg(pt.type_value, E'\\x1f' ORDER BY pt.type_order ASC NULLS LAST, pt.id ASC)

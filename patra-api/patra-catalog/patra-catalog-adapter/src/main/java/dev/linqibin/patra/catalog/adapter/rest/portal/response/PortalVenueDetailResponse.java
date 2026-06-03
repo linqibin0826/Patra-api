@@ -2,6 +2,7 @@ package dev.linqibin.patra.catalog.adapter.rest.portal.response;
 
 import java.math.BigDecimal;
 import java.util.List;
+import lombok.Builder;
 
 /// Portal 期刊详情响应 DTO。
 ///
@@ -40,7 +41,7 @@ import java.util.List;
 /// @param identifiers 期刊标识符列表
 /// @author linqibin
 /// @since 0.1.0
-@lombok.Builder
+@Builder
 public record PortalVenueDetailResponse(
     String id,
     String title,
@@ -90,7 +91,7 @@ public record PortalVenueDetailResponse(
   /// @param subject JIF 学科分类
   /// @param jifRank JIF 排名
   /// @param jifPercentile JIF 百分位
-  @lombok.Builder
+  @Builder
   public record JcrRating(
       int year,
       BigDecimal impactFactor,
@@ -109,7 +110,7 @@ public record PortalVenueDetailResponse(
   /// @param minorQuartile 小类分区
   /// @param isTop 是否 Top 期刊
   /// @param isReview 是否综述期刊
-  @lombok.Builder
+  @Builder
   public record CasRating(
       int year,
       String edition,
@@ -128,7 +129,7 @@ public record PortalVenueDetailResponse(
   /// @param snip SNIP 值
   /// @param quartile 分区
   /// @param percentile 百分位
-  @lombok.Builder
+  @Builder
   public record ScopusRating(
       int year,
       BigDecimal citeScore,

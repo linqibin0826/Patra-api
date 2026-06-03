@@ -2,6 +2,7 @@ package dev.linqibin.patra.catalog.adapter.rest.portal.response;
 
 import java.time.LocalDate;
 import java.util.List;
+import lombok.Builder;
 
 /// Portal 文献详情响应 DTO。
 ///
@@ -20,6 +21,7 @@ import java.util.List;
 /// @param doi DOI
 /// @param pmid PubMed ID
 /// @param pmcid PubMed Central ID
+/// @param pii Publisher Item Identifier
 /// @param primaryType 主出版类型（第一条）
 /// @param publicationTypes 全部出版类型列表
 /// @param citationCount 被引次数
@@ -35,7 +37,7 @@ import java.util.List;
 /// @param aiSummary AI 摘要（当前恒为 null）
 /// @author linqibin
 /// @since 0.1.0
-@lombok.Builder
+@Builder
 public record PortalPublicationDetailResponse(
     String id,
     String title,
@@ -50,6 +52,7 @@ public record PortalPublicationDetailResponse(
     String doi,
     String pmid,
     String pmcid,
+    String pii,
     String primaryType,
     List<String> publicationTypes,
     Integer citationCount,
@@ -117,7 +120,7 @@ public record PortalPublicationDetailResponse(
   /// @param corresponding 是否通讯作者
   /// @param name 作者姓名
   /// @param affiliation 主机构字符串
-  @lombok.Builder
+  @Builder
   public record Author(
       int order, boolean first, boolean corresponding, String name, String affiliation) {}
 

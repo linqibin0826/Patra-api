@@ -59,6 +59,7 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
                   .doi(main.getDoi())
                   .pmid(main.getPmid())
                   .pmcid(main.getPmcid())
+                  .pii(main.getPii())
                   .primaryType(primaryType)
                   .publicationTypes(types)
                   .citationCount(main.getCitationCount())

@@ -195,6 +195,7 @@ public class PortalApiConverter {
         .doi(model.doi())
         .pmid(model.pmid())
         .pmcid(model.pmcid())
+        .pii(model.pii())
         .primaryType(model.primaryType())
         .publicationTypes(model.publicationTypes())
         .citationCount(model.citationCount())

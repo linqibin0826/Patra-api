@@ -3,12 +3,13 @@ package dev.linqibin.patra.catalog.domain.model.read.portal;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.EvidenceLevel;
 import java.time.LocalDate;
 import java.util.List;
+import lombok.Builder;
 
 /// 文献详情读模型（CQRS 读端，一次返回完整数据集）。
 ///
 /// @author linqibin
 /// @since 0.1.0
-@lombok.Builder
+@Builder
 public record PublicationDetailReadModel(
     Long id,
     String title,
@@ -23,6 +24,7 @@ public record PublicationDetailReadModel(
     String doi,
     String pmid,
     String pmcid,
+    String pii,
     String primaryType,
     List<String> publicationTypes,
     Integer citationCount,
@@ -69,7 +71,7 @@ public record PublicationDetailReadModel(
   /// @param corresponding 是否通讯作者
   /// @param name 作者姓名
   /// @param affiliation 主机构字符串（第一机构，可为 null）
-  @lombok.Builder
+  @Builder
   public record AuthorView(
       int order, boolean first, boolean corresponding, String name, String affiliation) {}
 

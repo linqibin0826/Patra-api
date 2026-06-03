@@ -13,9 +13,11 @@ import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAbstractEn
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorAffiliationEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationIdentifierEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationMeshHeadingEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationTypeEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
+import dev.linqibin.patra.common.model.enums.PublicationIdentifierType;
 import dev.linqibin.starter.jpa.autoconfig.JpaAuditingConfig;
 import dev.linqibin.starter.jpa.id.SnowflakeIdGenerator;
 import java.util.Optional;
@@ -168,6 +170,33 @@ class PublicationDetailReadAdapterIT {
     assertThat(result).isEmpty();
   }
 
+  @Test
+  @DisplayName("无 pii 标识符时 pii() 返回 null")
+  void shouldReturnNullPiiWhenNoIdentifier() {
+    Long venueId = saveVenue("Cell");
+    Long pubId = savePublication(venueId, "PII Test Paper", "10.1000/cell", "66666666");
+    em.flush();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.pii()).isNull();
+  }
+
+  @Test
+  @DisplayName("存在 pii 标识符时 pii() 返回正确值")
+  void shouldReturnPiiWhenIdentifierExists() {
+    Long venueId = saveVenue("Science");
+    Long pubId = savePublication(venueId, "PII Present Paper", "10.1000/sci", "77777777");
+    saveIdentifier(pubId, "pii", "S0140-6736(21)00183-2");
+    em.flush();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.pii()).isEqualTo("S0140-6736(21)00183-2");
+  }
+
   // ===== 测试数据构建助手 =====
 
   private Long saveVenue(String title) {
@@ -269,5 +298,14 @@ class PublicationDetailReadAdapterIT {
         PublicationMeshHeadingEntity.of(pubId, descriptorUi, major, order);
     h.setId(SnowflakeIdGenerator.getId());
     em.persist(h);
+  }
+
+  private void saveIdentifier(Long pubId, String type, String value) {
+    PublicationIdentifierEntity ident = new PublicationIdentifierEntity();
+    ident.setId(SnowflakeIdGenerator.getId());
+    ident.setPublicationId(pubId);
+    ident.setType(PublicationIdentifierType.fromCode(type));
+    ident.setValue(value);
+    em.persist(ident);
   }
 }

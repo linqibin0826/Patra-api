@@ -26,7 +26,8 @@ public enum VenueBrowseSort {
   /// - `casquartile` / `cas_quartile` → [CAS_QUARTILE]
   /// - `title` → [TITLE]
   /// - `citedby` / `cited_by` → [CITED_BY]
-  /// - 其余（含 null）→ [IMPACT_FACTOR]
+  /// - `impactfactor` / `impact_factor` → [IMPACT_FACTOR]（显式别名）
+  /// - 其余未识别值（含 null）→ [IMPACT_FACTOR]（默认）
   ///
   /// @param code 外部传入的排序码，可为 null
   /// @return 对应的枚举值，未知或 null 时返回 [IMPACT_FACTOR]

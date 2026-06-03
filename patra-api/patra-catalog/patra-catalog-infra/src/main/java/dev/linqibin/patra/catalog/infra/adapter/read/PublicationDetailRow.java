@@ -31,6 +31,8 @@ public interface PublicationDetailRow {
 
   String getPmcid();
 
+  String getPii();
+
   Integer getCitationCount();
 
   Integer getNumberOfReferences();
