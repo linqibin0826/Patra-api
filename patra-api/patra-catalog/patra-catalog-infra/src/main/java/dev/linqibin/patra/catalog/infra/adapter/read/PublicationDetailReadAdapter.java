@@ -32,8 +32,9 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
   /// 出版类型拼接分隔符，与 SQL 中 `string_agg(..., E'\x1f', ...)` 一致（U+001F）。
   private static final String DELIMITER = "";
 
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
   private final PublicationDetailDao publicationDetailDao;
-  private final ObjectMapper objectMapper;
 
   @Override
   public Optional<PublicationDetailReadModel> findById(long id) {
@@ -89,7 +90,7 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
       return List.of();
     }
     try {
-      return objectMapper.readValue(json, new TypeReference<List<AbstractSectionView>>() {});
+      return OBJECT_MAPPER.readValue(json, new TypeReference<List<AbstractSectionView>>() {});
     } catch (Exception e) {
       log.warn(
           "Failed to parse structured_sections JSON, falling back to empty list: {}",

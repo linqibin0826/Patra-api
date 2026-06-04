@@ -2,7 +2,6 @@ package dev.linqibin.patra.catalog.infra.adapter.read;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.linqibin.patra.catalog.domain.model.enums.DisambiguationStatus;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.EvidenceLevel;
@@ -34,7 +33,7 @@ import org.springframework.test.context.ContextConfiguration;
 @DataJpaTest
 @ContextConfiguration(initializers = CatalogITPostgreSQLContainerInitializer.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class, ObjectMapper.class})
+@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class})
 @ActiveProfiles("test")
 @DisplayName("PublicationDetailReadAdapter 文献详情查询集成测试")
 class PublicationDetailReadAdapterIT {
