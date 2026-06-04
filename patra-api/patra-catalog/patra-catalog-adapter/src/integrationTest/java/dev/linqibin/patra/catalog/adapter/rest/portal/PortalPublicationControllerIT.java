@@ -177,6 +177,14 @@ class PortalPublicationControllerIT {
   }
 
   @Test
+  @DisplayName("id=0 时路径参数校验失败返回 422，不触达应用层")
+  void shouldRejectNonPositivePublicationId() {
+    restClient.get().uri("/portal/publications/0").exchange().expectStatus().isEqualTo(422);
+
+    verifyNoInteractions(portalPublicationDetailQueryService);
+  }
+
+  @Test
   @DisplayName("文献不存在时返回 404 + CATALOG-0404 错误码")
   void shouldReturn404WhenPublicationNotFound() {
     when(portalPublicationDetailQueryService.getById(999L))

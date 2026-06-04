@@ -35,9 +35,9 @@ public interface PublicationDetailDao extends JpaRepository<PublicationEntity, L
         a.abstract_type AS "abstractType", a.structured_sections::text AS "structuredSectionsJson",
         a.plain_text AS "abstractPlainText", p.doi AS "doi", p.pmid AS "pmid",
         (SELECT i.identifier_value FROM cat_publication_identifier i
-           WHERE i.publication_id = p.id AND i.type = 'pmc' LIMIT 1) AS "pmcid",
+           WHERE i.publication_id = p.id AND i.type = 'pmc' ORDER BY i.id ASC LIMIT 1) AS "pmcid",
         (SELECT i.identifier_value FROM cat_publication_identifier i
-           WHERE i.publication_id = p.id AND i.type = 'pii' LIMIT 1) AS "pii",
+           WHERE i.publication_id = p.id AND i.type = 'pii' ORDER BY i.id ASC LIMIT 1) AS "pii",
         p.citation_count AS "citationCount", p.number_of_references AS "numberOfReferences",
         p.conflict_of_interest AS "conflictOfInterest", p.is_oa AS "isOa", p.oa_status AS "oaStatus",
         (SELECT string_agg(pt.type_value, E'\\x1f' ORDER BY pt.type_order ASC NULLS LAST, pt.id ASC)
@@ -60,11 +60,11 @@ public interface PublicationDetailDao extends JpaRepository<PublicationEntity, L
       SELECT pa.author_order AS "order", pa.is_first_author AS "first",
         pa.is_corresponding_author AS "corresponding", au.display_name AS "name",
         (SELECT aff.affiliation_string FROM cat_publication_author_affiliation aff
-           WHERE aff.pub_author_id = pa.id ORDER BY aff.affiliation_order ASC LIMIT 1) AS "affiliation"
+           WHERE aff.pub_author_id = pa.id ORDER BY aff.affiliation_order ASC, aff.id ASC LIMIT 1) AS "affiliation"
       FROM cat_publication_author pa
       JOIN cat_author au ON au.id = pa.author_id AND au.deleted_at IS NULL
       WHERE pa.publication_id = :id
-      ORDER BY pa.author_order ASC
+      ORDER BY pa.author_order ASC, pa.id ASC
       """,
       nativeQuery = true)
   List<PublicationAuthorRow> findAuthorsByPublicationId(@Param("id") long id);
@@ -111,7 +111,7 @@ public interface PublicationDetailDao extends JpaRepository<PublicationEntity, L
       SELECT f.funder_name_raw AS "funder", f.grant_id AS "grantId", f.country_raw AS "country"
       FROM cat_publication_funding f
       WHERE f.publication_id = :id
-      ORDER BY f.funding_order ASC
+      ORDER BY f.funding_order ASC, f.id ASC
       """,
       nativeQuery = true)
   List<PublicationFundingRow> findFundingByPublicationId(@Param("id") long id);

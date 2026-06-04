@@ -90,6 +90,24 @@ class VenueDetailReadAdapterIT {
   }
 
   @Test
+  @DisplayName("非 JOURNAL 类型 venue findById 返回 empty（期刊详情端点不对外暴露非期刊载体）")
+  void shouldReturnEmptyForNonJournalVenue() {
+    VenueEntity conference = new VenueEntity();
+    conference.setId(SnowflakeIdGenerator.getId());
+    conference.setVenueType("CONFERENCE");
+    conference.setTitle("IEEE Conference");
+    conference.setAbbreviatedTitle("IEEE Conf");
+    conference.setProvenanceCode("OPENALEX");
+    em.persist(conference);
+    em.flush();
+    em.clear();
+
+    Optional<VenueDetailReadModel> result = adapter.findById(conference.getId());
+
+    assertThat(result).isEmpty();
+  }
+
+  @Test
   @DisplayName("软删除后 findById 返回 empty")
   void shouldReturnEmptyWhenSoftDeleted() {
     Long venueId = saveJournal("PLOS ONE", "PLOS ONE");

@@ -8,10 +8,11 @@ import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseSort;
 import dev.linqibin.patra.catalog.domain.port.read.VenueBrowseReadPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /// Portal 期刊浏览/检索 CQRS 查询服务。
 ///
-/// 归一化分页参数、转义关键词、解析排序后委托 [VenueBrowseReadPort]。只读，无 `@Transactional`。
+/// 归一化分页参数、解析排序后委托 [VenueBrowseReadPort]。LIKE 转义由读适配器负责。
 ///
 /// @author linqibin
 /// @since 0.1.0
@@ -41,6 +42,7 @@ public class PortalVenueBrowseQueryService {
   /// @param page 页码（1-based），null 时默认 1
   /// @param pageSize 每页大小，null 时默认 12，超过 50 截断为 50
   /// @return 分页结果
+  @Transactional(readOnly = true)
   public PageResult<VenueBrowseReadModel> browse(
       String q,
       String sort,
@@ -56,7 +58,7 @@ public class PortalVenueBrowseQueryService {
     PagingParams paging = PagingParams.normalize(page, pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     VenueBrowseFilter filter =
         VenueBrowseFilter.builder()
-            .keyword(escapeKeyword(q))
+            .keyword(blankToNull(q))
             .sort(VenueBrowseSort.fromCode(sort))
             .subject(blankToNull(subject))
             .jcrQuartile(blankToNull(jcrQuartile))
@@ -67,13 +69,6 @@ public class PortalVenueBrowseQueryService {
             .countryCode(blankToNull(country))
             .build();
     return readPort.search(filter, paging);
-  }
-
-  private String escapeKeyword(String q) {
-    if (q == null || q.isBlank()) {
-      return null;
-    }
-    return q.trim().replace("!", "!!").replace("%", "!%").replace("_", "!_");
   }
 
   private String blankToNull(String value) {

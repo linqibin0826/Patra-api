@@ -4,8 +4,7 @@ import lombok.Builder;
 
 /// 期刊浏览过滤参数（CQRS 读端）。
 ///
-/// @param keyword 刊名前缀模糊匹配（须由调用方预转义 LIKE 特殊字符，'!' 为转义符；原始关键词由
-///     PortalVenueBrowseQueryService 负责转义）；null 表示不过滤
+/// @param keyword 刊名前缀原始关键词；null 表示不过滤。LIKE 转义由读适配器（[VenueBrowseReadAdapter]）负责
 /// @param sort 排序方式，null 时紧凑构造器自动替换为 [VenueBrowseSort.IMPACT_FACTOR]
 /// @param subject JCR 学科，null 表示不过滤
 /// @param jcrQuartile JCR 分区（Q1-Q4），null 表示不过滤

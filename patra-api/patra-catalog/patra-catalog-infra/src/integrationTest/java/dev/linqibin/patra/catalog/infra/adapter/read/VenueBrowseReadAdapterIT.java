@@ -124,6 +124,22 @@ class VenueBrowseReadAdapterIT {
     assertThat(result.page()).isEqualTo(2);
   }
 
+  @Test
+  @DisplayName("keyword 含 '%' 被当作字面量处理：搜 '100%' 只命中 '100% Health'，不命中 '1000 Health'")
+  void shouldTreatPercentInKeywordAsLiteral() {
+    saveJournal("100% Health", "100H", null, null, null);
+    saveJournal("1000 Health", "1000H", null, null, null);
+    em.flush();
+    em.clear();
+
+    VenueBrowseFilter filter = VenueBrowseFilter.builder().keyword("100%").build();
+    PageResult<VenueBrowseReadModel> result = adapter.search(filter, FIRST_PAGE);
+
+    assertThat(result.items())
+        .extracting(VenueBrowseReadModel::name)
+        .containsExactly("100% Health");
+  }
+
   // ===== 测试数据构建助手 =====
 
   private Long saveJournal(

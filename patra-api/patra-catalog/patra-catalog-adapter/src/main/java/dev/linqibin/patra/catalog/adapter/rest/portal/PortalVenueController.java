@@ -8,7 +8,9 @@ import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueBrowseQuer
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 /// @author linqibin
 /// @since 0.1.0
 @Tag(name = "Portal", description = "Portal C 端门户专用接口")
+@Validated
 @RestController
 @RequestMapping("/portal/venues")
 @RequiredArgsConstructor
@@ -52,10 +55,10 @@ public class PortalVenueController {
 
   /// 查询期刊详情。
   ///
-  /// @param id 期刊 ID
+  /// @param id 期刊 ID（必须为正整数）
   /// @return 期刊详情
   @GetMapping("/{id}")
-  public PortalVenueDetailResponse getVenueDetail(@PathVariable long id) {
+  public PortalVenueDetailResponse getVenueDetail(@PathVariable @Positive long id) {
     return portalApiConverter.toVenueDetailResponse(portalVenueDetailQueryService.getById(id));
   }
 }

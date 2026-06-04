@@ -55,15 +55,15 @@ class PortalVenueBrowseQueryServiceTest {
   }
 
   @Test
-  @DisplayName("keyword 含 % 被转义为 !%")
-  void shouldEscapePercentInKeyword() {
+  @DisplayName("keyword 原始值直传 filter（转义由读适配器负责）")
+  void shouldPassRawKeywordToFilter() {
     when(readPort.search(any(), any())).thenReturn(emptyPage(1, 12));
 
     service.browse("100%", null, null, null, null, null, null, null, null, null, null);
 
     ArgumentCaptor<VenueBrowseFilter> filter = ArgumentCaptor.forClass(VenueBrowseFilter.class);
     verify(readPort).search(filter.capture(), any());
-    assertThat(filter.getValue().keyword()).isEqualTo("100!%");
+    assertThat(filter.getValue().keyword()).isEqualTo("100%");
   }
 
   @Test
@@ -88,29 +88,5 @@ class PortalVenueBrowseQueryServiceTest {
     ArgumentCaptor<VenueBrowseFilter> filter = ArgumentCaptor.forClass(VenueBrowseFilter.class);
     verify(readPort).search(filter.capture(), any());
     assertThat(filter.getValue().subject()).isNull();
-  }
-
-  @Test
-  @DisplayName("keyword 含转义符 '!' 自身被转义为 '!!'")
-  void shouldEscapeExclamationMarkInKeyword() {
-    when(readPort.search(any(), any())).thenReturn(emptyPage(1, 12));
-
-    service.browse("100!", null, null, null, null, null, null, null, null, null, null);
-
-    ArgumentCaptor<VenueBrowseFilter> filter = ArgumentCaptor.forClass(VenueBrowseFilter.class);
-    verify(readPort).search(filter.capture(), any());
-    assertThat(filter.getValue().keyword()).isEqualTo("100!!");
-  }
-
-  @Test
-  @DisplayName("keyword 含下划线 '_' 被转义为 '!_'")
-  void shouldEscapeUnderscoreInKeyword() {
-    when(readPort.search(any(), any())).thenReturn(emptyPage(1, 12));
-
-    service.browse("a_b", null, null, null, null, null, null, null, null, null, null);
-
-    ArgumentCaptor<VenueBrowseFilter> filter = ArgumentCaptor.forClass(VenueBrowseFilter.class);
-    verify(readPort).search(filter.capture(), any());
-    assertThat(filter.getValue().keyword()).isEqualTo("a!_b");
   }
 }

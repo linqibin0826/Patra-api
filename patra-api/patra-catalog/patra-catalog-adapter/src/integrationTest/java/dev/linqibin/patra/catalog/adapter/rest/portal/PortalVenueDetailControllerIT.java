@@ -1,5 +1,6 @@
 package dev.linqibin.patra.catalog.adapter.rest.portal;
 
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
@@ -70,6 +71,14 @@ class PortalVenueDetailControllerIT {
         .isEqualTo("Annals of Oncology")
         .jsonPath("$.homepageUrl")
         .isEmpty();
+  }
+
+  @Test
+  @DisplayName("id=0 时路径参数校验失败返回 422，不触达应用层")
+  void shouldRejectNonPositiveVenueId() {
+    restClient.get().uri("/portal/venues/0").exchange().expectStatus().isEqualTo(422);
+
+    verifyNoInteractions(portalVenueDetailQueryService);
   }
 
   @Test

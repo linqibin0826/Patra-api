@@ -334,7 +334,7 @@ public interface VenueDao extends JpaRepository<VenueEntity, Long> {
 
   /// 按 ID 查询期刊详情主行（含最新年 JCR/CAS/Scopus LATERAL JOIN）。
   ///
-  /// 软删除过滤：`deleted_at IS NULL`。
+  /// 软删除过滤：`deleted_at IS NULL`；类型过滤：`venue_type = 'JOURNAL'`（非期刊类型返回 empty）。
   ///
   /// @param id 期刊 ID
   /// @return 期刊详情投影
@@ -363,7 +363,7 @@ public interface VenueDao extends JpaRepository<VenueEntity, Long> {
           WHERE r.venue_id = v.id ORDER BY r.year DESC, r.edition ASC LIMIT 1) cas ON TRUE
       LEFT JOIN LATERAL (SELECT r.cite_score FROM cat_venue_scopus_rating r
           WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) scopus ON TRUE
-      WHERE v.id = :id AND v.deleted_at IS NULL
+      WHERE v.id = :id AND v.deleted_at IS NULL AND v.venue_type = 'JOURNAL'
       """,
       nativeQuery = true)
   Optional<VenueDetailRow> findVenueDetailById(@Param("id") long id);
