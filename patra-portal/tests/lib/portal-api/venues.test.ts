@@ -86,4 +86,13 @@ describe("fetchVenues", () => {
     delete process.env.PATRA_GATEWAY_BASE_URL;
     await expect(fetchVenues()).rejects.toThrow(/PATRA_GATEWAY_BASE_URL/);
   });
+
+  it("坏 payload（缺 items）降级返回空数组", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ page: 1 }), { status: 200 })),
+    );
+    const result = await fetchVenues();
+    expect(result).toEqual([]);
+  });
 });

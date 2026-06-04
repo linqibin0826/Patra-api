@@ -83,7 +83,9 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
             <span className="block font-mono text-[9.5px] uppercase tracking-caps text-fg-3">
               JCR 分区
             </span>
-            <span className="text-[13px] font-semibold tabular-nums">{journal.jcrQuartile}</span>
+            <span className="text-[13px] font-semibold tabular-nums">
+              {journal.jcrQuartile ?? "—"}
+            </span>
           </div>
         </div>
       </div>

@@ -12,8 +12,7 @@ const FETCH_TIMEOUT_MS = 10_000;
  * 端点：`GET /portal/venues?sort=impactFactor&pageSize=<n>`
  * 响应：`PageResult<VenueBrowse>`，期刊数组在 `.items`。
  *
- * 注意：响应用裸断言，无运行时校验。
- * TODO(contract-validation)：API 契约稳定后可用 zod safeParse 替换以防后端字段漂移。
+ * 响应做最小运行时校验：若 payload 缺少 `items` 数组则降级返回空列表，避免调用方 `.length` 抛错。
  */
 export async function fetchVenues(pageSize = 6): Promise<VenueBrowse[]> {
   const baseUrl = process.env.PATRA_GATEWAY_BASE_URL;
@@ -28,5 +27,10 @@ export async function fetchVenues(pageSize = 6): Promise<VenueBrowse[]> {
   if (!res.ok) {
     throw new Error(`期刊榜加载失败：${res.status}`);
   }
-  return ((await res.json()) as PageResult<VenueBrowse>).items;
+  const data = (await res.json()) as PageResult<VenueBrowse>;
+  if (!Array.isArray(data?.items)) {
+    console.warn("[fetchVenues] 响应缺少 items 字段，降级返回空列表", data);
+    return [];
+  }
+  return data.items;
 }
