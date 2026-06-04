@@ -1408,7 +1408,7 @@ git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code
 
       <aside class="callout success">
         <span class="title">4. HTML 结构完整性</span>
-        <p>6 个 article 均有唯一 id=task-1..6 + data-status="pending"；每个 step 的 li 含 data-status="pending"；TOC toc-tasks 6 条 li（data-task-status="pending"）与中栏 article 一一对应；head 含 spec-theme.css + plan-extras.css 两个 link、无 inline style；meta dl 含 目标/架构/技术栈/关联 spec 四项。</p>
+        <p>6 个 article 均有唯一 id=task-1..6 + 合法 data-status（pending→in-progress→done 状态机，实施期推进）；每个 step li 带 data-status；TOC toc-tasks 6 条 li 与中栏 article 一一对应（data-task-status 同步切换）；head 含 spec-theme.css + plan-extras.css 两个 link、无 inline style；meta dl 含 目标/架构/技术栈/关联 spec 四项。</p>
       </aside>
     </section>
 
@@ -1432,15 +1432,7 @@ git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code
       </li>
       data-type 4 类：decision / change / tradeoff / other
       -->
-          <li class="note" data-type="change" data-time="2026-06-04T00:42">
-        <header>
-          <span class="note-type">CHANGE</span>
-          <time datetime="2026-06-04T00:42">06-04 00:42</time>
-          <a href="#task-3">§ Task 3</a>
-        </header>
-        <p>去掉 PublicationAbstractEntity / PublicationAlternativeAbstractEntity 的 @Lob —— 对 TEXT 列错误映射，Hibernate 7 + PG 下导致内容存入 large object、TEXT 列里存的是 OID 串。改为普通 String↔TEXT 映射，文献详情按 a.plain_text 普通列读取（曾误用 lo_get，已还原）。plan 未预见此实体修复。</p>
-      </li>
-      <li class="note" data-type="change" data-time="2026-06-04T00:30">
+          <li class="note" data-type="change" data-time="2026-06-04T00:30">
         <header>
           <span class="note-type">CHANGE</span>
           <time datetime="2026-06-04T00:30">06-04 00:30</time>
