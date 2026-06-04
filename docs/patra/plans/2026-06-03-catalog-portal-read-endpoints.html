@@ -1488,13 +1488,21 @@ git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code
         </header>
         <p>最终整体审查接缝修复：① 补 pii 标识符字段（spec §4.2 列了但 plan/初版漏了，全链路 Dao→Model→Response→Converter）；② FE VenueBrowse.cover 改名 coverObjectKey 对齐 BE 契约（曾错位致 FE 读 undefined）；③ 4 个详情文件 @lombok.Builder 全类名改 import+@Builder（去 FQN，与 Browse* 一致）；④ VenueBrowseSort.fromCode 文档补 impactFactor 别名。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-04T02:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T02:55">06-04 02:55</time>
+          <a href="#task-3">§ Task 3 (PR e2e 修复)</a>
+        </header>
+        <p>PR CI 的 e2e-tests（起全 catalog 上下文）暴露：PublicationDetailReadAdapter 注入 ObjectMapper，但 catalog 应用上下文无 ObjectMapper 顶层 bean → context 装配失败。切片测试（@DataJpaTest/@WebMvcTest）各自提供 ObjectMapper 故未捕获，唯 e2e 全上下文捕获。改为 infra adapter 内 private static final ObjectMapper（structured_sections 简单数组，Jackson 2.12+ 原生 record 反序列化）。</p>
+      </li>
 </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">2</span> decisions /
-      <span data-counter="change">4</span> changes /
+      <span data-counter="change">5</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
