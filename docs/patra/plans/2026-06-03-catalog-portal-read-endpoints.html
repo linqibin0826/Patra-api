@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实现计划：Catalog Portal 读端点（PAP-42）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题（与 spec 共享 spec-theme.css）+ plan 专属 plan-extras.css。
+       相对路径 ../styles/ 从生成位置 docs/patra/plans/ 出发；
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 plan 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li data-task-status="done"><a href="#task-1">Task 1 — EvidenceLevel 领域值对象</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 期刊详情端点</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 文献详情端点</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — 期刊浏览端点 + topN 归并</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — 首页 FE 取数迁移</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 集成验证与收尾</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>实现计划：Catalog Portal 读端点（PAP-42）</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-03</span>
+        <span>🌿 pap-42-be-portal-read-endpoints</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>在 catalog 服务暴露三条 portal 读端点（期刊详情 by-id、文献详情 by-id、期刊浏览/检索），供 v0.5 门户详情页与浏览页消费。</dd>
+        <dt>架构</dt> <dd>沿用既有 CQRS 读侧模式：native query + JPA 接口投影（不依赖 @Entity 字段映射）→ domain ReadModel record → ReadPort → ReadAdapter → app QueryService（无接口/无 @Transactional）→ adapter Controller + PortalApiConverter。详情端点一次返回完整数据集；evidenceLevel 读时 Domain 衍生；归并 topN 端点。</dd>
+        <dt>技术栈</dt> <dd>Java 25 / Spring Boot 4 / Spring Data JPA native query + projection / PostgreSQL 17 / JUnit5 + Testcontainers(@DataJpaTest) + RestTestClient(@WebMvcTest) + Mockito + AssertJ</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-06-03-catalog-portal-read-endpoints-design.html">Catalog Portal 读端点设计：期刊/文献详情 + 期刊浏览检索（PAP-42）</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>三条端点同属 catalog portal 读侧、共享同一架构模式与测试基建，互相耦合（topN 归并跨 BE/FE），适合单 plan 顺序实施。6 个任务各自产出可独立 commit 的垂直切片。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>patra-api/patra-catalog/
+├── patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/
+│   ├── model/vo/publication/EvidenceLevel.java                      [create] 证据等级 VO + classify
+│   ├── model/read/portal/VenueDetailReadModel.java                  [create] 期刊详情读模型(含嵌套 view record)
+│   ├── model/read/portal/PublicationDetailReadModel.java            [create] 文献详情读模型(含嵌套 view record)
+│   ├── model/read/portal/VenueBrowseReadModel.java                  [create] 浏览卡片读模型
+│   ├── model/read/portal/VenueBrowseFilter.java                     [create] 浏览过滤 record
+│   ├── model/read/portal/VenueBrowseSort.java                       [create] 浏览排序 enum
+│   ├── port/read/VenueDetailReadPort.java                           [create]
+│   ├── port/read/PublicationDetailReadPort.java                     [create]
+│   ├── port/read/VenueBrowseReadPort.java                           [create]
+│   └── exception/VenueNotFoundException.java                        [create] (复用 PublicationNotFoundException 已存在)
+├── patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/
+│   ├── adapter/read/VenueDetailReadAdapter.java                     [create]
+│   ├── adapter/read/PublicationDetailReadAdapter.java               [create]
+│   ├── adapter/read/VenueBrowseReadAdapter.java                     [create]
+│   ├── adapter/read/{VenueDetailRow,JcrRatingRow,CasRatingRow,ScopusRatingRow,VenueStatRow,VenueIdentifierRow}.java  [create] 期刊详情投影
+│   ├── adapter/read/{PublicationDetailRow,PublicationAuthorRow,PublicationMeshRow,PublicationKeywordRow,PublicationFundingRow,PublicationDateRow}.java [create] 文献详情投影
+│   ├── adapter/read/VenueBrowseRow.java                             [create] 浏览投影
+│   ├── adapter/read/PortalVenueReadAdapter.java                     [delete] topN 链路
+│   ├── adapter/read/PortalVenueRow.java                             [delete] topN 投影
+│   └── persistence/dao/{VenueDao,PublicationDetailDao}.java         [modify/create] native query
+├── patra-catalog-app/src/main/java/dev/linqibin/patra/catalog/app/usecase/portal/query/
+│   ├── PortalVenueDetailQueryService.java                           [create]
+│   ├── PortalPublicationDetailQueryService.java                     [create]
+│   ├── PortalVenueBrowseQueryService.java                           [create]
+│   ├── PortalVenueQueryService.java                                 [delete] topN
+│   └── dto/{PortalVenueQuery.java}                                  [delete] topN
+├── patra-catalog-domain/.../port/read/PortalVenueReadPort.java      [delete] topN
+└── patra-catalog-adapter/src/main/java/dev/linqibin/patra/catalog/adapter/rest/portal/
+    ├── PortalVenueController.java                                   [modify] +GET /{id} +GET / 改浏览，删 topN
+    ├── PortalPublicationController.java                             [modify] +GET /{id}
+    ├── PortalApiConverter.java                                      [modify] +detail/browse 映射，删 toVenueResponse
+    ├── request/PortalVenueListRequest.java                          [modify] topN → q/sort/facets/page/pageSize
+    ├── response/PortalVenueDetailResponse.java                      [create]
+    ├── response/PortalPublicationDetailResponse.java                [create]
+    ├── response/PortalVenueBrowseResponse.java                      [create]
+    └── response/PortalVenueResponse.java                            [delete] 旧 topN List DTO
+
+patra-portal/  ......................................................  [modify] 首页期刊模块取数迁移到浏览端点</pre>
+      </div>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- TASK TEMPLATE（保留供添加新 task 复制）:
+      <article class="task" id="task-N" data-status="pending"> ... </article>
+      data-status 5 类：pending / in-progress / done / blocked / skipped
+      -->
+
+      <!-- ===================== TASK 1 ===================== -->
+      <article class="task" id="task-1" data-status="done">
+        <header>
+          <h2>任务 1：EvidenceLevel 领域值对象 + 衍生规则</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/vo/publication/EvidenceLevel.java</code></dd>
+            <dt>测试</dt><dd><code>patra-api/patra-catalog/patra-catalog-domain/src/test/java/dev/linqibin/patra/catalog/domain/model/vo/publication/EvidenceLevelTest.java</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试 EvidenceLevelTest</strong>
+            <p>映射依据规格 §6 已确认的分档表，键为 <code>cat_publication_type.type_value</code> 实际枚举（MeSH 词汇，规范化为小写）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.vo.publication;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+@DisplayName("EvidenceLevel 证据等级衍生")
+class EvidenceLevelTest {
+
+  @Test
+  @DisplayName("RCT → 4 档")
+  void rct() {
+    assertThat(EvidenceLevel.classify(List.of("Randomized Controlled Trial")))
+        .isEqualTo(EvidenceLevel.RANDOMIZED_CONTROLLED_TRIAL);
+  }
+
+  @Test
+  @DisplayName("系统综述 / Meta 分析 → 5 档")
+  void systematicReview() {
+    assertThat(EvidenceLevel.classify(List.of("Meta-Analysis")))
+        .isEqualTo(EvidenceLevel.SYSTEMATIC_REVIEW);
+    assertThat(EvidenceLevel.classify(List.of("Systematic Review")))
+        .isEqualTo(EvidenceLevel.SYSTEMATIC_REVIEW);
+  }
+
+  @Test
+  @DisplayName("多类型取最强档：Journal Article + Meta-Analysis → 5 档")
+  void takesStrongest() {
+    assertThat(EvidenceLevel.classify(List.of("Journal Article", "Meta-Analysis")))
+        .isEqualTo(EvidenceLevel.SYSTEMATIC_REVIEW);
+  }
+
+  @Test
+  @DisplayName("病例报告 → 1 档")
+  void caseReport() {
+    assertThat(EvidenceLevel.classify(List.of("Case Reports")))
+        .isEqualTo(EvidenceLevel.CASE_REPORT);
+  }
+
+  @Test
+  @DisplayName("无法判定（仅 Journal Article / Editorial）→ UNKNOWN")
+  void unknown() {
+    assertThat(EvidenceLevel.classify(List.of("Journal Article", "Editorial")))
+        .isEqualTo(EvidenceLevel.UNKNOWN);
+  }
+
+  @Test
+  @DisplayName("空 / null → UNKNOWN")
+  void emptyOrNull() {
+    assertThat(EvidenceLevel.classify(List.of())).isEqualTo(EvidenceLevel.UNKNOWN);
+    assertThat(EvidenceLevel.classify(null)).isEqualTo(EvidenceLevel.UNKNOWN);
+  }
+
+  @Test
+  @DisplayName("大小写 / 空格不敏感")
+  void caseInsensitive() {
+    assertThat(EvidenceLevel.classify(List.of("  randomized controlled trial ")))
+        .isEqualTo(EvidenceLevel.RANDOMIZED_CONTROLLED_TRIAL);
+  }
+
+  @Test
+  @DisplayName("UNKNOWN 之外均视为已衍生（derived 标记）")
+  void derivedFlag() {
+    assertThat(EvidenceLevel.RANDOMIZED_CONTROLLED_TRIAL.isDerived()).isTrue();
+    assertThat(EvidenceLevel.UNKNOWN.isDerived()).isFalse();
+  }
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行确认失败</strong>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-domain:test --tests "*EvidenceLevelTest"</code></p>
+            <p>预期：编译失败（EvidenceLevel 未定义）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：实现 EvidenceLevel</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.vo.publication;
+
+import java.util.Collection;
+import java.util.Locale;
+import java.util.Map;
+
+/// 文献证据等级（基于出版类型 MeSH 词汇衍生的领域值对象）。
+///
+/// 对应前端证据徽章 5 档；[#classify] 由 `cat_publication_type.type_value` 列表推算，
+/// 多类型取最强档，无法判定返回 [#UNKNOWN]（降级态，绝不臆造）。映射依据设计规格 §6。
+///
+/// @author linqibin
+/// @since 0.1.0
+public enum EvidenceLevel {
+
+  /// 系统综述 / Meta 分析（最强）。
+  SYSTEMATIC_REVIEW(5, "系统综述 / Meta 分析"),
+  /// 随机对照试验。
+  RANDOMIZED_CONTROLLED_TRIAL(4, "随机对照试验"),
+  /// 队列 / 病例对照 / 观察性研究。
+  COHORT_OR_CASE_CONTROL(3, "队列 / 病例对照"),
+  /// 非系统综述 / 临床试验（非 RCT）/ 指南。
+  NON_SYSTEMATIC_REVIEW(2, "非系统综述 / 临床研究"),
+  /// 病例报告。
+  CASE_REPORT(1, "病例报告"),
+  /// 无法判定（降级态）。
+  UNKNOWN(0, "未分级");
+
+  private final int rank;
+  private final String label;
+
+  EvidenceLevel(int rank, String label) {
+    this.rank = rank;
+    this.label = label;
+  }
+
+  /// 等级权重（越大越强；UNKNOWN 为 0）。
+  public int rank() {
+    return rank;
+  }
+
+  /// 中文展示标签。
+  public String label() {
+    return label;
+  }
+
+  /// 是否为已成功衍生的等级（UNKNOWN 之外）。前端据此显示「衍生」标记或降级态。
+  public boolean isDerived() {
+    return this != UNKNOWN;
+  }
+
+  /// 规范化 type_value（小写）→ 等级映射，覆盖 cat_publication_type 实际枚举。
+  private static final Map<String, EvidenceLevel> TYPE_TO_LEVEL =
+      Map.ofEntries(
+          Map.entry("systematic review", SYSTEMATIC_REVIEW),
+          Map.entry("meta-analysis", SYSTEMATIC_REVIEW),
+          Map.entry("network meta-analysis", SYSTEMATIC_REVIEW),
+          Map.entry("scoping review", SYSTEMATIC_REVIEW),
+          Map.entry("randomized controlled trial", RANDOMIZED_CONTROLLED_TRIAL),
+          Map.entry("pragmatic clinical trial", RANDOMIZED_CONTROLLED_TRIAL),
+          Map.entry("equivalence trial", RANDOMIZED_CONTROLLED_TRIAL),
+          Map.entry("observational study", COHORT_OR_CASE_CONTROL),
+          Map.entry("comparative study", COHORT_OR_CASE_CONTROL),
+          Map.entry("multicenter study", COHORT_OR_CASE_CONTROL),
+          Map.entry("twin study", COHORT_OR_CASE_CONTROL),
+          Map.entry("review", NON_SYSTEMATIC_REVIEW),
+          Map.entry("clinical trial", NON_SYSTEMATIC_REVIEW),
+          Map.entry("clinical study", NON_SYSTEMATIC_REVIEW),
+          Map.entry("clinical trial, phase i", NON_SYSTEMATIC_REVIEW),
+          Map.entry("clinical trial, phase ii", NON_SYSTEMATIC_REVIEW),
+          Map.entry("clinical trial, phase iii", NON_SYSTEMATIC_REVIEW),
+          Map.entry("clinical trial, phase iv", NON_SYSTEMATIC_REVIEW),
+          Map.entry("practice guideline", NON_SYSTEMATIC_REVIEW),
+          Map.entry("consensus statement", NON_SYSTEMATIC_REVIEW),
+          Map.entry("case reports", CASE_REPORT));
+
+  /// 由出版类型词汇列表衍生证据等级（取最强档）。
+  ///
+  /// @param typeValues `cat_publication_type.type_value` 列表（可空 / 可含 null 元素）
+  /// @return 最强证据等级；无命中返回 [#UNKNOWN]
+  public static EvidenceLevel classify(Collection<String> typeValues) {
+    if (typeValues == null || typeValues.isEmpty()) {
+      return UNKNOWN;
+    }
+    EvidenceLevel best = UNKNOWN;
+    for (String typeValue : typeValues) {
+      if (typeValue == null) {
+        continue;
+      }
+      EvidenceLevel level = TYPE_TO_LEVEL.get(typeValue.trim().toLowerCase(Locale.ROOT));
+      if (level != null && level.rank > best.rank) {
+        best = level;
+      }
+    }
+    return best;
+  }
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：运行确认通过</strong>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-domain:test --tests "*EvidenceLevelTest"</code></p>
+            <p>预期：8 个测试方法全绿。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain/src/main/java/dev/linqibin/patra/catalog/domain/model/vo/publication/EvidenceLevel.java \
+        patra-api/patra-catalog/patra-catalog-domain/src/test/java/dev/linqibin/patra/catalog/domain/model/vo/publication/EvidenceLevelTest.java
+git commit -m "feat(catalog): 新增 EvidenceLevel 证据等级衍生值对象 (PAP-42)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ===================== TASK 2 ===================== -->
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：期刊详情端点 GET /portal/venues/{id}</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>domain/model/read/portal/VenueDetailReadModel.java</code>、<code>domain/port/read/VenueDetailReadPort.java</code>、<code>domain/exception/VenueNotFoundException.java</code>、<code>infra/adapter/read/VenueDetailReadAdapter.java</code> + 6 个 Row 投影、<code>app/usecase/portal/query/PortalVenueDetailQueryService.java</code>、<code>adapter/rest/portal/response/PortalVenueDetailResponse.java</code></dd>
+            <dt>修改</dt><dd><code>infra/persistence/dao/VenueDao.java</code>（+详情 native query）、<code>adapter/rest/portal/PortalVenueController.java</code>、<code>adapter/rest/portal/PortalApiConverter.java</code></dd>
+            <dt>测试</dt><dd><code>infra/.../VenueDetailReadAdapterIT.java</code>、<code>app/.../PortalVenueDetailQueryServiceTest.java</code>、<code>adapter/.../PortalVenueControllerIT.java</code>（详情用例）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：定义 domain 读模型 + 端口 + 异常</strong>
+            <p><code>VenueDetailReadModel.java</code>（嵌套 view record 收纳深数据层列表）：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+/// 期刊详情读模型（CQRS 读端，一次返回完整数据集，含深数据层）。
+///
+/// @author linqibin
+/// @since 0.1.0
+public record VenueDetailReadModel(
+    Long id,
+    String title,
+    String abbreviatedTitle,
+    String venueType,
+    String issnL,
+    String countryCode,
+    String primaryLanguage,
+    Integer foundedYear,
+    String coverObjectKey,
+    Boolean isOpenAccess,
+    // 影响力速览（最新年）
+    BigDecimal impactFactor,
+    String jcrQuartile,
+    String jcrSubject,
+    String casMajorCategory,
+    String casMajorQuartile,
+    Boolean casIsTop,
+    BigDecimal citeScore,
+    Integer hIndex,
+    Integer citedByCount,
+    Integer worksCount,
+    // 深数据层
+    String frequency,
+    Boolean medlineIndexed,
+    String oaType,
+    Integer apcUsd,
+    Boolean isInDoaj,
+    List<JcrRatingView> jcrRatings,
+    List<CasRatingView> casRatings,
+    List<ScopusRatingView> scopusRatings,
+    List<YearlyStatView> yearlyStats,
+    List<IdentifierView> identifiers) {
+
+  public VenueDetailReadModel {
+    jcrRatings = jcrRatings != null ? List.copyOf(jcrRatings) : List.of();
+    casRatings = casRatings != null ? List.copyOf(casRatings) : List.of();
+    scopusRatings = scopusRatings != null ? List.copyOf(scopusRatings) : List.of();
+    yearlyStats = yearlyStats != null ? List.copyOf(yearlyStats) : List.of();
+    identifiers = identifiers != null ? List.copyOf(identifiers) : List.of();
+  }
+
+  public record JcrRatingView(
+      int year, BigDecimal impactFactor, String quartile, String subject,
+      String jifRank, BigDecimal jifPercentile) {}
+
+  public record CasRatingView(
+      int year, String edition, String majorCategory, String majorQuartile,
+      String minorSubject, String minorQuartile, Boolean isTop, Boolean isReview) {}
+
+  public record ScopusRatingView(
+      int year, BigDecimal citeScore, BigDecimal sjr, BigDecimal snip,
+      String quartile, BigDecimal percentile) {}
+
+  public record YearlyStatView(int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {}
+
+  public record IdentifierView(String type, String value, boolean primary) {}
+}</code></pre>
+            <p><code>VenueDetailReadPort.java</code>：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.port.read;
+
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
+import java.util.Optional;
+
+/// 期刊详情 CQRS 读端口。由 Infra 层 [VenueDetailReadAdapter] 实现。
+///
+/// @author linqibin
+/// @since 0.1.0
+public interface VenueDetailReadPort {
+
+  /// 按 id 查期刊完整详情。
+  ///
+  /// @param venueId 期刊主键
+  /// @return 详情读模型；不存在 / 已软删返回 [Optional#empty]
+  Optional&lt;VenueDetailReadModel&gt; findById(long venueId);
+}</code></pre>
+            <p><code>VenueNotFoundException.java</code>（与既有 PublicationNotFoundException 同构）：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.exception;
+
+import dev.linqibin.commons.error.trait.StandardErrorTrait;
+
+/// Venue 资源未找到异常。携带 NOT_FOUND 语义特征，自动映射为 CATALOG-0404。
+///
+/// @author linqibin
+/// @since 0.1.0
+public class VenueNotFoundException extends CatalogException {
+
+  public VenueNotFoundException(Long venueId) {
+    super("Venue not found with id: " + venueId, StandardErrorTrait.NOT_FOUND);
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：Infra 投影接口（6 个）</strong>
+            <p>同包 <code>infra/adapter/read/</code>，getter 名对齐 SQL 别名（驼峰加双引号）。</p>
+            <pre><code class="lang-java">// VenueDetailRow.java —— 主行（含 JSON 标量提取）
+package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import java.math.BigDecimal;
+
+public interface VenueDetailRow {
+  Long getId();
+  String getTitle();
+  String getAbbreviatedTitle();
+  String getVenueType();
+  String getIssnL();
+  String getCountryCode();
+  String getPrimaryLanguage();
+  Integer getFoundedYear();
+  String getCoverObjectKey();
+  Boolean getIsOpenAccess();
+  BigDecimal getImpactFactor();
+  String getJcrQuartile();
+  String getJcrSubject();
+  String getCasMajorCategory();
+  String getCasMajorQuartile();
+  Boolean getCasIsTop();
+  BigDecimal getCiteScore();
+  Integer getHIndex();
+  Integer getCitedByCount();
+  Integer getWorksCount();
+  String getFrequency();
+  Boolean getMedlineIndexed();
+  String getOaType();
+  Integer getApcUsd();
+  Boolean getIsInDoaj();
+}</code></pre>
+            <pre><code class="lang-java">// JcrRatingRow / CasRatingRow / ScopusRatingRow / VenueStatRow / VenueIdentifierRow（同包，各一文件）
+package dev.linqibin.patra.catalog.infra.adapter.read;
+import java.math.BigDecimal;
+
+public interface JcrRatingRow {
+  Integer getYear(); BigDecimal getImpactFactor(); String getQuartile();
+  String getSubject(); String getJifRank(); BigDecimal getJifPercentile();
+}
+// ---
+public interface CasRatingRow {
+  Integer getYear(); String getEdition(); String getMajorCategory(); String getMajorQuartile();
+  String getMinorSubject(); String getMinorQuartile(); Boolean getIsTop(); Boolean getIsReview();
+}
+// ---
+public interface ScopusRatingRow {
+  Integer getYear(); BigDecimal getCiteScore(); BigDecimal getSjr(); BigDecimal getSnip();
+  String getQuartile(); BigDecimal getPercentile();
+}
+// ---
+public interface VenueStatRow {
+  Integer getYear(); Integer getWorksCount(); Integer getCitedByCount(); Integer getOaWorksCount();
+}
+// ---
+public interface VenueIdentifierRow {
+  String getType(); String getValue(); Boolean getPrimary();
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：VenueDao 增加详情 native query（主行 + 5 个子表查询）</strong>
+            <p>追加到现有 <code>VenueDao</code> 接口（import 新增 6 个 Row 类）。主行用 LATERAL 取最新年评级 + JSON 标量提取；子表查询按 venue_id 取全部。</p>
+            <pre><code class="lang-java">  @Query(
+      value =
+          """
+          SELECT
+            v.id AS "id", v.title AS "title", v.abbreviated_title AS "abbreviatedTitle",
+            v.venue_type AS "venueType", v.issn_l AS "issnL", v.country_code AS "countryCode",
+            v.primary_language AS "primaryLanguage",
+            (v.publication_profile -> 'publicationHistory' ->> 'startYear')::int AS "foundedYear",
+            v.image_object_key AS "coverObjectKey",
+            (v.open_access ->> 'isOa')::boolean AS "isOpenAccess",
+            jcr.impact_factor AS "impactFactor", jcr.jif_quartile AS "jcrQuartile", jcr.subject AS "jcrSubject",
+            cas.major_category AS "casMajorCategory", cas.major_quartile AS "casMajorQuartile",
+            cas.is_top_journal AS "casIsTop",
+            scopus.cite_score AS "citeScore",
+            (v.citation_metrics ->> 'hIndex')::int AS "hIndex",
+            v.cited_by_count AS "citedByCount",
+            (v.citation_metrics ->> 'worksCount')::int AS "worksCount",
+            v.publication_profile ->> 'frequency' AS "frequency",
+            (v.publication_profile -> 'indexingInfo' ->> 'medlineTa') IS NOT NULL AS "medlineIndexed",
+            v.open_access ->> 'oaType' AS "oaType",
+            (v.open_access ->> 'apcUsd')::int AS "apcUsd",
+            (v.open_access ->> 'isInDoaj')::boolean AS "isInDoaj"
+          FROM cat_venue v
+          LEFT JOIN LATERAL (SELECT r.impact_factor, r.jif_quartile, r.subject
+              FROM cat_venue_jcr_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) jcr ON TRUE
+          LEFT JOIN LATERAL (SELECT r.major_category, r.major_quartile, r.is_top_journal
+              FROM cat_venue_cas_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC, r.edition ASC LIMIT 1) cas ON TRUE
+          LEFT JOIN LATERAL (SELECT r.cite_score
+              FROM cat_venue_scopus_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) scopus ON TRUE
+          WHERE v.id = :id AND v.deleted_at IS NULL
+          """,
+      nativeQuery = true)
+  java.util.Optional&lt;dev.linqibin.patra.catalog.infra.adapter.read.VenueDetailRow&gt; findVenueDetailById(@Param("id") long id);
+
+  @Query(value = """
+      SELECT r.year AS "year", r.impact_factor AS "impactFactor", r.wos_overall_quartile AS "quartile",
+             r.subject AS "subject", r.jif_rank AS "jifRank", r.jif_percentile AS "jifPercentile"
+      FROM cat_venue_jcr_rating r WHERE r.venue_id = :id ORDER BY r.year DESC
+      """, nativeQuery = true)
+  List&lt;dev.linqibin.patra.catalog.infra.adapter.read.JcrRatingRow&gt; findJcrRatingsByVenueId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT r.year AS "year", r.edition AS "edition", r.major_category AS "majorCategory",
+             r.major_quartile AS "majorQuartile", r.minor_subject AS "minorSubject",
+             r.minor_quartile AS "minorQuartile", r.is_top_journal AS "isTop", r.is_review_journal AS "isReview"
+      FROM cat_venue_cas_rating r WHERE r.venue_id = :id ORDER BY r.year DESC, r.edition ASC
+      """, nativeQuery = true)
+  List&lt;dev.linqibin.patra.catalog.infra.adapter.read.CasRatingRow&gt; findCasRatingsByVenueId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT r.year AS "year", r.cite_score AS "citeScore", r.sjr AS "sjr", r.snip AS "snip",
+             r.quartile AS "quartile", r.percentile AS "percentile"
+      FROM cat_venue_scopus_rating r WHERE r.venue_id = :id ORDER BY r.year DESC
+      """, nativeQuery = true)
+  List&lt;dev.linqibin.patra.catalog.infra.adapter.read.ScopusRatingRow&gt; findScopusRatingsByVenueId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT r.year AS "year", r.works_count AS "worksCount", r.cited_by_count AS "citedByCount",
+             r.oa_works_count AS "oaWorksCount"
+      FROM cat_venue_publication_stats r WHERE r.venue_id = :id ORDER BY r.year ASC
+      """, nativeQuery = true)
+  List&lt;dev.linqibin.patra.catalog.infra.adapter.read.VenueStatRow&gt; findPublicationStatsByVenueId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT i.identifier_type AS "type", i.identifier_value AS "value", i.is_primary AS "primary"
+      FROM cat_venue_identifier i WHERE i.venue_id = :id ORDER BY i.is_primary DESC, i.id ASC
+      """, nativeQuery = true)
+  List&lt;dev.linqibin.patra.catalog.infra.adapter.read.VenueIdentifierRow&gt; findIdentifiersByVenueId(@Param("id") long id);</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：VenueDetailReadAdapter（组装读模型）</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel.*;
+import dev.linqibin.patra.catalog.domain.port.read.VenueDetailReadPort;
+import dev.linqibin.patra.catalog.infra.persistence.dao.VenueDao;
+import java.util.List;
+import java.util.Optional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+/// 期刊详情 CQRS 读适配器：主行 + 5 个子表查询组装完整读模型。
+///
+/// @author linqibin
+/// @since 0.1.0
+@Repository
+@RequiredArgsConstructor
+public class VenueDetailReadAdapter implements VenueDetailReadPort {
+
+  private final VenueDao venueDao;
+
+  @Override
+  public Optional&lt;VenueDetailReadModel&gt; findById(long venueId) {
+    return venueDao
+        .findVenueDetailById(venueId)
+        .map(
+            main ->
+                new VenueDetailReadModel(
+                    main.getId(), main.getTitle(), main.getAbbreviatedTitle(), main.getVenueType(),
+                    main.getIssnL(), main.getCountryCode(), main.getPrimaryLanguage(), main.getFoundedYear(),
+                    main.getCoverObjectKey(), main.getIsOpenAccess(),
+                    main.getImpactFactor(), main.getJcrQuartile(), main.getJcrSubject(),
+                    main.getCasMajorCategory(), main.getCasMajorQuartile(), main.getCasIsTop(),
+                    main.getCiteScore(), main.getHIndex(), main.getCitedByCount(), main.getWorksCount(),
+                    main.getFrequency(), main.getMedlineIndexed(), main.getOaType(), main.getApcUsd(),
+                    main.getIsInDoaj(),
+                    mapJcr(venueDao.findJcrRatingsByVenueId(venueId)),
+                    mapCas(venueDao.findCasRatingsByVenueId(venueId)),
+                    mapScopus(venueDao.findScopusRatingsByVenueId(venueId)),
+                    mapStats(venueDao.findPublicationStatsByVenueId(venueId)),
+                    mapIds(venueDao.findIdentifiersByVenueId(venueId))));
+  }
+
+  private List&lt;JcrRatingView&gt; mapJcr(List&lt;JcrRatingRow&gt; rows) {
+    return rows.stream()
+        .map(r -> new JcrRatingView(r.getYear(), r.getImpactFactor(), r.getQuartile(),
+            r.getSubject(), r.getJifRank(), r.getJifPercentile()))
+        .toList();
+  }
+
+  private List&lt;CasRatingView&gt; mapCas(List&lt;CasRatingRow&gt; rows) {
+    return rows.stream()
+        .map(r -> new CasRatingView(r.getYear(), r.getEdition(), r.getMajorCategory(), r.getMajorQuartile(),
+            r.getMinorSubject(), r.getMinorQuartile(), r.getIsTop(), r.getIsReview()))
+        .toList();
+  }
+
+  private List&lt;ScopusRatingView&gt; mapScopus(List&lt;ScopusRatingRow&gt; rows) {
+    return rows.stream()
+        .map(r -> new ScopusRatingView(r.getYear(), r.getCiteScore(), r.getSjr(), r.getSnip(),
+            r.getQuartile(), r.getPercentile()))
+        .toList();
+  }
+
+  private List&lt;YearlyStatView&gt; mapStats(List&lt;VenueStatRow&gt; rows) {
+    return rows.stream()
+        .map(r -> new YearlyStatView(r.getYear(), r.getWorksCount(), r.getCitedByCount(), r.getOaWorksCount()))
+        .toList();
+  }
+
+  private List&lt;IdentifierView&gt; mapIds(List&lt;VenueIdentifierRow&gt; rows) {
+    return rows.stream()
+        .map(r -> new IdentifierView(r.getType(), r.getValue(), Boolean.TRUE.equals(r.getPrimary())))
+        .toList();
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：写失败的 Adapter 切片测 VenueDetailReadAdapterIT</strong>
+            <p>遵循既有 <code>PortalVenueReadAdapterIT</code> 风格（@DataJpaTest + Testcontainers + TestEntityManager 编程建数）。核心断言：主行字段、最新年评级、子表列表、not-found 返回 empty。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
+import dev.linqibin.patra.catalog.infra.config.CatalogITPostgreSQLContainerInitializer;
+import dev.linqibin.patra.catalog.infra.persistence.entity.JcrRatingEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
+import dev.linqibin.starter.jpa.autoconfig.JpaAuditingConfig;
+import dev.linqibin.starter.jpa.id.SnowflakeIdGenerator;
+import java.math.BigDecimal;
+import java.util.Optional;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
+import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
+
+@DataJpaTest
+@ContextConfiguration(initializers = CatalogITPostgreSQLContainerInitializer.class)
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import({VenueDetailReadAdapter.class, JpaAuditingConfig.class})
+@ActiveProfiles("test")
+@DisplayName("VenueDetailReadAdapter 期刊详情集成测试")
+class VenueDetailReadAdapterIT {
+
+  @Autowired private VenueDetailReadAdapter adapter;
+  @Autowired private TestEntityManager em;
+
+  @Test
+  @DisplayName("组装主行 + 最新年 JCR + 多年评级列表")
+  void shouldAssembleDetail() {
+    VenueEntity v = new VenueEntity();
+    v.setId(SnowflakeIdGenerator.getId());
+    v.setVenueType("JOURNAL");
+    v.setTitle("The Lancet");
+    v.setAbbreviatedTitle("Lancet");
+    v.setProvenanceCode("OPENALEX");
+    em.persist(v);
+    saveJcr(v.getId(), 2024, new BigDecimal("96.0"), "Q1");
+    saveJcr(v.getId(), 2025, new BigDecimal("98.4"), "Q1");
+    em.flush();
+    em.clear();
+
+    Optional&lt;VenueDetailReadModel&gt; result = adapter.findById(v.getId());
+
+    assertThat(result).isPresent();
+    VenueDetailReadModel m = result.get();
+    assertThat(m.title()).isEqualTo("The Lancet");
+    assertThat(m.impactFactor()).isEqualByComparingTo("98.4"); // 最新年
+    assertThat(m.jcrRatings()).hasSize(2);
+    assertThat(m.jcrRatings().get(0).year()).isEqualTo(2025); // year DESC
+  }
+
+  @Test
+  @DisplayName("不存在 / 已软删返回 empty")
+  void shouldReturnEmptyWhenNotFound() {
+    assertThat(adapter.findById(999_999L)).isEmpty();
+  }
+
+  private void saveJcr(Long venueId, int year, BigDecimal impactFactor, String quartile) {
+    JcrRatingEntity r = new JcrRatingEntity();
+    r.setId(SnowflakeIdGenerator.getId());
+    r.setVenueId(venueId);
+    r.setYear((short) year);
+    r.setImpactFactor(impactFactor);
+    r.setWosOverallQuartile(quartile);
+    em.persist(r);
+  }
+}</code></pre>
+            <p>运行确认失败：<code>./gradlew :patra-api:patra-catalog:patra-catalog-infra:test --tests "*VenueDetailReadAdapterIT"</code></p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 6：app QueryService + not-found 测试</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
+
+import dev.linqibin.patra.catalog.domain.exception.VenueNotFoundException;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
+import dev.linqibin.patra.catalog.domain.port.read.VenueDetailReadPort;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+/// 期刊详情 CQRS 查询服务。查不到抛 [VenueNotFoundException]（→ CATALOG-0404）。
+///
+/// @author linqibin
+/// @since 0.1.0
+@Service
+@RequiredArgsConstructor
+public class PortalVenueDetailQueryService {
+
+  private final VenueDetailReadPort readPort;
+
+  /// 按 id 查期刊详情。
+  ///
+  /// @param venueId 期刊主键
+  /// @return 详情读模型
+  /// @throws VenueNotFoundException 当期刊不存在
+  public VenueDetailReadModel getById(long venueId) {
+    return readPort.findById(venueId).orElseThrow(() -> new VenueNotFoundException(venueId));
+  }
+}</code></pre>
+            <p>单测 <code>PortalVenueDetailQueryServiceTest</code>（Mockito，参照既有 <code>PortalVenueQueryServiceTest</code>）：present 返回模型；empty 抛 <code>VenueNotFoundException</code>（<code>assertThatThrownBy(...).isInstanceOf(VenueNotFoundException.class)</code>）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 7：Response DTO + Converter + Controller GET /{id}</strong>
+            <p><code>PortalVenueDetailResponse.java</code>（id 转 String 防精度损失；嵌套 view 直接复用 domain view 形态，用独立 response record 保持适配层解耦）：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.response;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+/// 期刊详情响应（大而全，含深数据层）。
+public record PortalVenueDetailResponse(
+    String id, String title, String abbreviatedTitle, String venueType, String issnL,
+    String countryCode, String primaryLanguage, Integer foundedYear, String coverObjectKey,
+    Boolean isOpenAccess, String homepageUrl, // homepageUrl 本版恒 null（采集另开）
+    BigDecimal impactFactor, String jcrQuartile, String jcrSubject,
+    String casMajorCategory, String casMajorQuartile, Boolean casIsTop,
+    BigDecimal citeScore, Integer hIndex, Integer citedByCount, Integer worksCount,
+    String frequency, Boolean medlineIndexed, String oaType, Integer apcUsd, Boolean isInDoaj,
+    List&lt;JcrRating&gt; jcrRatings, List&lt;CasRating&gt; casRatings, List&lt;ScopusRating&gt; scopusRatings,
+    List&lt;YearlyStat&gt; yearlyStats, List&lt;Identifier&gt; identifiers) {
+
+  public record JcrRating(int year, BigDecimal impactFactor, String quartile, String subject,
+      String jifRank, BigDecimal jifPercentile) {}
+  public record CasRating(int year, String edition, String majorCategory, String majorQuartile,
+      String minorSubject, String minorQuartile, Boolean isTop, Boolean isReview) {}
+  public record ScopusRating(int year, BigDecimal citeScore, BigDecimal sjr, BigDecimal snip,
+      String quartile, BigDecimal percentile) {}
+  public record YearlyStat(int year, Integer worksCount, Integer citedByCount, Integer oaWorksCount) {}
+  public record Identifier(String type, String value, boolean primary) {}
+}</code></pre>
+            <p><code>PortalApiConverter</code> 新增 <code>toVenueDetailResponse(VenueDetailReadModel)</code>（逐字段映射 + 嵌套 list 流式映射 + homepageUrl 传 null）。</p>
+            <p><code>PortalVenueController</code> 新增（注入已有 + 新增 <code>PortalVenueDetailQueryService</code>）：</p>
+            <pre><code class="lang-java">  @GetMapping("/{id}")
+  public PortalVenueDetailResponse getVenueDetail(@PathVariable long id) {
+    return portalApiConverter.toVenueDetailResponse(portalVenueDetailQueryService.getById(id));
+  }</code></pre>
+            <p>Controller 切片测 <code>PortalVenueControllerIT</code> 新增：<code>GET /portal/venues/{id}</code> 200 + 字段断言；mock service 抛 <code>VenueNotFoundException</code> → 期望 404、错误码 <code>CATALOG-0404</code>（<code>.expectStatus().isNotFound()</code> + body jsonPath 校验 code）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 8：运行全部测试 + Commit</strong>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-infra:test :patra-api:patra-catalog:patra-catalog-app:test :patra-api:patra-catalog:patra-catalog-adapter:test --tests "*VenueDetail*" --tests "*PortalVenueControllerIT"</code></p>
+            <p>预期：全绿。</p>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/
+git commit -m "feat(catalog): 期刊详情读端点 GET /portal/venues/{id} (PAP-42)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ===================== TASK 3 ===================== -->
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：文献详情端点 GET /portal/publications/{id}</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>domain/model/read/portal/PublicationDetailReadModel.java</code>、<code>domain/port/read/PublicationDetailReadPort.java</code>、<code>infra/persistence/dao/PublicationDetailDao.java</code>、<code>infra/adapter/read/PublicationDetailReadAdapter.java</code> + 投影、<code>app/.../PortalPublicationDetailQueryService.java</code>、<code>adapter/.../response/PortalPublicationDetailResponse.java</code></dd>
+            <dt>修改</dt><dd><code>adapter/.../PortalPublicationController.java</code>、<code>PortalApiConverter.java</code></dd>
+            <dt>测试</dt><dd><code>PublicationDetailReadAdapterIT</code>、<code>PortalPublicationDetailQueryServiceTest</code>、<code>PortalPublicationControllerIT</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：domain 读模型 + 端口</strong>
+            <p><code>PublicationDetailReadModel.java</code>（evidenceLevel 用 Task 1 的 VO；摘要为有序 section list；其余子表为嵌套 view）：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+import dev.linqibin.patra.catalog.domain.model.vo.publication.EvidenceLevel;
+import java.time.LocalDate;
+import java.util.List;
+
+/// 文献详情读模型（CQRS 读端，一次返回完整数据集）。
+public record PublicationDetailReadModel(
+    Long id, String title, String originalTitle,
+    Long venueId, String venueName, Integer publicationYear,
+    EvidenceLevel evidenceLevel,
+    String abstractType, List&lt;AbstractSectionView&gt; abstractSections, String abstractPlainText,
+    String doi, String pmid, String pmcid,
+    String primaryType, List&lt;String&gt; publicationTypes,
+    Integer citationCount, Integer numberOfReferences, String conflictOfInterest,
+    Boolean isOa, String oaStatus,
+    List&lt;AuthorView&gt; authors, List&lt;MeshHeadingView&gt; meshHeadings,
+    List&lt;String&gt; keywords, List&lt;FundingView&gt; funding, List&lt;PublicationDateView&gt; dates) {
+
+  public PublicationDetailReadModel {
+    abstractSections = abstractSections != null ? List.copyOf(abstractSections) : List.of();
+    publicationTypes = publicationTypes != null ? List.copyOf(publicationTypes) : List.of();
+    authors = authors != null ? List.copyOf(authors) : List.of();
+    meshHeadings = meshHeadings != null ? List.copyOf(meshHeadings) : List.of();
+    keywords = keywords != null ? List.copyOf(keywords) : List.of();
+    funding = funding != null ? List.copyOf(funding) : List.of();
+    dates = dates != null ? List.copyOf(dates) : List.of();
+  }
+
+  public record AbstractSectionView(String label, String text) {}
+  public record AuthorView(int order, boolean first, boolean corresponding, String name, String affiliation) {}
+  public record MeshHeadingView(String descriptorUi, String term, boolean major) {}
+  public record FundingView(String funder, String grantId, String country) {}
+  public record PublicationDateView(String type, LocalDate date) {}
+}</code></pre>
+            <p><code>PublicationDetailReadPort.java</code>：<code>Optional&lt;PublicationDetailReadModel&gt; findById(long publicationId);</code>（结构同 VenueDetailReadPort）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：PublicationDetailDao native query（主行 + 5 个子表）</strong>
+            <p>主行：cat_publication + venue join + abstract join（structured_sections 取整 JSONB 文本，adapter 解析）；类型用 string_agg 拼全部。投影接口 <code>PublicationDetailRow</code> 等同包置于 <code>infra/adapter/read/</code>。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
+
+import dev.linqibin.patra.catalog.infra.adapter.read.*;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+public interface PublicationDetailDao extends JpaRepository&lt;PublicationEntity, Long&gt; {
+
+  /// 文献详情主行（含 venue、abstract、DOI/PMID、pmcid、type 聚合）。
+  /// structured_sections 以原始 JSONB 文本返回，由 Adapter 用 ObjectMapper 解析为有序 section。
+  /// 类型用单元分隔符(U+001F)拼全部 type_value，按 type_order。
+  @Query(value = """
+      SELECT
+        p.id AS "id", p.title AS "title", p.original_title AS "originalTitle",
+        p.venue_id AS "venueId", v.title AS "venueName", p.publication_year AS "publicationYear",
+        a.abstract_type AS "abstractType",
+        a.structured_sections::text AS "structuredSectionsJson", a.plain_text AS "abstractPlainText",
+        p.doi AS "doi", p.pmid AS "pmid",
+        (SELECT i.identifier_value FROM cat_publication_identifier i
+           WHERE i.publication_id = p.id AND i.type = 'pmc' LIMIT 1) AS "pmcid",
+        p.citation_count AS "citationCount", p.number_of_references AS "numberOfReferences",
+        p.conflict_of_interest AS "conflictOfInterest", p.is_oa AS "isOa", p.oa_status AS "oaStatus",
+        (SELECT string_agg(pt.type_value, E'\\x1f' ORDER BY pt.type_order ASC NULLS LAST, pt.id ASC)
+           FROM cat_publication_type pt WHERE pt.publication_id = p.id) AS "publicationTypesAgg"
+      FROM cat_publication p
+      LEFT JOIN cat_venue v ON v.id = p.venue_id
+      LEFT JOIN cat_publication_abstract a ON a.publication_id = p.id
+      WHERE p.id = :id AND p.deleted_at IS NULL
+      """, nativeQuery = true)
+  Optional&lt;PublicationDetailRow&gt; findPublicationDetailById(@Param("id") long id);
+
+  @Query(value = """
+      SELECT pa.author_order AS "order", pa.is_first_author AS "first",
+             pa.is_corresponding_author AS "corresponding", au.display_name AS "name",
+             (SELECT aff.affiliation_string FROM cat_publication_author_affiliation aff
+                WHERE aff.pub_author_id = pa.id ORDER BY aff.affiliation_order ASC LIMIT 1) AS "affiliation"
+      FROM cat_publication_author pa
+      JOIN cat_author au ON au.id = pa.author_id AND au.deleted_at IS NULL
+      WHERE pa.publication_id = :id ORDER BY pa.author_order ASC
+      """, nativeQuery = true)
+  List&lt;PublicationAuthorRow&gt; findAuthorsByPublicationId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT mh.descriptor_ui AS "descriptorUi", d.name AS "term", mh.is_major_topic AS "major"
+      FROM cat_publication_mesh_heading mh
+      LEFT JOIN cat_mesh_descriptor d ON d.ui = mh.descriptor_ui
+      WHERE mh.publication_id = :id ORDER BY mh.heading_order ASC NULLS LAST, mh.id ASC
+      """, nativeQuery = true)
+  List&lt;PublicationMeshRow&gt; findMeshByPublicationId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT k.term AS "term"
+      FROM cat_publication_keyword pk JOIN cat_keyword k ON k.id = pk.keyword_id
+      WHERE pk.publication_id = :id ORDER BY pk.order_num ASC NULLS LAST, pk.id ASC
+      """, nativeQuery = true)
+  List&lt;PublicationKeywordRow&gt; findKeywordsByPublicationId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT f.funder_name_raw AS "funder", f.grant_id AS "grantId", f.country_raw AS "country"
+      FROM cat_publication_funding f WHERE f.publication_id = :id ORDER BY f.funding_order ASC
+      """, nativeQuery = true)
+  List&lt;PublicationFundingRow&gt; findFundingByPublicationId(@Param("id") long id);
+
+  @Query(value = """
+      SELECT d.date_type AS "type", d.date_value AS "date"
+      FROM cat_publication_date d WHERE d.publication_id = :id ORDER BY d.order_num ASC NULLS LAST, d.id ASC
+      """, nativeQuery = true)
+  List&lt;PublicationDateRow&gt; findDatesByPublicationId(@Param("id") long id);
+}</code></pre>
+            <p>投影接口（同包 infra/adapter/read/，各一文件）：<code>PublicationDetailRow</code>（getId/getTitle/getOriginalTitle/getVenueId/getVenueName/getPublicationYear/getAbstractType/getStructuredSectionsJson/getAbstractPlainText/getDoi/getPmid/getPmcid/getCitationCount/getNumberOfReferences/getConflictOfInterest/getIsOa/getOaStatus/getPublicationTypesAgg，全 String/Long/Integer/Boolean）；<code>PublicationAuthorRow</code>（getOrder:Integer/getFirst:Boolean/getCorresponding:Boolean/getName/getAffiliation）；<code>PublicationMeshRow</code>（getDescriptorUi/getTerm/getMajor:Boolean）；<code>PublicationKeywordRow</code>（getTerm）；<code>PublicationFundingRow</code>（getFunder/getGrantId/getCountry）；<code>PublicationDateRow</code>（getType/getDate:java.time.LocalDate）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：PublicationDetailReadAdapter（解析摘要 + 衍生证据等级）</strong>
+            <p>结构化摘要：按<strong>有序数组契约</strong>消费——<code>structured_sections</code> 为有序 JSON 数组 <code>[{label,text}]</code>，注入 Spring <code>ObjectMapper</code> 直接反序列化为 <code>List&lt;AbstractSectionView&gt;</code>，<strong>保留节序、不重排</strong>。存储格式改造（旧扁平对象 → 有序数组）见 <a href="https://linear.app/papertrace/issue/PAP-48">PAP-48</a>；落地前真实数据 <code>structured_sections</code> 仍是旧对象格式、走 <code>plainText</code> 兜底。证据等级用 <code>EvidenceLevel.classify(types)</code>。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel.*;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.EvidenceLevel;
+import dev.linqibin.patra.catalog.domain.port.read.PublicationDetailReadPort;
+import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationDetailDao;
+import java.util.*;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Repository;
+
+/// 文献详情 CQRS 读适配器。
+@Slf4j
+@Repository
+@RequiredArgsConstructor
+public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
+
+  private static final String DELIMITER = "";
+
+  private final PublicationDetailDao dao;
+  private final ObjectMapper objectMapper;
+
+  @Override
+  public Optional&lt;PublicationDetailReadModel&gt; findById(long publicationId) {
+    return dao.findPublicationDetailById(publicationId)
+        .map(main -> assemble(publicationId, main));
+  }
+
+  private PublicationDetailReadModel assemble(long id, PublicationDetailRow main) {
+    List&lt;String&gt; types = split(main.getPublicationTypesAgg());
+    return new PublicationDetailReadModel(
+        main.getId(), main.getTitle(), main.getOriginalTitle(),
+        main.getVenueId(), main.getVenueName(), main.getPublicationYear(),
+        EvidenceLevel.classify(types),
+        main.getAbstractType(), parseSections(main.getStructuredSectionsJson()), main.getAbstractPlainText(),
+        main.getDoi(), main.getPmid(), main.getPmcid(),
+        types.isEmpty() ? null : types.get(0), types,
+        main.getCitationCount(), main.getNumberOfReferences(), main.getConflictOfInterest(),
+        main.getIsOa(), main.getOaStatus(),
+        dao.findAuthorsByPublicationId(id).stream()
+            .map(r -> new AuthorView(r.getOrder(), Boolean.TRUE.equals(r.getFirst()),
+                Boolean.TRUE.equals(r.getCorresponding()), r.getName(), r.getAffiliation())).toList(),
+        dao.findMeshByPublicationId(id).stream()
+            .map(r -> new MeshHeadingView(r.getDescriptorUi(), r.getTerm(), Boolean.TRUE.equals(r.getMajor()))).toList(),
+        dao.findKeywordsByPublicationId(id).stream().map(PublicationKeywordRow::getTerm).toList(),
+        dao.findFundingByPublicationId(id).stream()
+            .map(r -> new FundingView(r.getFunder(), r.getGrantId(), r.getCountry())).toList(),
+        dao.findDatesByPublicationId(id).stream()
+            .map(r -> new PublicationDateView(r.getType(), r.getDate())).toList());
+  }
+
+  private List&lt;String&gt; split(String agg) {
+    if (agg == null || agg.isBlank()) return List.of();
+    return List.of(agg.split(DELIMITER, -1));
+  }
+
+  /// 解析 structured_sections JSON 为有序 section list。
+  /// 存储契约（见 PAP-48）：structured_sections 为有序 JSON 数组 [{"label":..,"text":..}]，
+  /// 直接按数组顺序反序列化，保留节序、不做任何重排。解析失败返回空（plainText 兜底）。
+  private List&lt;AbstractSectionView&gt; parseSections(String json) {
+    if (json == null || json.isBlank()) return List.of();
+    try {
+      return objectMapper.readValue(json, new TypeReference&lt;List&lt;AbstractSectionView&gt;&gt;() {});
+    } catch (Exception e) {
+      log.warn("解析 structured_sections 失败，降级为空 section list", e);
+      return List.of();
+    }
+  }
+}</code></pre>
+            <p>注：节序由存储数组直接保证（见 <a href="https://linear.app/papertrace/issue/PAP-48">PAP-48</a> 入库改造）；<code>AbstractSectionView</code> 是 Java record，Jackson 按 JSON 数组元素 <code>{label,text}</code> 直接反序列化为组件，无需自定义。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：Adapter 切片测（含摘要排序 + 证据等级）</strong>
+            <p><code>PublicationDetailReadAdapterIT</code>（@DataJpaTest + Testcontainers）：建 publication + abstract（structured_sections 存为有序数组 JSON <code>[{"label":"BACKGROUND",..},{"label":"METHODS",..},{"label":"RESULTS",..}]</code>）+ 多条 publication_type（含 RCT）+ 作者；断言 abstractSections <strong>顺序与入库数组一致</strong>（BACKGROUND→METHODS→RESULTS）、evidenceLevel=RANDOMIZED_CONTROLLED_TRIAL、authors 顺序、not-found empty。需 <code>@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class})</code> 且 ObjectMapper 由 @DataJpaTest 上下文提供（若未提供则在测试 @Import 一个 <code>new ObjectMapper()</code> 的 @TestConfiguration bean）。</p>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-infra:test --tests "*PublicationDetailReadAdapterIT"</code></p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：QueryService + Response + Controller + 测试 + Commit</strong>
+            <p><code>PortalPublicationDetailQueryService</code>（结构同 venue：<code>findById().orElseThrow(() -> new PublicationNotFoundException(id))</code>，复用既有异常）。</p>
+            <p><code>PortalPublicationDetailResponse</code>（id/venueId 转 String；evidenceLevel 映射为 <code>{level:name(), rank, label, derived}</code> 嵌套 record；aiSummary 字段恒 null；dates 中仅 published 有值其余 null；嵌套 author/mesh/funding/date/abstractSection response record）。Converter 新增 <code>toPublicationDetailResponse</code>。</p>
+            <p>Controller 新增：</p>
+            <pre><code class="lang-java">  @GetMapping("/{id}")
+  public PortalPublicationDetailResponse getDetail(@PathVariable long id) {
+    return portalApiConverter.toPublicationDetailResponse(portalPublicationDetailQueryService.getById(id));
+  }</code></pre>
+            <p>QueryServiceTest（present/抛 PublicationNotFoundException）+ ControllerIT（200 字段断言 + 404→CATALOG-0404 + evidenceLevel.derived 断言）。</p>
+            <p>运行全部相关测试后 Commit：</p>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/
+git commit -m "feat(catalog): 文献详情读端点 GET /portal/publications/{id} (PAP-42)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ===================== TASK 4 ===================== -->
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：期刊浏览端点 GET /portal/venues + topN 归并</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>domain/model/read/portal/{VenueBrowseReadModel,VenueBrowseFilter,VenueBrowseSort}.java</code>、<code>domain/port/read/VenueBrowseReadPort.java</code>、<code>infra/adapter/read/{VenueBrowseReadAdapter,VenueBrowseRow}.java</code>、<code>app/.../PortalVenueBrowseQueryService.java</code>、<code>adapter/.../response/PortalVenueBrowseResponse.java</code></dd>
+            <dt>修改</dt><dd><code>infra/persistence/dao/VenueDao.java</code>（+浏览 native query）、<code>PortalVenueController.java</code>（GET / 改浏览）、<code>PortalApiConverter.java</code>、<code>request/PortalVenueListRequest.java</code></dd>
+            <dt>删除</dt><dd>topN 链路：<code>PortalVenueReadPort</code>、<code>PortalVenueReadAdapter</code>、<code>PortalVenueRow</code>、<code>PortalVenueQueryService</code>、<code>dto/PortalVenueQuery</code>、<code>PortalVenueResponse</code>、<code>VenueDao#findTopVenuesByImpactFactor</code>、<code>PortalApiConverter#toVenueResponse</code>、<code>PortalVenueReadModel</code></dd>
+            <dt>测试</dt><dd><code>VenueBrowseReadAdapterIT</code>、<code>PortalVenueBrowseQueryServiceTest</code>、<code>PortalVenueControllerIT</code>（浏览用例，删 topN 用例）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：domain filter / sort / 读模型 / 端口</strong>
+            <pre><code class="lang-java">// VenueBrowseSort.java
+package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+/// 期刊浏览排序维度。
+public enum VenueBrowseSort {
+  IMPACT_FACTOR, CAS_QUARTILE, TITLE, CITED_BY;
+
+  /// 大小写不敏感解析；非法 / null → 默认 IMPACT_FACTOR。
+  public static VenueBrowseSort fromCode(String code) {
+    if (code == null || code.isBlank()) return IMPACT_FACTOR;
+    return switch (code.trim().toLowerCase(java.util.Locale.ROOT)) {
+      case "casquartile", "cas_quartile" -> CAS_QUARTILE;
+      case "title" -> TITLE;
+      case "citedby", "cited_by" -> CITED_BY;
+      default -> IMPACT_FACTOR;
+    };
+  }
+}</code></pre>
+            <pre><code class="lang-java">// VenueBrowseFilter.java
+package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+/// 期刊浏览过滤条件（已归一化；null 表示该 facet 不过滤）。
+/// @param keyword 刊名/缩写前缀（已 escapeLike 转义，可空）
+public record VenueBrowseFilter(
+    String keyword, VenueBrowseSort sort, String subject, String jcrQuartile,
+    String casQuartile, Boolean casTop, String oaType, Boolean doaj, String countryCode) {
+
+  public VenueBrowseFilter {
+    sort = sort != null ? sort : VenueBrowseSort.IMPACT_FACTOR;
+  }
+}</code></pre>
+            <pre><code class="lang-java">// VenueBrowseReadModel.java
+package dev.linqibin.patra.catalog.domain.model.read.portal;
+
+import java.math.BigDecimal;
+
+/// 期刊浏览卡片读模型。
+public record VenueBrowseReadModel(
+    Long id, String name, String abbr, String coverObjectKey,
+    BigDecimal impactFactor, String jcrQuartile, String jcrSubject,
+    String casMajorCategory, String casMajorQuartile, Boolean casIsTop,
+    String countryCode, Integer citedByCount, Integer foundedYear,
+    Boolean isOpenAccess, Boolean isInDoaj, String issnL) {}</code></pre>
+            <pre><code class="lang-java">// VenueBrowseReadPort.java
+package dev.linqibin.patra.catalog.domain.port.read;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
+
+/// 期刊浏览/检索 CQRS 读端口。
+public interface VenueBrowseReadPort {
+  PageResult&lt;VenueBrowseReadModel&gt; search(VenueBrowseFilter filter, PagingParams paging);
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：VenueDao 新增 portal 浏览 native query（投影 + 刊名/CAS分区排序）</strong>
+            <p>基于既有 <code>findFilteredJournalPage</code> 的 LATERAL JOIN 结构，但 SELECT portal 卡片字段、返回投影 <code>VenueBrowseRow</code>、补 TITLE / CAS_QUARTILE 排序与 subject/doaj facet。CAS 分区按 Q1&lt;Q2&lt;Q3&lt;Q4 文本升序即强→弱。</p>
+            <pre><code class="lang-java">  @Query(
+      value = """
+      SELECT v.id AS "id", v.title AS "name", v.abbreviated_title AS "abbr",
+             v.image_object_key AS "coverObjectKey",
+             jcr.impact_factor AS "impactFactor", jcr.jif_quartile AS "jcrQuartile", jcr.subject AS "jcrSubject",
+             cas.major_category AS "casMajorCategory", cas.major_quartile AS "casMajorQuartile",
+             cas.is_top_journal AS "casIsTop", v.country_code AS "countryCode",
+             v.cited_by_count AS "citedByCount",
+             (v.publication_profile -> 'publicationHistory' ->> 'startYear')::int AS "foundedYear",
+             (v.open_access ->> 'isOa')::boolean AS "isOpenAccess",
+             (v.open_access ->> 'isInDoaj')::boolean AS "isInDoaj", v.issn_l AS "issnL"
+      FROM cat_venue v
+      LEFT JOIN LATERAL (SELECT r.impact_factor, r.jif_quartile, r.subject
+          FROM cat_venue_jcr_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) jcr ON TRUE
+      LEFT JOIN LATERAL (SELECT r.major_category, r.major_quartile, r.is_top_journal
+          FROM cat_venue_cas_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC, r.edition ASC LIMIT 1) cas ON TRUE
+      WHERE v.venue_type = 'JOURNAL' AND v.deleted_at IS NULL
+        AND (:keyword IS NULL OR v.title ILIKE CONCAT(:keyword, '%') ESCAPE '!')
+        AND (:subject IS NULL OR jcr.subject = :subject)
+        AND (:jcrQuartile IS NULL OR jcr.jif_quartile = :jcrQuartile)
+        AND (:casQuartile IS NULL OR cas.major_quartile = :casQuartile)
+        AND (:casTop IS NULL OR cas.is_top_journal = :casTop)
+        AND (:oaType IS NULL OR v.open_access ->> 'oaType' = :oaType)
+        AND (:doaj IS NULL OR (v.open_access ->> 'isInDoaj')::boolean = :doaj)
+        AND (:countryCode IS NULL OR v.country_code = :countryCode)
+      ORDER BY
+        CASE WHEN :sort = 'IMPACT_FACTOR' THEN COALESCE(jcr.impact_factor, 0) ELSE NULL END DESC,
+        CASE WHEN :sort = 'CITED_BY' THEN COALESCE(v.cited_by_count, 0) ELSE NULL END DESC,
+        CASE WHEN :sort = 'CAS_QUARTILE' THEN cas.major_quartile ELSE NULL END ASC NULLS LAST,
+        CASE WHEN :sort = 'TITLE' THEN v.title ELSE NULL END ASC,
+        v.id DESC
+      """,
+      countQuery = """
+      SELECT COUNT(*) FROM cat_venue v
+      LEFT JOIN LATERAL (SELECT r.jif_quartile, r.subject
+          FROM cat_venue_jcr_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC LIMIT 1) jcr ON TRUE
+      LEFT JOIN LATERAL (SELECT r.major_quartile, r.is_top_journal
+          FROM cat_venue_cas_rating r WHERE r.venue_id = v.id ORDER BY r.year DESC, r.edition ASC LIMIT 1) cas ON TRUE
+      WHERE v.venue_type = 'JOURNAL' AND v.deleted_at IS NULL
+        AND (:keyword IS NULL OR v.title ILIKE CONCAT(:keyword, '%') ESCAPE '!')
+        AND (:subject IS NULL OR jcr.subject = :subject)
+        AND (:jcrQuartile IS NULL OR jcr.jif_quartile = :jcrQuartile)
+        AND (:casQuartile IS NULL OR cas.major_quartile = :casQuartile)
+        AND (:casTop IS NULL OR cas.is_top_journal = :casTop)
+        AND (:oaType IS NULL OR v.open_access ->> 'oaType' = :oaType)
+        AND (:doaj IS NULL OR (v.open_access ->> 'isInDoaj')::boolean = :doaj)
+        AND (:countryCode IS NULL OR v.country_code = :countryCode)
+      """,
+      nativeQuery = true)
+  org.springframework.data.domain.Page&lt;dev.linqibin.patra.catalog.infra.adapter.read.VenueBrowseRow&gt;
+      findPortalVenueBrowsePage(
+          @Param("keyword") String keyword, @Param("sort") String sort, @Param("subject") String subject,
+          @Param("jcrQuartile") String jcrQuartile, @Param("casQuartile") String casQuartile,
+          @Param("casTop") Boolean casTop, @Param("oaType") String oaType, @Param("doaj") Boolean doaj,
+          @Param("countryCode") String countryCode, org.springframework.data.domain.Pageable pageable);</code></pre>
+            <p>注：<code>ESCAPE '!'</code> 与既有约定一致，调用方需先 <code>StringUtils.escapeLike()</code> 转义 keyword。投影 <code>VenueBrowseRow</code> getter 对齐别名。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：VenueBrowseReadAdapter</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.adapter.read;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
+import dev.linqibin.patra.catalog.domain.port.read.VenueBrowseReadPort;
+import dev.linqibin.patra.catalog.infra.persistence.dao.VenueDao;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Repository;
+
+@Repository
+@RequiredArgsConstructor
+public class VenueBrowseReadAdapter implements VenueBrowseReadPort {
+
+  private final VenueDao venueDao;
+
+  @Override
+  public PageResult&lt;VenueBrowseReadModel&gt; search(VenueBrowseFilter filter, PagingParams paging) {
+    Page&lt;VenueBrowseRow&gt; page =
+        venueDao.findPortalVenueBrowsePage(
+            filter.keyword(), filter.sort().name(), filter.subject(), filter.jcrQuartile(),
+            filter.casQuartile(), filter.casTop(), filter.oaType(), filter.doaj(), filter.countryCode(),
+            PageRequest.of(paging.page() - 1, paging.pageSize()));
+    List&lt;VenueBrowseReadModel&gt; items = page.getContent().stream().map(this::toReadModel).toList();
+    return PageResult.of(items, paging.page(), paging.pageSize(), page.getTotalElements());
+  }
+
+  private VenueBrowseReadModel toReadModel(VenueBrowseRow r) {
+    return new VenueBrowseReadModel(
+        r.getId(), r.getName(), r.getAbbr(), r.getCoverObjectKey(), r.getImpactFactor(),
+        r.getJcrQuartile(), r.getJcrSubject(), r.getCasMajorCategory(), r.getCasMajorQuartile(),
+        r.getCasIsTop(), r.getCountryCode(), r.getCitedByCount(), r.getFoundedYear(),
+        r.getIsOpenAccess(), r.getIsInDoaj(), r.getIssnL());
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：app QueryService（归一化 + escapeLike）</strong>
+            <p>参照 <code>PortalFeedQueryService</code> 用 <code>PagingParams.normalize</code>；keyword 用 <code>StringUtils.escapeLike</code>（与 DAO 既有约定一致，确认其包路径后 import）。默认 pageSize 12（浏览页一屏）。</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.app.usecase.portal.query;
+
+import dev.linqibin.commons.query.PageResult;
+import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFilter;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseSort;
+import dev.linqibin.patra.catalog.domain.port.read.VenueBrowseReadPort;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+/// 期刊浏览/检索 CQRS 查询服务。
+@Service
+@RequiredArgsConstructor
+public class PortalVenueBrowseQueryService {
+
+  private static final int DEFAULT_PAGE_SIZE = 12;
+  private static final int MAX_PAGE_SIZE = 50;
+
+  private final VenueBrowseReadPort readPort;
+
+  public PageResult&lt;VenueBrowseReadModel&gt; browse(
+      String q, String sort, String subject, String jcrQuartile, String casQuartile,
+      Boolean casTop, String oaType, Boolean doaj, String country, Integer page, Integer pageSize) {
+    PagingParams paging = PagingParams.normalize(page, pageSize, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
+    VenueBrowseFilter filter =
+        new VenueBrowseFilter(
+            escapeKeyword(q), VenueBrowseSort.fromCode(sort), blankToNull(subject),
+            blankToNull(jcrQuartile), blankToNull(casQuartile), casTop, blankToNull(oaType),
+            doaj, blankToNull(country));
+    return readPort.search(filter, paging);
+  }
+
+  private String escapeKeyword(String q) {
+    String trimmed = blankToNull(q);
+    // 用 '!' 作转义符，与 VenueDao 浏览查询的 ESCAPE '!' 配套
+    return trimmed == null ? null
+        : trimmed.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+  }
+
+  private String blankToNull(String s) {
+    return (s == null || s.isBlank()) ? null : s.trim();
+  }
+}</code></pre>
+            <p>注：如 commons 已有 <code>StringUtils.escapeLike</code> 工具（DAO 注释提到的契约），优先复用它替换 <code>escapeKeyword</code>；实施时确认其存在与签名，否则保留上面内联实现（转义符 <code>!</code>）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Request 改造 + Response + Controller GET / + 删 topN</strong>
+            <p><code>PortalVenueListRequest</code> 改为浏览入参（topN 移除）：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.adapter.rest.portal.request;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+
+/// Portal 期刊浏览/检索请求。各参数可空（走服务端默认）。
+public record PortalVenueListRequest(
+    String q, String sort, String subject, String jcrQuartile, String casQuartile,
+    Boolean casTop, String oaType, Boolean doaj, String country,
+    @Min(value = 1, message = "page 最小为 1") Integer page,
+    @Min(value = 1, message = "pageSize 最小为 1") @Max(value = 50, message = "pageSize 最大为 50")
+        Integer pageSize) {}</code></pre>
+            <p><code>PortalVenueBrowseResponse</code>（id 转 String，字段对齐 <code>VenueBrowseReadModel</code>）。Converter 新增 <code>toVenueBrowseResponse</code>；<strong>删除</strong> <code>toVenueResponse</code>。</p>
+            <p><code>PortalVenueController</code> 改写（注入 <code>PortalVenueBrowseQueryService</code> + <code>PortalVenueDetailQueryService</code>，移除旧 <code>PortalVenueQueryService</code>）：</p>
+            <pre><code class="lang-java">  @GetMapping
+  public PageResult&lt;PortalVenueBrowseResponse&gt; browse(@Valid PortalVenueListRequest req) {
+    return portalVenueBrowseQueryService
+        .browse(req.q(), req.sort(), req.subject(), req.jcrQuartile(), req.casQuartile(),
+            req.casTop(), req.oaType(), req.doaj(), req.country(), req.page(), req.pageSize())
+        .map(portalApiConverter::toVenueBrowseResponse);
+  }</code></pre>
+            <p><strong>删除 topN 链路全部文件/方法</strong>（见任务头「删除」清单）。删除后全局搜索确认无残留引用：<code>grep -rn "PortalVenueReadPort\|PortalVenueResponse\|findTopByImpactFactor\|toVenueResponse\|PortalVenueQuery\b" patra-api/patra-catalog/src</code> 应无命中（FE 引用在 Task 5 处理）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 6：测试（浏览 adapter / service / controller）+ Commit</strong>
+            <p><code>VenueBrowseReadAdapterIT</code>：建多刊（不同 IF / CAS 分区 / 国家 / OA）；断言 ① sort=TITLE 按刊名升序 ② sort=CAS_QUARTILE Q1 在前 ③ subject facet 过滤 ④ keyword 前缀命中 ⑤ 分页 total/items。<code>PortalVenueBrowseQueryServiceTest</code>（Mockito）：默认 pageSize=12、escapeKeyword 转义 <code>%</code>、sort 解析。<code>PortalVenueControllerIT</code>：删原 topN 用例，加 <code>GET /portal/venues?sort=title&amp;page=1&amp;pageSize=12</code> 返回 PageResult（断言 <code>$.items</code>、<code>$.total</code>、<code>$.page</code>），pageSize=51 → 422。</p>
+            <pre><code class="lang-bash">./gradlew :patra-api:patra-catalog:patra-catalog-infra:test :patra-api:patra-catalog:patra-catalog-app:test :patra-api:patra-catalog:patra-catalog-adapter:test --tests "*VenueBrowse*" --tests "*PortalVenueControllerIT"
+git add -A patra-api/patra-catalog/
+git commit -m "feat(catalog): 期刊浏览检索端点 GET /portal/venues 并归并 topN (PAP-42)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ===================== TASK 5 ===================== -->
+      <article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：首页期刊模块取数迁移到浏览端点</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/</code> 首页期刊模块的取数函数 + 类型（PR #118 引入，路径实施时 grep 定位）</dd>
+            <dt>测试</dt><dd>首页 smoke（既有 Playwright / 组件测试）验证 Top 6 期刊渲染</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：定位首页期刊取数</strong>
+            <p>运行：<code>grep -rn "portal/venues" patra-portal/src</code> 与 <code>grep -rn "topN" patra-portal/src</code> 定位取数函数（fetch / server action / API client）与其 TS 类型、调用处（首页期刊模块组件）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：改造取数（契约变更）</strong>
+            <p>契约变化：<code>GET /portal/venues</code> 从「<code>?topN=6</code> 返回 <code>Journal[]</code>」变为「<code>?sort=impactFactor&amp;pageSize=6</code> 返回 <code>PageResult&lt;VenueBrowse&gt;</code>」。改动点：① 请求参数 <code>topN=6</code> → <code>sort=impactFactor&amp;pageSize=6</code>；② 响应取 <code>data.items</code>（而非整体数组）；③ 字段映射：浏览响应是原首页卡片字段超集（含 <code>name/abbr/impactFactor/jcrQuartile/foundedYear/...</code>），原卡片组件按 <code>name/abbr/impactFactor/quartile/foundedYear</code> 取值——把 <code>quartile</code> 来源改为 <code>jcrQuartile</code>，其余沿用。更新对应 zod schema / TS 类型为 PageResult 形态（<code>{ items, page, pageSize, total, totalPages }</code>）。</p>
+            <p>注：homepageUrl/cover 等新字段首页不用，忽略即可。保持首页组件其余逻辑不变（仅取数与字段名）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：本地联调 + smoke + Commit</strong>
+            <p>启动 catalog + portal，访问首页确认期刊模块渲染 6 本（按 IF 降序）。跑既有首页 smoke/组件测试。</p>
+            <pre><code class="lang-bash">git add -A patra-portal/
+git commit -m "refactor(portal): 首页期刊模块迁移到浏览端点取数 (PAP-42)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ===================== TASK 6 ===================== -->
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：集成验证与收尾</h2>
+          <dl class="files">
+            <dt>验证</dt><dd>catalog 全模块构建 + 测试；三端点经 gateway 手测；OpenAPI 文档检查</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：catalog 全量构建 + 测试</strong>
+            <p>运行：<code>./gradlew :patra-api:patra-catalog:patra-catalog-boot:build</code>（含全模块 test）。预期：BUILD SUCCESSFUL，无 SpotBugs/Spotless 告警（pre-commit 亦会校验）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：端到端手测（经 gateway）</strong>
+            <p>启动 catalog + gateway，验证：</p>
+            <pre><code class="lang-bash"># 期刊详情（取一个真实 venue id）
+curl -s "http://&lt;gateway&gt;/patra-catalog/portal/venues/&lt;id&gt;" | jq '{title, impactFactor, jcrRatings: (.jcrRatings|length), homepageUrl}'
+# 文献详情（含证据等级 + 结构化摘要）
+curl -s "http://&lt;gateway&gt;/patra-catalog/portal/publications/&lt;id&gt;" | jq '{title, evidenceLevel, abstract: (.abstractSections|length), authors: (.authors|length)}'
+# 浏览（分页 + 排序 + 刊名搜索）
+curl -s "http://&lt;gateway&gt;/patra-catalog/portal/venues?sort=title&pageSize=12&q=lan" | jq '{total, page, items: (.items|length)}'
+# 详情 404
+curl -s -o /dev/null -w "%{http_code}" "http://&lt;gateway&gt;/patra-catalog/portal/venues/999999999"  # 期望 404</code></pre>
+            <p>预期：详情返回完整数据集；evidenceLevel 含 level/label/derived；浏览返回 PageResult；不存在 id → 404 + <code>CATALOG-0404</code>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：对照 Done 判定 + 更新 Issue</strong>
+            <p>逐条核对 spec「Done 判定」6 条。在 Linear PAP-42 评论标注完成状态。确认 homepageUrl/aiSummary 恒 null、收藏不返回。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：最终 Commit（如有收尾改动）</strong>
+            <pre><code class="lang-bash">git add -A
+git commit -m "test(catalog): portal 读端点集成验证收尾 (PAP-42)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec §3 端点 → Task 2/3/4；§4 DTO 分层 → 各端点 Response（Task 2/3/4 步骤含完整字段）；§5 六边形 → 各 Task 的 domain/infra/app/adapter 分层；§6 evidenceLevel → Task 1 + Task 3；§决策1 topN 归并 → Task 4 删除清单 + Task 5 FE 迁移；§决策2 读时衍生 → Task 1/3；§决策3 摘要有序数组 → Task 3 直接按数组顺序解析（存储改造见 PAP-48）；§决策4 homepageUrl null → Task 2 Response 字段；§决策5 facet 计数不做 → 未建聚合查询（浏览仅过滤）；§决策6 学科=JCR subject → Task 4 query 用 jcr.subject。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无 TODO/待补/「类似任务 N」。两处实施期需确认项已给出明确兜底，非占位：① ObjectMapper 在 @DataJpaTest 是否自动提供（否则 @TestConfiguration 注入）；② commons 是否有 StringUtils.escapeLike（否则用已给内联转义实现）。Task 5 FE 路径用 grep 定位（真实步骤，非占位）。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>EvidenceLevel.classify(Collection&lt;String&gt;) 在 Task 1 定义、Task 3 adapter 调用一致；ReadModel/ReadPort/Adapter/QueryService/Response 命名贯穿；投影 getter 名 ↔ SQL 别名一一对应（驼峰双引号）；PageResult.of / PagingParams.normalize 签名取自既有 PortalFeedReadAdapter/QueryService 实证；删除清单与文件结构一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>6 个 article 均有唯一 id=task-1..6 + 合法 data-status（pending→in-progress→done 状态机，实施期推进）；每个 step li 带 data-status；TOC toc-tasks 6 条 li 与中栏 article 一一对应（data-task-status 同步切换）；head 含 spec-theme.css + plan-extras.css 两个 link、无 inline style；meta dl 含 目标/架构/技术栈/关联 spec 四项。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：Implementation Notes（实施期由 Claude Code 维护）
+       ============================================================ -->
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（保留供实施期 AI 复制）:
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header><span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time><a href="#task-N">§ Task N</a></header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+      data-type 4 类：decision / change / tradeoff / other
+      -->
+          <li class="note" data-type="change" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>VenueNotFoundException 已存在于代码库（构造器入参 Long），直接复用未重建。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>Controller IT 加 @TestPropertySource(error.context-prefix=CATALOG) 以在 @WebMvcTest 切片验证 CATALOG-0404（否则降级 UNKNOWN-0404）。不影响生产代码。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>旧 PortalVenueControllerIT 追加 @MockitoBean PortalVenueDetailQueryService —— Controller 注入新字段后切片需 mock，否则装配失败。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-04T00:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T00:30">06-04 00:30</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>去掉 PublicationAbstractEntity / PublicationAlternativeAbstractEntity 的 @Lob —— 对 TEXT 列错误映射，Hibernate7+PG 下内容存入 large object、TEXT 列存 OID 串。改普通 String↔TEXT，文献详情用 a.plain_text 普通列读取（曾误用 lo_get 已还原）。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-06-04T01:10">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-06-04T01:10">06-04 01:10</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>VenueBrowseSort.fromCode 用 Locale.ROOT 做 toLowerCase（SpotBugs DM_CONVERT_CASE 强制 + 避免土耳其语 i 问题），与 EvidenceLevel 一致。标准做法，无功能影响。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-04T02:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T02:30">06-04 02:30</time>
+          <a href="#task-6">§ 最终审查修复</a>
+        </header>
+        <p>最终整体审查接缝修复：① 补 pii 标识符字段（spec §4.2 列了但 plan/初版漏了，全链路 Dao→Model→Response→Converter）；② FE VenueBrowse.cover 改名 coverObjectKey 对齐 BE 契约（曾错位致 FE 读 undefined）；③ 4 个详情文件 @lombok.Builder 全类名改 import+@Builder（去 FQN，与 Browse* 一致）；④ VenueBrowseSort.fromCode 文档补 impactFactor 别名。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-04T02:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-04T02:55">06-04 02:55</time>
+          <a href="#task-3">§ Task 3 (PR e2e 修复)</a>
+        </header>
+        <p>PR CI 的 e2e-tests（起全 catalog 上下文）暴露：PublicationDetailReadAdapter 注入 ObjectMapper，但 catalog 应用上下文无 ObjectMapper 顶层 bean → context 装配失败。切片测试（@DataJpaTest/@WebMvcTest）各自提供 ObjectMapper 故未捕获，唯 e2e 全上下文捕获。改为 infra adapter 内 private static final ObjectMapper（structured_sections 简单数组，Jackson 2.12+ 原生 record 反序列化）。</p>
+      </li>
+</ol>
+
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">2</span> decisions /
+      <span data-counter="change">5</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>

@@ -1,9 +1,13 @@
 package dev.linqibin.patra.catalog.adapter.rest.portal;
 
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperResponse;
-import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueResponse;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPublicationDetailResponse;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueBrowseResponse;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueDetailResponse;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
-import dev.linqibin.patra.catalog.domain.model.read.portal.PortalVenueReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,18 +44,116 @@ public class PortalApiConverter {
         toMinutesAgo(model.lastSyncedAt()));
   }
 
-  /// 将期刊读模型转为响应 DTO。
+  /// 将期刊浏览读模型转为响应 DTO。
   ///
-  /// @param model 期刊读模型
+  /// @param model 期刊浏览读模型
   /// @return 响应 DTO
-  public PortalVenueResponse toVenueResponse(PortalVenueReadModel model) {
-    return new PortalVenueResponse(
-        Long.toString(model.id()),
-        model.name(),
-        model.abbr(),
-        model.impactFactor(),
-        model.quartile(),
-        model.foundedYear());
+  public PortalVenueBrowseResponse toVenueBrowseResponse(VenueBrowseReadModel model) {
+    return PortalVenueBrowseResponse.builder()
+        .id(Long.toString(model.id()))
+        .name(model.name())
+        .abbr(model.abbr())
+        .coverObjectKey(model.coverObjectKey())
+        .impactFactor(model.impactFactor())
+        .jcrQuartile(model.jcrQuartile())
+        .jcrSubject(model.jcrSubject())
+        .casMajorCategory(model.casMajorCategory())
+        .casMajorQuartile(model.casMajorQuartile())
+        .casIsTop(model.casIsTop())
+        .countryCode(model.countryCode())
+        .citedByCount(model.citedByCount())
+        .foundedYear(model.foundedYear())
+        .isOpenAccess(model.isOpenAccess())
+        .isInDoaj(model.isInDoaj())
+        .issnL(model.issnL())
+        .build();
+  }
+
+  /// 将期刊详情读模型转为响应 DTO。
+  ///
+  /// @param model 期刊详情读模型
+  /// @return 响应 DTO
+  public PortalVenueDetailResponse toVenueDetailResponse(VenueDetailReadModel model) {
+    return PortalVenueDetailResponse.builder()
+        .id(Long.toString(model.id()))
+        .title(model.title())
+        .abbreviatedTitle(model.abbreviatedTitle())
+        .venueType(model.venueType())
+        .issnL(model.issnL())
+        .countryCode(model.countryCode())
+        .primaryLanguage(model.primaryLanguage())
+        .foundedYear(model.foundedYear())
+        .coverObjectKey(model.coverObjectKey())
+        .homepageUrl(null) // 当前无数据源，恒为 null
+        .isOpenAccess(model.isOpenAccess())
+        .impactFactor(model.impactFactor())
+        .jcrQuartile(model.jcrQuartile())
+        .jcrSubject(model.jcrSubject())
+        .casMajorCategory(model.casMajorCategory())
+        .casMajorQuartile(model.casMajorQuartile())
+        .casIsTop(model.casIsTop())
+        .citeScore(model.citeScore())
+        .hIndex(model.hIndex())
+        .citedByCount(model.citedByCount())
+        .worksCount(model.worksCount())
+        .frequency(model.frequency())
+        .medlineIndexed(model.medlineIndexed())
+        .oaType(model.oaType())
+        .apcUsd(model.apcUsd())
+        .isInDoaj(model.isInDoaj())
+        .jcrRatings(
+            model.jcrRatings().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.JcrRating.builder()
+                            .year(v.year())
+                            .impactFactor(v.impactFactor())
+                            .quartile(v.quartile())
+                            .subject(v.subject())
+                            .jifRank(v.jifRank())
+                            .jifPercentile(v.jifPercentile())
+                            .build())
+                .toList())
+        .casRatings(
+            model.casRatings().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.CasRating.builder()
+                            .year(v.year())
+                            .edition(v.edition())
+                            .majorCategory(v.majorCategory())
+                            .majorQuartile(v.majorQuartile())
+                            .minorSubject(v.minorSubject())
+                            .minorQuartile(v.minorQuartile())
+                            .isTop(v.isTop())
+                            .isReview(v.isReview())
+                            .build())
+                .toList())
+        .scopusRatings(
+            model.scopusRatings().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.ScopusRating.builder()
+                            .year(v.year())
+                            .citeScore(v.citeScore())
+                            .sjr(v.sjr())
+                            .snip(v.snip())
+                            .quartile(v.quartile())
+                            .percentile(v.percentile())
+                            .build())
+                .toList())
+        .yearlyStats(
+            model.yearlyStats().stream()
+                .map(
+                    v ->
+                        PortalVenueDetailResponse.YearlyStat.of(
+                            v.year(), v.worksCount(), v.citedByCount(), v.oaWorksCount()))
+                .toList())
+        .identifiers(
+            model.identifiers().stream()
+                .map(v -> PortalVenueDetailResponse.Identifier.of(v.type(), v.value(), v.primary()))
+                .toList())
+        .build();
   }
 
   private String toSource(String provenanceCode) {
@@ -63,6 +165,77 @@ public class PortalApiConverter {
     } catch (IllegalArgumentException e) {
       return provenanceCode;
     }
+  }
+
+  /// 将文献详情读模型转为响应 DTO。
+  ///
+  /// @param model 文献详情读模型
+  /// @return 响应 DTO
+  public PortalPublicationDetailResponse toPublicationDetailResponse(
+      PublicationDetailReadModel model) {
+    return PortalPublicationDetailResponse.builder()
+        .id(Long.toString(model.id()))
+        .title(model.title())
+        .originalTitle(model.originalTitle())
+        .venueId(model.venueId() != null ? Long.toString(model.venueId()) : null)
+        .venueName(model.venueName())
+        .publicationYear(model.publicationYear())
+        .evidenceLevel(
+            PortalPublicationDetailResponse.EvidenceLevelView.of(
+                model.evidenceLevel().name(),
+                model.evidenceLevel().rank(),
+                model.evidenceLevel().label(),
+                model.evidenceLevel().isDerived()))
+        .abstractType(model.abstractType())
+        .abstractSections(
+            model.abstractSections().stream()
+                .map(s -> PortalPublicationDetailResponse.AbstractSection.of(s.label(), s.text()))
+                .toList())
+        .abstractPlainText(model.abstractPlainText())
+        .doi(model.doi())
+        .pmid(model.pmid())
+        .pmcid(model.pmcid())
+        .pii(model.pii())
+        .primaryType(model.primaryType())
+        .publicationTypes(model.publicationTypes())
+        .citationCount(model.citationCount())
+        .numberOfReferences(model.numberOfReferences())
+        .conflictOfInterest(model.conflictOfInterest())
+        .isOa(model.isOa())
+        .oaStatus(model.oaStatus())
+        .authors(
+            model.authors().stream()
+                .map(
+                    a ->
+                        PortalPublicationDetailResponse.Author.builder()
+                            .order(a.order())
+                            .first(a.first())
+                            .corresponding(a.corresponding())
+                            .name(a.name())
+                            .affiliation(a.affiliation())
+                            .build())
+                .toList())
+        .meshHeadings(
+            model.meshHeadings().stream()
+                .map(
+                    m ->
+                        PortalPublicationDetailResponse.MeshHeading.of(
+                            m.descriptorUi(), m.term(), m.major()))
+                .toList())
+        .keywords(model.keywords())
+        .funding(
+            model.funding().stream()
+                .map(
+                    f ->
+                        PortalPublicationDetailResponse.Funding.of(
+                            f.funder(), f.grantId(), f.country()))
+                .toList())
+        .dates(
+            model.dates().stream()
+                .map(d -> PortalPublicationDetailResponse.PublicationDate.of(d.type(), d.date()))
+                .toList())
+        .aiSummary(null) // 当前无 LLM 摘要生成，恒为 null
+        .build();
   }
 
   private Integer toMinutesAgo(Instant lastSyncedAt) {

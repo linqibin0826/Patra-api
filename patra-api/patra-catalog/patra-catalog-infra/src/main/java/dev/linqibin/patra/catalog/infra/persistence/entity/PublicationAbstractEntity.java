@@ -3,7 +3,6 @@ package dev.linqibin.patra.catalog.infra.persistence.entity;
 import dev.linqibin.starter.jpa.entity.ValueObjectJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Getter;
@@ -45,7 +44,6 @@ public class PublicationAbstractEntity extends ValueObjectJpaEntity {
   private Long publicationId;
 
   /// 纯文本摘要
-  @Lob
   @Column(name = "plain_text", columnDefinition = "TEXT")
   private String plainText;
 

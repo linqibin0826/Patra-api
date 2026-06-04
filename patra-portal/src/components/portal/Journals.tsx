@@ -2,10 +2,10 @@ import { ArrowRight } from "lucide-react";
 import Image from "next/image";
 import { JournalCoverCard } from "@/components/portal/JournalCoverCard";
 import { fetchVenues } from "@/lib/portal-api/venues";
-import type { Journal } from "@/types/portal";
+import type { VenueBrowse } from "@/types/portal";
 
 export async function Journals() {
-  let journals: Journal[];
+  let journals: VenueBrowse[];
   try {
     journals = await fetchVenues(6);
   } catch {
