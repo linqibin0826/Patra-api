@@ -43,6 +43,10 @@ public interface PublicationDetailRow {
 
   String getOaStatus();
 
+  String getProvenanceCode();
+
+  String getFullTextUrl();
+
   /// 出版类型列表，以 U+001F（\x1f）分隔，按 type_order ASC、id ASC 排序。
   String getPublicationTypesAgg();
 }

@@ -14,6 +14,7 @@ import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorEnti
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationIdentifierEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationMeshHeadingEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationMetadataEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationTypeEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
 import dev.linqibin.patra.common.model.enums.PublicationIdentifierType;
@@ -306,5 +307,29 @@ class PublicationDetailReadAdapterIT {
     ident.setType(PublicationIdentifierType.fromCode(type));
     ident.setValue(value);
     em.persist(ident);
+  }
+
+  private void saveMetadata(Long publicationId, String fullTextUrl) {
+    PublicationMetadataEntity m = new PublicationMetadataEntity();
+    m.setId(SnowflakeIdGenerator.getId());
+    m.setPublicationId(publicationId);
+    m.setHasFullText(true);
+    m.setFullTextUrl(fullTextUrl);
+    em.persist(m);
+  }
+
+  @Test
+  @DisplayName("详情返回 provenanceCode 与 fullTextUrl（来自 metadata LEFT JOIN）")
+  void shouldReturnSourceAndFullTextUrl() {
+    Long venueId = saveVenue("Nature");
+    Long pubId = savePublication(venueId, "OA Study", "10.1/oa", "99");
+    saveMetadata(pubId, "https://publisher.example.com/article/oa");
+    em.flush();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.provenanceCode()).isEqualTo("PUBMED");
+    assertThat(model.fullTextUrl()).isEqualTo("https://publisher.example.com/article/oa");
   }
 }

@@ -68,6 +68,8 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
                   .conflictOfInterest(main.getConflictOfInterest())
                   .isOa(main.getIsOa())
                   .oaStatus(main.getOaStatus())
+                  .provenanceCode(main.getProvenanceCode())
+                  .fullTextUrl(main.getFullTextUrl())
                   .authors(mapAuthors(publicationDetailDao.findAuthorsByPublicationId(id)))
                   .meshHeadings(
                       mapMeshHeadings(publicationDetailDao.findMeshHeadingsByPublicationId(id)))
