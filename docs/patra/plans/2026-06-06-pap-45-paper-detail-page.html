@@ -1574,7 +1574,7 @@ git commit -m "feat(portal): explore-feed 文献卡接通 /papers/[id] + e2e smo
 
       <aside class="callout success">
         <span class="title">4. HTML 结构完整性</span>
-        <p>9 个 <code>&lt;article class="task" id="task-N" data-status="pending"&gt;</code> 唯一且初始 pending；所有 <code>&lt;li class="step"&gt;</code> 初始 pending；TOC <code>toc-tasks</code> 9 条与中栏 article 一一对应（id/href 匹配，初始 data-task-status=pending）；head 含 spec-theme.css + plan-extras.css 两个 link，无 inline style 块；meta 含 目标/架构/技术栈/关联 spec 四项。</p>
+        <p>（以下为<strong>编写时</strong>的初始态结构校验记录；执行期 <code>data-status</code> 会由控制者按子代理进度逐步翻转为 <code>in-progress</code>/<code>done</code>，与此处「初始 pending」描述不同期，属预期。）9 个 <code>&lt;article class="task" id="task-N"&gt;</code> 唯一且初始 <code>data-status="pending"</code>；所有 <code>&lt;li class="step"&gt;</code> 初始 pending；TOC <code>toc-tasks</code> 9 条与中栏 article 一一对应（id/href 匹配，初始 data-task-status=pending）；head 含 spec-theme.css + plan-extras.css 两个 link，无 inline style 块；meta 含 目标/架构/技术栈/关联 spec 四项。</p>
       </aside>
     </section>
 
