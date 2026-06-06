@@ -59,6 +59,89 @@ export interface VenueBrowse {
   issnL: string | null;
 }
 
+export interface JcrRating {
+  year: number;
+  impactFactor: number | null;
+  quartile: string | null;
+  subject: string | null;
+  jifRank: string | null; // 形如 "5/245"
+  jifPercentile: number | null;
+}
+
+export interface CasRating {
+  year: number;
+  edition: string | null;
+  majorCategory: string | null;
+  majorQuartile: string | null;
+  minorSubject: string | null;
+  minorQuartile: string | null;
+  isTop: boolean | null;
+  isReview: boolean | null;
+}
+
+export interface ScopusRating {
+  year: number;
+  citeScore: number | null;
+  sjr: number | null;
+  snip: number | null;
+  quartile: string | null;
+  percentile: number | null;
+}
+
+export interface YearlyStat {
+  year: number;
+  worksCount: number | null;
+  citedByCount: number | null;
+  oaWorksCount: number | null;
+}
+
+export interface VenueIdentifier {
+  type: string;
+  value: string;
+  primary: boolean;
+}
+
+/**
+ * 期刊详情端点 `GET /portal/venues/{id}` 响应（VenueDetail）。
+ * 对应后端 `PortalVenueDetailResponse`——扁平"最新值快照" + 评级列表，零运行时映射。
+ * id 为 string（BE 用 String 避免 JS 超 2^53 精度损失）。
+ */
+export interface VenueDetail {
+  id: string;
+  title: string;
+  abbreviatedTitle: string | null;
+  venueType: string | null;
+  issnL: string | null;
+  countryCode: string | null;
+  primaryLanguage: string | null;
+  foundedYear: number | null;
+  coverObjectKey: string | null;
+  homepageUrl: string | null; // BE 恒 null → 主操作降级
+  isOpenAccess: boolean | null;
+  // 顶层"最新值"快照
+  impactFactor: number | null;
+  jcrQuartile: string | null;
+  jcrSubject: string | null;
+  casMajorCategory: string | null;
+  casMajorQuartile: string | null;
+  casIsTop: boolean | null;
+  citeScore: number | null;
+  hIndex: number | null;
+  citedByCount: number | null;
+  worksCount: number | null;
+  frequency: string | null;
+  medlineIndexed: boolean | null;
+  oaType: string | null;
+  apcUsd: number | null;
+  isInDoaj: boolean | null;
+  // 完整评级列表（深数据层明细 + 派生来源）
+  jcrRatings: JcrRating[];
+  casRatings: CasRating[];
+  scopusRatings: ScopusRating[];
+  yearlyStats: YearlyStat[];
+  identifiers: VenueIdentifier[];
+}
+
 export interface Paper {
   id: string;
   title: string;
