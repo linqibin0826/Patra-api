@@ -62,7 +62,7 @@ describe("JournalSearchSortControls", () => {
         vi.advanceTimersByTime(300);
       });
       expect(mockReplace).toHaveBeenCalledTimes(1);
-      const url = mockReplace.mock.calls[0]![0];
+      const url = mockReplace.mock.calls[0]?.[0];
       expect(url).toContain("q=cell");
       expect(url).not.toContain("page=");
     });
@@ -72,7 +72,7 @@ describe("JournalSearchSortControls", () => {
       const clearBtn = screen.getByRole("button", { name: /清除/i });
       fireEvent.click(clearBtn);
       expect(mockReplace).toHaveBeenCalledTimes(1);
-      const url = mockReplace.mock.calls[0]![0];
+      const url = mockReplace.mock.calls[0]?.[0];
       expect(url).not.toContain("q=");
     });
   });
@@ -98,7 +98,7 @@ describe("JournalSearchSortControls", () => {
       render(<JournalSearchSortControls query={{ ...baseQuery, page: 5 }} />);
       fireEvent.click(screen.getByRole("button", { name: "刊名 A–Z" }));
       expect(mockPush).toHaveBeenCalledTimes(1);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).toContain("sort=az");
       expect(url).not.toContain("page=");
     });

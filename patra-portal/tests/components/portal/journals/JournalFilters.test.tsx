@@ -58,7 +58,7 @@ describe("JournalFilters", () => {
       const q1Checkbox = screen.getByRole("checkbox", { name: /Q1/i });
       fireEvent.click(q1Checkbox);
       expect(mockPush).toHaveBeenCalledTimes(1);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).toContain("jcr=Q1");
       expect(url).not.toContain("page=");
     });
@@ -68,7 +68,7 @@ describe("JournalFilters", () => {
       const q1Checkbox = screen.getByRole("checkbox", { name: /Q1/i });
       fireEvent.click(q1Checkbox);
       expect(mockPush).toHaveBeenCalledTimes(1);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).not.toContain("jcr=Q1");
     });
 
@@ -76,9 +76,9 @@ describe("JournalFilters", () => {
       render(<JournalFilters facets={baseFacets} query={baseQuery} />);
       const checkbox = screen.getByRole("checkbox", { name: /医学/i });
       fireEvent.click(checkbox);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).toContain("subject=");
-      expect(decodeURIComponent(url)).toContain("医学");
+      expect(decodeURIComponent(url as string)).toContain("医学");
     });
   });
 
@@ -94,8 +94,7 @@ describe("JournalFilters", () => {
       const label = screen.getByText("化学").closest("label");
       expect(label).not.toBeNull();
       // 灰显：含 is-zero class 或 opacity 相关 class
-      // biome-ignore lint/style/noNonNullAssertion: 上方已断言非 null
-      expect(label!.className).toMatch(/is-zero|opacity/);
+      expect((label as HTMLElement).className).toMatch(/is-zero|opacity/);
     });
   });
 
@@ -128,7 +127,7 @@ describe("JournalFilters", () => {
       const oaCheckbox = screen.getByRole("checkbox", { name: /仅开放获取/i });
       fireEvent.click(oaCheckbox);
       expect(mockPush).toHaveBeenCalledTimes(1);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).toContain("oa=true");
     });
 
@@ -136,7 +135,7 @@ describe("JournalFilters", () => {
       render(<JournalFilters facets={baseFacets} query={{ ...baseQuery, oa: true }} />);
       const oaCheckbox = screen.getByRole("checkbox", { name: /仅开放获取/i });
       fireEvent.click(oaCheckbox);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).not.toContain("oa=true");
     });
 
@@ -144,7 +143,7 @@ describe("JournalFilters", () => {
       render(<JournalFilters facets={baseFacets} query={baseQuery} />);
       const topCheckbox = screen.getByRole("checkbox", { name: /仅 Top 期刊/i });
       fireEvent.click(topCheckbox);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).toContain("casTop=true");
     });
 
@@ -152,7 +151,7 @@ describe("JournalFilters", () => {
       render(<JournalFilters facets={baseFacets} query={baseQuery} />);
       const doajCheckbox = screen.getByRole("checkbox", { name: /DOAJ/i });
       fireEvent.click(doajCheckbox);
-      const url = mockPush.mock.calls[0]![0];
+      const url = mockPush.mock.calls[0]?.[0];
       expect(url).toContain("doaj=true");
     });
   });

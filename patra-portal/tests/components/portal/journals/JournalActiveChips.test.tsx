@@ -52,10 +52,10 @@ describe("JournalActiveChips", () => {
     render(<JournalActiveChips query={{ ...baseQuery, jcr: ["Q1", "Q2"] }} />);
     // 找到 Q1 chip 的移除按钮（紧随其后的 ✕ 按钮）
     const removeButtons = screen.getAllByRole("button", { name: /移除|✕|×/i });
-    // biome-ignore lint/style/noNonNullAssertion: getAllByRole 保证至少有一个
-    fireEvent.click(removeButtons[0]!);
+    const firstBtn = removeButtons[0] as HTMLElement;
+    fireEvent.click(firstBtn);
     expect(mockPush).toHaveBeenCalledTimes(1);
-    const url = mockPush.mock.calls[0]![0];
+    const url = mockPush.mock.calls[0]?.[0];
     // Q1 应被移除，Q2 仍在
     expect(url).toContain("Q2");
     expect(url).not.toContain("Q1");
