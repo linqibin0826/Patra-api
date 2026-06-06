@@ -1,5 +1,14 @@
 import "server-only";
-import type { PageResult, VenueBrowse, VenueDetail } from "@/types/portal";
+import { buildVenuesFacetsApiQuery, buildVenuesPageApiQuery } from "@/lib/portal-api/venue-browse";
+import type {
+  PageResult,
+  VenueBrowse,
+  VenueBrowseFacets,
+  VenueBrowseFilters,
+  VenueBrowsePage,
+  VenueBrowseQuery,
+  VenueDetail,
+} from "@/types/portal";
 
 /** 服务端 fetch 超时（ms）：慢后端不应无限阻塞 RSC 渲染线程 */
 const FETCH_TIMEOUT_MS = 10_000;
@@ -33,6 +42,72 @@ export async function fetchVenues(pageSize = 6): Promise<VenueBrowse[]> {
     return [];
   }
   return data.items;
+}
+
+/** BE `/portal/venues/facets` 原始响应形状（键名与 FE VenueBrowseFacets 不同） */
+interface VenueFacetsApiResponse {
+  subjects: VenueBrowseFacets["subject"];
+  jcrQuartiles: VenueBrowseFacets["jcr"];
+  casQuartiles: VenueBrowseFacets["cas"];
+  countries: VenueBrowseFacets["country"];
+  casTop: number;
+  openAccess: number;
+  doaj: number;
+}
+
+/**
+ * 在服务端拉取期刊分页列表（期刊浏览检索用）。仅 RSC / Route Handler 调用（server-only）。
+ *
+ * 端点：`GET /patra-catalog/portal/venues?<buildVenuesPageApiQuery>`
+ * 响应：`PageResult<VenueBrowse>`（即 `VenueBrowsePage`）。
+ * 列表恒 200（空集也是 200），非 2xx 直接 throw 冒泡到 error.tsx。
+ */
+export async function fetchVenuesPage(query: VenueBrowseQuery): Promise<VenueBrowsePage> {
+  const baseUrl = process.env.PATRA_GATEWAY_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("PATRA_GATEWAY_BASE_URL 未配置");
+  }
+  const url = `${baseUrl}/patra-catalog/portal/venues?${buildVenuesPageApiQuery(query)}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`期刊列表加载失败：${res.status}`);
+  }
+  return (await res.json()) as VenueBrowsePage;
+}
+
+/**
+ * 在服务端拉取期刊 facet 统计（筛选面板用）。仅 RSC / Route Handler 调用（server-only）。
+ *
+ * 端点：`GET /patra-catalog/portal/venues/facets?<buildVenuesFacetsApiQuery>`
+ * 键名归一：BE `subjects/jcrQuartiles/casQuartiles/countries/openAccess` → FE `subject/jcr/cas/country/oa`。
+ * 非 2xx 直接 throw 冒泡到 error.tsx。
+ */
+export async function fetchVenuesFacets(filters: VenueBrowseFilters): Promise<VenueBrowseFacets> {
+  const baseUrl = process.env.PATRA_GATEWAY_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("PATRA_GATEWAY_BASE_URL 未配置");
+  }
+  const url = `${baseUrl}/patra-catalog/portal/venues/facets?${buildVenuesFacetsApiQuery(filters)}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`期刊 facet 加载失败：${res.status}`);
+  }
+  const data = (await res.json()) as VenueFacetsApiResponse;
+  return {
+    subject: data.subjects,
+    jcr: data.jcrQuartiles,
+    cas: data.casQuartiles,
+    country: data.countries,
+    casTop: data.casTop,
+    oa: data.openAccess,
+    doaj: data.doaj,
+  };
 }
 
 /**
