@@ -31,6 +31,7 @@ docs/patra/design/snapshots/<YYYY-MM-DD>-<topic>.zip
 |---|---|---|---|
 | `2026-05-23-design-system.zip` | [PAP-26](https://linear.app/papertrace/issue/PAP-26) | v0.4 Portal Foundation | Patra DS — 色板（paper / ink / clay / teal + 语义 moss/amber/rust/slate）+ 字体（Inter / Source Serif 4 / JetBrains Mono）+ 4px spacing scale + radius/shadows/motion tokens + 6 类核心组件（buttons / cards / inputs / chips-badges / table / menu-palette） |
 | `2026-05-23-homepage-hifi.zip` | [PAP-29](https://linear.app/papertrace/issue/PAP-29) | v0.4 Portal Foundation | 首页 hi-fi 可运行原型（HTML/CSS/JS · 桌面 + 移动同源响应式）— 6 区块（TopNav / Hero / TopicCloud / Journals / ExploreFeed / Footer）+ 880/720 双断点 + clay AI 速读 + Tweaks 调参面板 6 项 + 品牌 SVG 三件套；作为 [PAP-32](https://linear.app/papertrace/issue/PAP-32) 像素级复刻到 Next.js 15 + Tailwind v4 + shadcn/ui 的输入 |
+| `2026-06-06-detail-pages-hifi.zip` | [PAP-44](https://linear.app/papertrace/issue/PAP-44) | v0.5 Portal Detail Pages | 期刊详情 / 文献详情 / 期刊列表 hi-fi（HTML/CSS/JS 原型）— `detail-pages.jsx`（JournalDetail + PaperDetail 编排）+ `detail-shared.jsx`（Disclosure / Metric / IdentifierChip / RatingTable / TrendChart / skeleton 等共享基元）+ `detail.css` + `status-screens.jsx`（404 / error 状态屏）+ `patra-ds-cards/` 组件卡（disclosure / identifier-chip / skeleton / status-screens / evidence-badge）+ 64 张截图；作为 [PAP-44](https://linear.app/papertrace/issue/PAP-44) 期刊详情页像素级复刻输入（文献详情留 PAP-45、期刊列表留 PAP-47）。已剔除 22M / 1.3M 的 standalone HTML 导出（git 体积）|
 
 ## 解压与查看
 
