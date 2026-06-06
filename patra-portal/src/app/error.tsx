@@ -3,7 +3,7 @@
 import { ErrorState } from "@/components/portal/status/ErrorState";
 import { TopNav } from "@/components/portal/TopNav";
 
-export default function GlobalError({
+export default function RootError({
   reset,
 }: {
   error: Error & { digest?: string };
