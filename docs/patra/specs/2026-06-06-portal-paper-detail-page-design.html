@@ -167,7 +167,7 @@
       <p>纯函数，把扁平 DTO 重组为组件视图对象（无副作用、可单测）：</p>
       <ul>
         <li><code>deriveAbstract(p)</code> → <code>{ kind: "structured" | "plain" | "empty"; sections?; text? }</code>，三态判定（有 <code>abstractSections</code> → structured；有 <code>abstractPlainText</code> → plain；都无 → empty）</li>
-        <li><code>deriveEvidence(level)</code> → <code>{ tone: "moss"|"amber"|"slate"|"muted"; lit: number; label; en; derived }</code>，按 <code>rank</code> 映射色温与阶梯点亮数（<code>lit = 6 - rank</code>，clamp）</li>
+        <li><code>deriveEvidence(level)</code> → <code>{ tone: "moss"|"amber"|"slate"|"muted"; lit: number; label; en; derived }</code>，按 <code>rank</code> 映射色温与阶梯点亮数（<code>lit = rank</code>（rank 0–5，越大越强；clamp 到 [0,5]））</li>
         <li><code>deriveFullTextHref(p)</code> → <code>string | null</code>，优先级：<code>fullTextUrl</code> → <code>https://doi.org/{doi}</code> → <code>https://pubmed.ncbi.nlm.nih.gov/{pmid}</code> → null（落地「专门字段优先、其他途径降级」）</li>
         <li><code>deriveBylineAuthors(authors)</code> → 前 3 位 + 「等 N 位」溢出文案</li>
       </ul>
