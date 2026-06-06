@@ -1,0 +1,159 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { JournalFilters } from "@/components/portal/journals/JournalFilters";
+import { useJournalFilterUiStore } from "@/store/journal-filter-ui";
+import type { VenueBrowseFacets, VenueBrowseQuery } from "@/types/portal";
+
+const mockPush = vi.fn<(url: string) => void>();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
+
+const baseQuery: VenueBrowseQuery = {
+  q: "",
+  sort: "if",
+  page: 3,
+  subject: [],
+  jcr: [],
+  cas: [],
+  casTop: false,
+  oa: false,
+  doaj: false,
+  country: [],
+};
+
+const baseFacets: VenueBrowseFacets = {
+  subject: [
+    { value: "医学", count: 50 },
+    { value: "生物", count: 20 },
+    { value: "化学", count: 0 },
+  ],
+  jcr: [
+    { value: "Q1", count: 30 },
+    { value: "Q2", count: 15 },
+  ],
+  cas: [
+    { value: "1区", count: 25 },
+    { value: "2区", count: 10 },
+  ],
+  country: [
+    { value: "US", count: 40 },
+    { value: "UK", count: 8 },
+  ],
+  casTop: 12,
+  oa: 35,
+  doaj: 18,
+};
+
+describe("JournalFilters", () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+    useJournalFilterUiStore.setState({ sheetOpen: false });
+  });
+
+  describe("facet 勾选", () => {
+    it("勾选 JCR Q1 → router.push 含 jcr=Q1 且 page 归 1", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const q1Checkbox = screen.getByRole("checkbox", { name: /Q1/i });
+      fireEvent.click(q1Checkbox);
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      const url = mockPush.mock.calls[0]![0];
+      expect(url).toContain("jcr=Q1");
+      expect(url).not.toContain("page=");
+    });
+
+    it("已勾选的 JCR Q1 再次勾选 → 移除 Q1", () => {
+      render(<JournalFilters facets={baseFacets} query={{ ...baseQuery, jcr: ["Q1"] }} />);
+      const q1Checkbox = screen.getByRole("checkbox", { name: /Q1/i });
+      fireEvent.click(q1Checkbox);
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      const url = mockPush.mock.calls[0]![0];
+      expect(url).not.toContain("jcr=Q1");
+    });
+
+    it("勾选学科 → URL 含 subject 值", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const checkbox = screen.getByRole("checkbox", { name: /医学/i });
+      fireEvent.click(checkbox);
+      const url = mockPush.mock.calls[0]![0];
+      expect(url).toContain("subject=");
+      expect(decodeURIComponent(url)).toContain("医学");
+    });
+  });
+
+  describe("count 渲染", () => {
+    it("渲染 Q1 的 count（30）", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      expect(screen.getByText("30")).toBeInTheDocument();
+    });
+
+    it("count=0 的项（化学）灰显（has is-zero class 或 opacity 样式）", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      // 化学存在于 DOM 中（不隐藏）
+      const label = screen.getByText("化学").closest("label");
+      expect(label).not.toBeNull();
+      // 灰显：含 is-zero class 或 opacity 相关 class
+      // biome-ignore lint/style/noNonNullAssertion: 上方已断言非 null
+      expect(label!.className).toMatch(/is-zero|opacity/);
+    });
+  });
+
+  describe("学科本地搜索", () => {
+    it("本地搜索过滤后只显示匹配项，不触发 router", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const searchInput = screen.getByPlaceholderText(/搜索/i);
+      fireEvent.change(searchInput, { target: { value: "医" } });
+      // 医学可见，生物和化学不可见
+      expect(screen.getByText("医学")).toBeInTheDocument();
+      expect(screen.queryByText("生物")).not.toBeInTheDocument();
+      expect(screen.queryByText("化学")).not.toBeInTheDocument();
+      // 未触发 router
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it("清空搜索后恢复所有项", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const searchInput = screen.getByPlaceholderText(/搜索/i);
+      fireEvent.change(searchInput, { target: { value: "医" } });
+      fireEvent.change(searchInput, { target: { value: "" } });
+      expect(screen.getByText("生物")).toBeInTheDocument();
+      expect(screen.getByText("化学")).toBeInTheDocument();
+    });
+  });
+
+  describe("布尔开关", () => {
+    it("切换「仅开放获取」→ URL 含 oa=true", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const oaCheckbox = screen.getByRole("checkbox", { name: /仅开放获取/i });
+      fireEvent.click(oaCheckbox);
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      const url = mockPush.mock.calls[0]![0];
+      expect(url).toContain("oa=true");
+    });
+
+    it("oa=true 时再次切换 → URL 不含 oa", () => {
+      render(<JournalFilters facets={baseFacets} query={{ ...baseQuery, oa: true }} />);
+      const oaCheckbox = screen.getByRole("checkbox", { name: /仅开放获取/i });
+      fireEvent.click(oaCheckbox);
+      const url = mockPush.mock.calls[0]![0];
+      expect(url).not.toContain("oa=true");
+    });
+
+    it("切换「仅 Top 期刊」→ URL 含 casTop=true", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const topCheckbox = screen.getByRole("checkbox", { name: /仅 Top 期刊/i });
+      fireEvent.click(topCheckbox);
+      const url = mockPush.mock.calls[0]![0];
+      expect(url).toContain("casTop=true");
+    });
+
+    it("切换「收录于 DOAJ」→ URL 含 doaj=true", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const doajCheckbox = screen.getByRole("checkbox", { name: /DOAJ/i });
+      fireEvent.click(doajCheckbox);
+      const url = mockPush.mock.calls[0]![0];
+      expect(url).toContain("doaj=true");
+    });
+  });
+});
