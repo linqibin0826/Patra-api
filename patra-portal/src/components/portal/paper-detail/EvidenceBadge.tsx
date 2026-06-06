@@ -1,7 +1,7 @@
-import { deriveEvidence } from "@/lib/portal-api/publication-derive";
+import { deriveEvidence, type EvidenceTone } from "@/lib/portal-api/publication-derive";
 import type { EvidenceLevel } from "@/types/portal";
 
-const TONE_CLASS: Record<string, string> = {
+const TONE_CLASS: Record<EvidenceTone, string> = {
   moss: "bg-(--moss-50) text-(--moss-500) border-[color-mix(in_oklab,var(--moss-500)_30%,transparent)]",
   amber:
     "bg-(--amber-50) text-(--amber-500) border-[color-mix(in_oklab,var(--amber-500)_30%,transparent)]",

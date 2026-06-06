@@ -21,7 +21,7 @@ export function AuthorList({ authors }: { authors: Author[] }) {
               )}
               {a.corresponding && (
                 <span className="ml-2 rounded-sm border border-clay-200 bg-clay-50 px-1.5 py-px align-middle font-sans text-[9.5px] font-semibold text-clay-800">
-                  ✉ 通讯
+                  <span aria-hidden>✉</span> 通讯
                 </span>
               )}
             </span>
