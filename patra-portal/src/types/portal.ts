@@ -252,3 +252,48 @@ export interface PageResult<T> {
   totalPages: number;
   items: T[];
 }
+
+// ---- 期刊浏览检索 ----
+
+export type VenueSortId = "if" | "cas" | "az" | "cited";
+
+export interface VenueBrowseQuery {
+  q: string;
+  sort: VenueSortId;
+  page: number; // 1-based
+  subject: string[];
+  jcr: string[];
+  cas: string[];
+  casTop: boolean;
+  oa: boolean;
+  doaj: boolean;
+  country: string[];
+}
+
+/** 筛选维度子集（不含 page/sort）——facet 取数与稳定 Suspense 边界用 */
+export type VenueBrowseFilters = Omit<VenueBrowseQuery, "page" | "sort">;
+
+export interface FacetOption {
+  value: string;
+  count: number;
+}
+
+export interface VenueBrowseFacets {
+  subject: FacetOption[];
+  jcr: FacetOption[];
+  cas: FacetOption[];
+  country: FacetOption[];
+  casTop: number;
+  oa: number;
+  doaj: number;
+}
+
+export type VenueBrowsePage = PageResult<VenueBrowse>;
+
+/** 已选筛选 chip（供 client 组件渲染 + 生成移除后的 URL） */
+export interface ActiveFilterChip {
+  group: string; // 中文组名，如 "学科" / "JCR 分区"
+  value: string; // 原始值（用于移除定位）
+  label: string; // 展示文案
+  next: VenueBrowseQuery; // 移除该项后的 query
+}
