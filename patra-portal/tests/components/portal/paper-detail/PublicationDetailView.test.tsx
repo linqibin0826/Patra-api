@@ -49,6 +49,8 @@ function paper(overrides: Partial<PaperDetail> = {}): PaperDetail {
 describe("PublicationDetailView", () => {
   it("渲染面包屑（pmid）+ 标题 + 摘要节 + 关键标识", () => {
     render(<PublicationDetailView paper={paper()} />);
+    const nav = screen.getByRole("navigation", { name: "面包屑" });
+    expect(nav).toHaveTextContent("9");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Semaglutide RCT");
     expect(screen.getByText("摘要")).toBeInTheDocument();
     expect(screen.getByText("关键标识")).toBeInTheDocument();

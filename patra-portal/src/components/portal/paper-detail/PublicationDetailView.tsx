@@ -2,11 +2,11 @@ import Link from "next/link";
 import { Fragment } from "react";
 import { DisclosureSection } from "@/components/portal/DisclosureSection";
 import { IdentifierChip } from "@/components/portal/IdentifierChip";
-import { SectionEyebrow } from "@/components/portal/journal-detail/SectionEyebrow";
 import { AbstractBlock } from "@/components/portal/paper-detail/AbstractBlock";
 import { AuthorList } from "@/components/portal/paper-detail/AuthorList";
 import { PaperHeader } from "@/components/portal/paper-detail/PaperHeader";
 import { PaperRail } from "@/components/portal/paper-detail/PaperRail";
+import { SectionEyebrow } from "@/components/portal/SectionEyebrow";
 import type { PaperDetail } from "@/types/portal";
 
 const DL = "grid grid-cols-[max-content_1fr] gap-x-5 gap-y-2.5 max-[540px]:grid-cols-1";
@@ -126,6 +126,7 @@ export function PublicationDetailView({ paper }: { paper: PaperDetail }) {
               {funding.length > 0 && (
                 <DisclosureSection title="资助信息" count={`${funding.length} 项`}>
                   <dl className={DL}>
+                    {/* key: 同 funder+grantId 完全重复属 BE 数据异常，前端无更好替代（避免 index key 触发 noArrayIndexKey） */}
                     {funding.map((f) => (
                       <Fragment key={`${f.funder ?? "null"}-${f.grantId ?? "null"}`}>
                         <dt className={DT}>资助方</dt>
@@ -162,7 +163,7 @@ export function PublicationDetailView({ paper }: { paper: PaperDetail }) {
                 <DisclosureSection title="各类日期">
                   <dl className={DL}>
                     {paper.dates.map((d) => (
-                      <Fragment key={d.type}>
+                      <Fragment key={`${d.type}-${d.date}`}>
                         <dt className={DT}>{DATE_LABELS[d.type.toLowerCase()] ?? d.type}</dt>
                         <dd className={DD_MONO}>{d.date}</dd>
                       </Fragment>

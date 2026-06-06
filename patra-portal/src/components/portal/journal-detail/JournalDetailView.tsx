@@ -6,8 +6,8 @@ import { JournalPositioning } from "@/components/portal/journal-detail/JournalPo
 import { JournalRail } from "@/components/portal/journal-detail/JournalRail";
 import { MetricBadge } from "@/components/portal/journal-detail/MetricBadge";
 import { RatingTable } from "@/components/portal/journal-detail/RatingTable";
-import { SectionEyebrow } from "@/components/portal/journal-detail/SectionEyebrow";
 import { TrendChart } from "@/components/portal/journal-detail/TrendChart";
+import { SectionEyebrow } from "@/components/portal/SectionEyebrow";
 import {
   deriveMetricCards,
   deriveMetrics,
