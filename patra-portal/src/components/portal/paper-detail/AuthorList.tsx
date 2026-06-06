@@ -2,9 +2,9 @@ import type { Author } from "@/types/portal";
 
 export function AuthorList({ authors }: { authors: Author[] }) {
   return (
-    <div className="flex flex-col">
+    <ul className="flex flex-col">
       {authors.map((a) => (
-        <div
+        <li
           key={a.order}
           className="flex items-baseline gap-3 border-t border-(--border-subtle) py-2.5 first:border-t-0"
         >
@@ -29,8 +29,8 @@ export function AuthorList({ authors }: { authors: Author[] }) {
               <span className="font-sans text-sm leading-snug text-(--fg-3)">{a.affiliation}</span>
             )}
           </span>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
