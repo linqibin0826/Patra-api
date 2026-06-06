@@ -168,8 +168,8 @@
       <ul>
         <li><code>deriveAbstract(p)</code> → <code>{ kind: "structured" | "plain" | "empty"; sections?; text? }</code>，三态判定（有 <code>abstractSections</code> → structured；有 <code>abstractPlainText</code> → plain；都无 → empty）</li>
         <li><code>deriveEvidence(level)</code> → <code>{ tone: "moss"|"amber"|"slate"|"muted"; lit: number; label; en; derived }</code>，按 <code>rank</code> 映射色温与阶梯点亮数（<code>lit = rank</code>（rank 0–5，越大越强；clamp 到 [0,5]））</li>
-        <li><code>deriveFullTextHref(p)</code> → <code>string | null</code>，优先级：<code>fullTextUrl</code> → <code>https://doi.org/{doi}</code> → <code>https://pubmed.ncbi.nlm.nih.gov/{pmid}</code> → null（落地「专门字段优先、其他途径降级」）</li>
-        <li><code>deriveBylineAuthors(authors)</code> → 前 3 位 + 「等 N 位」溢出文案</li>
+        <li><code>deriveFullText(p)</code> → <code>{ href: string | null; label }</code>，优先级：<code>fullTextUrl</code>（校验 http/https 白名单）→ <code>https://doi.org/{doi}</code> → <code>https://pubmed.ncbi.nlm.nih.gov/{pmid}</code> → null（落地「专门字段优先、其他途径降级」）；label 按实际来源派生（OA / 全文 / DOI / PubMed）</li>
+        <li><code>deriveByline(authors)</code> → 前 3 位 + 「等 N 位」溢出文案</li>
       </ul>
     </section>
 
@@ -203,7 +203,7 @@
       <p>证据等级 ✓ · 被引数 ✓（citationCount）· 来源 ✓（source，已接真实）· 收藏数（bookmarks=0 占位）· 阅读时间（estimatedReadMin=null → 渲染 "—"）。</p>
       <h3>5.5 路由 + 卡片接通</h3>
       <ul>
-        <li><code>app/papers/[id]/page.tsx</code>：async RSC，<code>await params</code> → <code>fetchPublicationDetail(id)</code> → <code>null</code> 则 <code>notFound()</code>、5xx throw 冒泡 → <code>&lt;TopNav /&gt; &lt;main&gt;&lt;PublicationDetailView pub={pub} /&gt;&lt;/main&gt; &lt;Footer /&gt;</code></li>
+        <li><code>app/papers/[id]/page.tsx</code>：async RSC，<code>await params</code> → <code>fetchPublicationDetail(id)</code> → <code>null</code> 则 <code>notFound()</code>、5xx throw 冒泡 → <code>&lt;TopNav /&gt; &lt;main&gt;&lt;PublicationDetailView paper={paper} /&gt;&lt;/main&gt; &lt;Footer /&gt;</code></li>
         <li><code>app/papers/[id]/loading.tsx</code>：两栏布局骨架屏（<code>animate-pulse</code>），结构对齐 PublicationDetailView</li>
         <li><code>app/papers/[id]/not-found.tsx</code>：<code>&lt;TopNav /&gt; &lt;main&gt;&lt;NotFoundState kind="paper" /&gt;&lt;/main&gt;</code></li>
         <li><code>PaperCard.tsx:69-78</code>：<code>&lt;button disabled&gt;</code> → <code>&lt;Link href={`/papers/${paper.id}`}&gt;</code>（对齐 PAP-44 对 JournalCoverCard 的改造）</li>
@@ -305,7 +305,7 @@
           <tr><td>6</td><td><code>…/infra/.../PublicationDetailReadAdapterIT.java</code></td><td><span class="pill modify">modify</span></td><td>saveMetadata helper + 断言 fullTextUrl/provenanceCode</td></tr>
           <tr><td>7</td><td><code>src/types/portal.ts</code></td><td><span class="pill modify">modify</span></td><td>PaperDetail + 6 子类型</td></tr>
           <tr><td>8</td><td><code>src/lib/portal-api/publications.ts</code></td><td><span class="pill modify">modify</span></td><td>fetchPublicationDetail(id)（镜像 fetchVenueDetail）</td></tr>
-          <tr><td>9</td><td><code>src/lib/portal-api/publication-derive.ts</code></td><td><span class="pill create">create</span></td><td>deriveAbstract / deriveEvidence / deriveFullTextHref / deriveBylineAuthors</td></tr>
+          <tr><td>9</td><td><code>src/lib/portal-api/publication-derive.ts</code></td><td><span class="pill create">create</span></td><td>deriveAbstract / deriveEvidence / deriveFullText / deriveByline</td></tr>
           <tr><td>10</td><td><code>src/components/portal/paper-detail/EvidenceBadge.tsx</code></td><td><span class="pill create">create</span></td><td>证据等级徽章</td></tr>
           <tr><td>11</td><td><code>src/components/portal/paper-detail/AbstractBlock.tsx</code></td><td><span class="pill create">create</span></td><td>摘要三态</td></tr>
           <tr><td>12</td><td><code>src/components/portal/paper-detail/AuthorList.tsx</code></td><td><span class="pill create">create</span></td><td>作者列表</td></tr>
