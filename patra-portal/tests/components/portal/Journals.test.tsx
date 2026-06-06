@@ -76,4 +76,12 @@ describe("Journals", () => {
     const ui = await Journals();
     expect(ui).toBeNull();
   });
+
+  it("「浏览全部期刊」是链接且 href=/journals", async () => {
+    vi.mocked(fetchVenues).mockResolvedValue(SAMPLE);
+    render(await Journals());
+    const link = screen.getByRole("link", { name: /浏览全部期刊/ });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/journals");
+  });
 });
