@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文献详情页 /papers/[id] 实现计划 (PAP-45)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li data-task-status="pending"><a href="#task-1">Task 1 — BE 详情读链路接入 source + fullTextUrl</a></li>
+          <li data-task-status="pending"><a href="#task-2">Task 2 — BE DTO + Converter 补 4 字段</a></li>
+          <li data-task-status="pending"><a href="#task-3">Task 3 — FE PaperDetail 类型 + fetchPublicationDetail</a></li>
+          <li data-task-status="pending"><a href="#task-4">Task 4 — FE publication-derive 视图层</a></li>
+          <li data-task-status="pending"><a href="#task-5">Task 5 — FE EvidenceBadge / AbstractBlock / AuthorList</a></li>
+          <li data-task-status="pending"><a href="#task-6">Task 6 — FE PaperHeader + BookmarkButton</a></li>
+          <li data-task-status="pending"><a href="#task-7">Task 7 — FE PaperRail</a></li>
+          <li data-task-status="pending"><a href="#task-8">Task 8 — FE PublicationDetailView + 路由</a></li>
+          <li data-task-status="pending"><a href="#task-9">Task 9 — FE PaperCard 接通 + e2e smoke</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>文献详情页 <code>/papers/[id]</code> 实现计划</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-06</span>
+        <span>🌿 pap-45-fe-paper-detail-page</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度（pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。BE 任务全程遵循 <code>patra:test-driven-development</code> + <code>patra-jpa</code>（读链路）。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>实现文献详情页 <code>/papers/[id]</code>（RSC，忠实复刻 PAP-41 hi-fi），接通 explore-feed 文献卡片「详情」入口，并补齐后端文献详情响应模型。</dd>
+        <dt>架构</dt> <dd>全栈。BE 给 <code>PortalPublicationDetailResponse</code> 补 4 字段（<code>source</code>/<code>fullTextUrl</code> 接真实领域数据，<code>bookmarks</code>/<code>estimatedReadMin</code> 占位 0/null + TODO，仿照已有 <code>aiSummary=null</code> 先例）。FE 沿用 PAP-44：零映射 wire type + 纯函数 derive 视图层 + 复用基元（DisclosureSection / IdentifierChip / SectionEyebrow / NotFoundState / portal-ui）+ 新建文献专用组件 + 路由镜像 journals/[id]。</dd>
+        <dt>技术栈</dt> <dd>Java 25 · Spring Boot 4 · JPA native query · @WebMvcTest / @DataJpaTest + TestContainers ｜ Next.js 15 App Router · React 19 RSC · TS strict · Tailwind v4 · Vitest + Testing Library · Playwright</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-06-06-portal-paper-detail-page-design.html">文献详情页 /papers/[id] 设计文档 (PAP-45)</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>本 plan 覆盖一个内聚特性（文献详情页 + 其后端模型补齐 + 卡片接通），可一次实现、独立可测。BE 改动（Task 1–2）先行，为 FE（Task 3–9）提供完整契约。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>patra-api/patra-catalog/
+├── …/domain/model/read/portal/PublicationDetailReadModel.java   [modify] +provenanceCode +fullTextUrl
+├── …/domain/model/vo/publication/EvidenceLevel.java             [keep]   证据等级枚举（rank 0–5）
+├── …/infra/adapter/read/PublicationDetailRow.java               [modify] +getProvenanceCode +getFullTextUrl
+├── …/infra/adapter/read/PublicationDetailReadAdapter.java       [modify] builder 接 2 字段
+├── …/infra/persistence/dao/PublicationDetailDao.java            [modify] SQL +provenance_code +LEFT JOIN metadata
+├── …/adapter/rest/portal/response/PortalPublicationDetailResponse.java [modify] +4 字段
+├── …/adapter/rest/portal/PortalApiConverter.java                [modify] toPublicationDetailResponse +4 行
+├── …/infra/.../read/PublicationDetailReadAdapterIT.java         [modify] +saveMetadata +断言
+└── …/adapter/.../portal/PortalPublicationControllerIT.java      [modify] +4 字段断言
+
+patra-portal/
+├── src/types/portal.ts                                          [modify] +PaperDetail +6 子类型
+├── src/lib/portal-api/publications.ts                           [modify] +fetchPublicationDetail
+├── src/lib/portal-api/publication-derive.ts                     [create] derive 视图层
+├── src/components/portal/paper-detail/EvidenceBadge.tsx         [create]
+├── src/components/portal/paper-detail/AbstractBlock.tsx         [create]
+├── src/components/portal/paper-detail/AuthorList.tsx            [create]
+├── src/components/portal/paper-detail/PaperHeader.tsx           [create]
+├── src/components/portal/paper-detail/BookmarkButton.tsx        [create] client · mock
+├── src/components/portal/paper-detail/PaperRail.tsx             [create]
+├── src/components/portal/paper-detail/PublicationDetailView.tsx [create] 根编排
+├── src/app/papers/[id]/page.tsx                                 [create] RSC
+├── src/app/papers/[id]/loading.tsx                             [create] 骨架
+├── src/app/papers/[id]/not-found.tsx                           [create]
+├── src/components/portal/PaperCard.tsx                          [modify] button→Link
+├── tests/lib/portal-api/publications.test.ts                    [modify] +fetchPublicationDetail
+├── tests/lib/portal-api/publication-derive.test.ts             [create]
+├── tests/components/portal/paper-detail/EvidenceBadge.test.tsx [create]
+├── tests/components/portal/paper-detail/AbstractBlock.test.tsx [create]
+├── tests/components/portal/paper-detail/AuthorList.test.tsx    [create]
+├── tests/components/portal/paper-detail/PaperHeader.test.tsx   [create]
+├── tests/components/portal/paper-detail/PublicationDetailView.test.tsx [create]
+├── tests/components/portal/PaperCard.test.tsx                   [modify] +link 断言
+└── tests/e2e/paper-detail.spec.ts                               [create]</pre>
+      </div>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- ============================ TASK 1 ============================ -->
+      <article class="task" id="task-1" data-status="pending">
+        <header>
+          <h2>任务 1：BE — 详情读链路接入 source + fullTextUrl（真实数据）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-catalog-domain/.../model/read/portal/PublicationDetailReadModel.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../adapter/read/PublicationDetailRow.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../persistence/dao/PublicationDetailDao.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../adapter/read/PublicationDetailReadAdapter.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/integrationTest/.../read/PublicationDetailReadAdapterIT.java</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：在 IT 加 saveMetadata helper + 失败测试</strong>
+            <p>在 <code>PublicationDetailReadAdapterIT</code> 加入 helper（<code>PublicationMetadataEntity</code> 用 setter；NOT NULL 列为 <code>publicationId</code>、<code>hasFullText</code>）和断言读链路新字段的测试。需 import <code>PublicationMetadataEntity</code>。</p>
+            <pre><code class="lang-java">  private void saveMetadata(Long publicationId, String fullTextUrl) {
+    PublicationMetadataEntity m = new PublicationMetadataEntity();
+    m.setId(SnowflakeIdGenerator.getId());
+    m.setPublicationId(publicationId);
+    m.setHasFullText(true);
+    m.setFullTextUrl(fullTextUrl);
+    em.persist(m);
+  }
+
+  @Test
+  @DisplayName("详情返回 provenanceCode 与 fullTextUrl（来自 metadata LEFT JOIN）")
+  void shouldReturnSourceAndFullTextUrl() {
+    Long venueId = saveVenue("Nature");
+    Long pubId = savePublication(venueId, "OA Study", "10.1/oa", "99");
+    saveMetadata(pubId, "https://publisher.example.com/article/oa");
+    em.flush();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.provenanceCode()).isEqualTo("PUBMED");
+    assertThat(model.fullTextUrl()).isEqualTo("https://publisher.example.com/article/oa");
+  }</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认编译失败（红）</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:compileIntegrationTestJava</code></p>
+            <p>预期：编译失败——<code>model.provenanceCode()</code> / <code>model.fullTextUrl()</code> 方法不存在。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：ReadModel 加 2 个标量字段</strong>
+            <p>在 <code>PublicationDetailReadModel</code> record 参数列表 <code>String oaStatus,</code> 之后、<code>List&lt;AuthorView&gt; authors,</code> 之前插入两行（紧凑构造器无需改，它只处理集合字段）：</p>
+            <pre><code class="lang-java">    Boolean isOa,
+    String oaStatus,
+    String provenanceCode,
+    String fullTextUrl,
+    List&lt;AuthorView&gt; authors,</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：Row 投影加 2 个 getter</strong>
+            <p>在 <code>PublicationDetailRow</code> 接口的 <code>getOaStatus()</code> 之后、<code>getPublicationTypesAgg()</code> 之前插入：</p>
+            <pre><code class="lang-java">  String getProvenanceCode();
+
+  String getFullTextUrl();</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：Dao 主查询 SQL 加 2 处</strong>
+            <p>在 <code>PublicationDetailDao.findDetailById</code> 的 native query 中做两处<strong>外科手术式</strong>修改（其余 SQL 原样不动）：</p>
+            <p>① SELECT 列表：在 <code>p.conflict_of_interest AS "conflictOfInterest", p.is_oa AS "isOa", p.oa_status AS "oaStatus",</code> 这一行之后、<code>publicationTypesAgg</code> 子查询之前，新增一行：</p>
+            <pre><code class="lang-sql">        p.provenance_code AS "provenanceCode", m.full_text_url AS "fullTextUrl",</code></pre>
+            <p>② FROM/JOIN：在 <code>LEFT JOIN cat_publication_abstract a ON a.publication_id = p.id</code> 这一行之后新增一行：</p>
+            <pre><code class="lang-sql">      LEFT JOIN cat_publication_metadata m ON m.publication_id = p.id</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：ReadAdapter builder 接 2 字段</strong>
+            <p>在 <code>PublicationDetailReadAdapter.findById</code> 的 builder 链中，<code>.oaStatus(main.getOaStatus())</code> 之后、<code>.authors(...)</code> 之前插入：</p>
+            <pre><code class="lang-java">                  .provenanceCode(main.getProvenanceCode())
+                  .fullTextUrl(main.getFullTextUrl())</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 7：运行测试确认通过（绿）</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationDetailReadAdapterIT"</code></p>
+            <p>预期：<code>shouldReturnSourceAndFullTextUrl</code> 与原有测试全绿（TestContainers 起 PG17，真实 SQL 命中 LEFT JOIN）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 8：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain patra-api/patra-catalog/patra-catalog-infra
+git commit -m "feat(catalog): 文献详情读链路接入 source/fullTextUrl (PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 2 ============================ -->
+      <article class="task" id="task-2" data-status="pending">
+        <header>
+          <h2>任务 2：BE — DTO + Converter 补 4 字段（含 bookmarks/estimatedReadMin 占位）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-catalog-adapter/.../rest/portal/response/PortalPublicationDetailResponse.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-adapter/.../rest/portal/PortalApiConverter.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-adapter/src/integrationTest/.../portal/PortalPublicationControllerIT.java</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：扩展 ControllerIT 断言 4 新字段</strong>
+            <p>在 <code>PortalPublicationControllerIT.shouldReturnPublicationDetail</code> 的 fixture builder 中追加 <code>.provenanceCode("PUBMED")</code> 和 <code>.fullTextUrl("https://x/full")</code>（ReadModel 在 Task 1 已具备这两字段），并在 <code>expectBody()</code> 链末尾（<code>.jsonPath("$.aiSummary").isEmpty()</code> 之后）追加 4 行断言：</p>
+            <pre><code class="lang-java">        .jsonPath("$.source")
+        .isEqualTo("PubMed")
+        .jsonPath("$.fullTextUrl")
+        .isEqualTo("https://x/full")
+        .jsonPath("$.bookmarks")
+        .isEqualTo(0)
+        .jsonPath("$.estimatedReadMin")
+        .isEmpty();</code></pre>
+            <p>fixture builder 内追加（放在 <code>.isOa(true)</code> 之后即可）：</p>
+            <pre><code class="lang-java">            .provenanceCode("PUBMED")
+            .fullTextUrl("https://x/full")</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（红）</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-adapter:integrationTest --tests "*PortalPublicationControllerIT"</code></p>
+            <p>预期：失败——DTO 无 <code>source</code>/<code>fullTextUrl</code>/<code>bookmarks</code>/<code>estimatedReadMin</code> 字段（builder 方法不存在 → 编译失败）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：DTO 加 4 个字段</strong>
+            <p>在 <code>PortalPublicationDetailResponse</code> record 的 <code>aiSummary</code> 字段之后追加 4 个字段（保持 JavaDoc <code>///</code> 风格；命名对齐列表端点 <code>PortalPaperResponse</code>）：</p>
+            <pre><code class="lang-java">    /// 数据来源（人类可读，如 "PubMed"；来自 provenance_code）
+    String source,
+    /// 原文链接（cat_publication_metadata.full_text_url，可为 null）
+    String fullTextUrl,
+    /// 收藏数（无用户系统，恒为 0）
+    Integer bookmarks,
+    /// 预估阅读分钟数（无全文/字数数据，当前恒为 null）
+    Integer estimatedReadMin,</code></pre>
+            <p>注意：record 字段顺序即 builder 参数；放在 <code>aiSummary</code> 之后、record 体右括号 <code>)</code> 之前。若 <code>aiSummary</code> 是末尾字段，需把其行尾的换行与逗号补正确。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：Converter 接 4 字段</strong>
+            <p>在 <code>PortalApiConverter.toPublicationDetailResponse</code> 的 builder 链中，把末尾的 <code>.aiSummary(null) // 当前无 LLM 摘要生成，恒为 null</code> 改为下面这段（<code>toSource</code> 为同类已有 private 方法）：</p>
+            <pre><code class="lang-java">        .aiSummary(null) // 当前无 LLM 摘要生成，恒为 null
+        .source(toSource(model.provenanceCode()))
+        .fullTextUrl(model.fullTextUrl())
+        .bookmarks(0) // 无用户系统，恒为 0
+        .estimatedReadMin(null) // TODO(read-time)：接入原文采集/字数后估算阅读时长
+        .build();</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：运行测试确认通过（绿）</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-adapter:integrationTest --tests "*PortalPublicationControllerIT"</code></p>
+            <p>预期：全绿。<code>$.source</code>=PubMed、<code>$.fullTextUrl</code>=https://x/full、<code>$.bookmarks</code>=0、<code>$.estimatedReadMin</code> 为空。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-adapter
+git commit -m "feat(catalog): 文献详情 DTO 补 source/fullTextUrl/bookmarks/estimatedReadMin (PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 3 ============================ -->
+      <article class="task" id="task-3" data-status="pending">
+        <header>
+          <h2>任务 3：FE — PaperDetail 类型 + fetchPublicationDetail</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/types/portal.ts</code></dd>
+            <dt>修改</dt><dd><code>patra-portal/src/lib/portal-api/publications.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/portal-api/publications.test.ts</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：在 publications.test.ts 加 fetchPublicationDetail 用例</strong>
+            <p>把首行 import 改为 <code>import { fetchFeed, fetchPublicationDetail } from "@/lib/portal-api/publications";</code>，并在文件末尾追加 describe 块：</p>
+            <pre><code class="lang-ts">describe("fetchPublicationDetail", () =&gt; {
+  beforeEach(() =&gt; {
+    process.env.PATRA_GATEWAY_BASE_URL = "http://gw.test:9528";
+  });
+  afterEach(() =&gt; {
+    vi.unstubAllGlobals();
+    delete process.env.PATRA_GATEWAY_BASE_URL;
+  });
+
+  it("拼出正确的 by-id URL 并解析 JSON", async () =&gt; {
+    const detail = { id: "319041872872550658", title: "T" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(detail), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPublicationDetail("319041872872550658");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://gw.test:9528/patra-catalog/portal/publications/319041872872550658",
+      expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
+    );
+    expect(result).toEqual(detail);
+  });
+
+  it("非数字 id 直接返回 null，不发请求", async () =&gt; {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchPublicationDetail("not-a-real-id")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("404 返回 null", async () =&gt; {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 404 })));
+    expect(await fetchPublicationDetail("999")).toBeNull();
+  });
+
+  it("其他非 2xx 抛错", async () =&gt; {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("err", { status: 500 })));
+    await expect(fetchPublicationDetail("1")).rejects.toThrow(/500/);
+  });
+
+  it("缺 PATRA_GATEWAY_BASE_URL 抛错（数字 id）", async () =&gt; {
+    delete process.env.PATRA_GATEWAY_BASE_URL;
+    await expect(fetchPublicationDetail("1")).rejects.toThrow(/PATRA_GATEWAY_BASE_URL/);
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（红）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publications</code></p>
+            <p>预期：失败——<code>fetchPublicationDetail</code> 未导出。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：portal.ts 加 PaperDetail + 6 子类型</strong>
+            <p>在 <code>src/types/portal.ts</code> 的 <code>Paper</code> interface 之后追加（零映射镜像 BE DTO；<code>id</code> 为 string 防精度损失，<code>dates[].date</code> 为 LocalDate 序列化的 "yyyy-MM-dd"）：</p>
+            <pre><code class="lang-ts">/** 证据等级（BE EvidenceLevelView：rank 0–5，越大越强；derived = 非 UNKNOWN） */
+export interface EvidenceLevel {
+  level: string;
+  rank: number;
+  label: string;
+  derived: boolean;
+}
+
+export interface AbstractSection {
+  label: string;
+  text: string;
+}
+
+export interface Author {
+  order: number;
+  first: boolean;
+  corresponding: boolean;
+  name: string;
+  affiliation: string | null;
+}
+
+export interface MeshHeading {
+  descriptorUi: string;
+  term: string;
+  major: boolean;
+}
+
+export interface Funding {
+  funder: string | null;
+  grantId: string | null;
+  country: string | null;
+}
+
+export interface PublicationDate {
+  type: string;
+  date: string; // LocalDate 序列化为 "yyyy-MM-dd"
+}
+
+/**
+ * 文献详情端点 `GET /portal/publications/{id}` 响应（PaperDetail）。
+ * 对应后端 `PortalPublicationDetailResponse`——扁平 + 列表，零运行时映射。
+ * source/fullTextUrl 为真实数据；bookmarks 恒 0、estimatedReadMin 恒 null（占位，无数据源）。
+ */
+export interface PaperDetail {
+  id: string;
+  title: string;
+  originalTitle: string | null;
+  venueId: string | null;
+  venueName: string | null;
+  publicationYear: number | null;
+  evidenceLevel: EvidenceLevel;
+  abstractType: string | null;
+  abstractSections: AbstractSection[];
+  abstractPlainText: string | null;
+  doi: string | null;
+  pmid: string | null;
+  pmcid: string | null;
+  pii: string | null;
+  primaryType: string | null;
+  publicationTypes: string[];
+  citationCount: number | null;
+  numberOfReferences: number | null;
+  conflictOfInterest: string | null;
+  isOa: boolean | null;
+  oaStatus: string | null;
+  aiSummary: string | null;
+  source: string | null;
+  fullTextUrl: string | null;
+  bookmarks: number | null;
+  estimatedReadMin: number | null;
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：publications.ts 加 fetchPublicationDetail</strong>
+            <p>把首行 import 改为 <code>import type { FeedTab, PageResult, Paper, PaperDetail } from "@/types/portal";</code>，并在文件末尾追加（镜像 <code>venues.ts</code> 的 <code>fetchVenueDetail</code>，复用已有 <code>FETCH_TIMEOUT_MS</code>）：</p>
+            <pre><code class="lang-ts">/**
+ * 在服务端拉取单篇文献详情（按数字 id）。仅 RSC 调用（server-only）。
+ *
+ * 端点：`GET /patra-catalog/portal/publications/{id}`，响应 `PaperDetail`。
+ * 返回约定：
+ * - 非数字 id（坏 URL）→ 直接 `null`，不触达 BE
+ * - BE 404（文献不存在）→ `null`，由调用方转 `notFound()`
+ * - 其他失败（5xx / 超时 / 网络）→ throw，冒泡到全局 error boundary
+ */
+export async function fetchPublicationDetail(id: string): Promise&lt;PaperDetail | null&gt; {
+  if (!/^\d+$/.test(id)) {
+    return null;
+  }
+  const baseUrl = process.env.PATRA_GATEWAY_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("PATRA_GATEWAY_BASE_URL 未配置");
+  }
+  const url = `${baseUrl}/patra-catalog/portal/publications/${id}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`文献详情加载失败：${res.status}`);
+  }
+  return (await res.json()) as PaperDetail;
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：运行测试 + 类型检查（绿）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publications &amp;&amp; pnpm typecheck</code></p>
+            <p>预期：5 个 fetchPublicationDetail 用例 + 原 fetchFeed 用例全绿；typecheck 0 错。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/types/portal.ts patra-portal/src/lib/portal-api/publications.ts patra-portal/tests/lib/portal-api/publications.test.ts
+git commit -m "feat(portal): PaperDetail 类型 + fetchPublicationDetail (PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 4 ============================ -->
+      <article class="task" id="task-4" data-status="pending">
+        <header>
+          <h2>任务 4：FE — publication-derive 视图层</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/lib/portal-api/publication-derive.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/portal-api/publication-derive.test.ts</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：写 derive 纯函数单测</strong>
+            <pre><code class="lang-ts">import { describe, expect, it } from "vitest";
+import {
+  deriveAbstract,
+  deriveByline,
+  deriveEvidence,
+  deriveFullTextHref,
+} from "@/lib/portal-api/publication-derive";
+import type { Author, EvidenceLevel, PaperDetail } from "@/types/portal";
+
+function ev(level: string, rank: number, derived: boolean): EvidenceLevel {
+  return { level, rank, label: "L", derived };
+}
+function paper(overrides: Partial&lt;PaperDetail&gt; = {}): PaperDetail {
+  return {
+    id: "1", title: "T", originalTitle: null, venueId: null, venueName: null,
+    publicationYear: null, evidenceLevel: ev("UNKNOWN", 0, false),
+    abstractType: null, abstractSections: [], abstractPlainText: null,
+    doi: null, pmid: null, pmcid: null, pii: null, primaryType: null,
+    publicationTypes: [], citationCount: null, numberOfReferences: null,
+    conflictOfInterest: null, isOa: null, oaStatus: null, aiSummary: null,
+    source: null, fullTextUrl: null, bookmarks: null, estimatedReadMin: null,
+    ...overrides,
+  };
+}
+
+describe("deriveEvidence", () =&gt; {
+  it("rank 决定色温与阶梯：5→moss/5，3→amber/3，1→slate/1，0→muted/0", () =&gt; {
+    expect(deriveEvidence(ev("SYSTEMATIC_REVIEW", 5, true))).toMatchObject({ tone: "moss", lit: 5 });
+    expect(deriveEvidence(ev("COHORT_OR_CASE_CONTROL", 3, true))).toMatchObject({ tone: "amber", lit: 3 });
+    expect(deriveEvidence(ev("CASE_REPORT", 1, true))).toMatchObject({ tone: "slate", lit: 1 });
+    expect(deriveEvidence(ev("UNKNOWN", 0, false))).toMatchObject({ tone: "muted", lit: 0 });
+  });
+  it("en 标签按 level 映射，derived 透传", () =&gt; {
+    const v = deriveEvidence(ev("RANDOMIZED_CONTROLLED_TRIAL", 4, true));
+    expect(v.en).toBe("RCT");
+    expect(v.derived).toBe(true);
+  });
+});
+
+describe("deriveAbstract", () =&gt; {
+  it("有 sections → structured", () =&gt; {
+    const v = deriveAbstract(paper({ abstractSections: [{ label: "BACKGROUND", text: "x" }] }));
+    expect(v.kind).toBe("structured");
+  });
+  it("仅 plainText → plain", () =&gt; {
+    expect(deriveAbstract(paper({ abstractPlainText: "x" })).kind).toBe("plain");
+  });
+  it("都无 → empty", () =&gt; {
+    expect(deriveAbstract(paper()).kind).toBe("empty");
+  });
+});
+
+describe("deriveFullTextHref", () =&gt; {
+  it("fullTextUrl 优先", () =&gt; {
+    expect(deriveFullTextHref(paper({ fullTextUrl: "https://x", doi: "10.1/y", pmid: "9" }))).toBe("https://x");
+  });
+  it("无 fullTextUrl 降级到 doi.org", () =&gt; {
+    expect(deriveFullTextHref(paper({ doi: "10.1/y", pmid: "9" }))).toBe("https://doi.org/10.1/y");
+  });
+  it("仅 pmid 降级到 PubMed", () =&gt; {
+    expect(deriveFullTextHref(paper({ pmid: "9" }))).toBe("https://pubmed.ncbi.nlm.nih.gov/9");
+  });
+  it("都无 → null", () =&gt; {
+    expect(deriveFullTextHref(paper())).toBeNull();
+  });
+});
+
+describe("deriveByline", () =&gt; {
+  it("前 3 位 + extra", () =&gt; {
+    const authors: Author[] = [1, 2, 3, 4, 5].map((n) =&gt; ({
+      order: n, first: n === 1, corresponding: false, name: `A${n}`, affiliation: null,
+    }));
+    const { shown, extra } = deriveByline(authors);
+    expect(shown).toHaveLength(3);
+    expect(extra).toBe(2);
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（红）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publication-derive</code> → 模块不存在，失败。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：实现 publication-derive.ts</strong>
+            <pre><code class="lang-ts">import type { AbstractSection, Author, EvidenceLevel, PaperDetail } from "@/types/portal";
+
+export type EvidenceTone = "moss" | "amber" | "slate" | "muted";
+
+export interface EvidenceView {
+  tone: EvidenceTone;
+  lit: number;
+  label: string;
+  en: string;
+  derived: boolean;
+}
+
+export type AbstractView =
+  | { kind: "structured"; sections: AbstractSection[] }
+  | { kind: "plain"; text: string }
+  | { kind: "empty" };
+
+export interface BylineView {
+  shown: Author[];
+  extra: number;
+}
+
+const EN_LABEL: Record&lt;string, string&gt; = {
+  SYSTEMATIC_REVIEW: "Systematic review",
+  RANDOMIZED_CONTROLLED_TRIAL: "RCT",
+  COHORT_OR_CASE_CONTROL: "Cohort / Case-control",
+  NON_SYSTEMATIC_REVIEW: "Review / Clinical study",
+  CASE_REPORT: "Case report",
+  UNKNOWN: "Undetermined",
+};
+
+function toneOf(rank: number): EvidenceTone {
+  if (rank &gt;= 4) return "moss";
+  if (rank &gt;= 2) return "amber";
+  if (rank &gt;= 1) return "slate";
+  return "muted";
+}
+
+/** 证据等级 → 徽章视图：色温 + 阶梯点亮数（= rank，0–5）+ 英文标签。 */
+export function deriveEvidence(ev: EvidenceLevel): EvidenceView {
+  const lit = ev.rank &gt;= 0 &amp;&amp; ev.rank &lt;= 5 ? ev.rank : 0;
+  return {
+    tone: toneOf(ev.rank),
+    lit,
+    label: ev.label,
+    en: EN_LABEL[ev.level] ?? "Undetermined",
+    derived: ev.derived,
+  };
+}
+
+/** 摘要三态：结构化段落 / 纯文本 / 空。 */
+export function deriveAbstract(p: PaperDetail): AbstractView {
+  if (p.abstractSections.length &gt; 0) {
+    return { kind: "structured", sections: p.abstractSections };
+  }
+  if (p.abstractPlainText) {
+    return { kind: "plain", text: p.abstractPlainText };
+  }
+  return { kind: "empty" };
+}
+
+/** 全文链接降级链：fullTextUrl → doi.org → PubMed → null。 */
+export function deriveFullTextHref(p: PaperDetail): string | null {
+  if (p.fullTextUrl) return p.fullTextUrl;
+  if (p.doi) return `https://doi.org/${p.doi}`;
+  if (p.pmid) return `https://pubmed.ncbi.nlm.nih.gov/${p.pmid}`;
+  return null;
+}
+
+/** byline：前 3 位作者 + 溢出数。 */
+export function deriveByline(authors: Author[]): BylineView {
+  const shown = authors.slice(0, 3);
+  return { shown, extra: Math.max(0, authors.length - shown.length) };
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：运行测试确认通过（绿）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publication-derive</code> → 全绿。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/lib/portal-api/publication-derive.ts patra-portal/tests/lib/portal-api/publication-derive.test.ts
+git commit -m "feat(portal): publication-derive 视图层（摘要/证据/全文链接/byline）(PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 5 ============================ -->
+      <article class="task" id="task-5" data-status="pending">
+        <header>
+          <h2>任务 5：FE — EvidenceBadge / AbstractBlock / AuthorList</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/paper-detail/EvidenceBadge.tsx</code></dd>
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/paper-detail/AbstractBlock.tsx</code></dd>
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/paper-detail/AuthorList.tsx</code></dd>
+            <dt>测试</dt><dd><code>tests/components/portal/paper-detail/{EvidenceBadge,AbstractBlock,AuthorList}.test.tsx</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：三个组件的渲染测试</strong>
+            <p><code>EvidenceBadge.test.tsx</code>：</p>
+            <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { EvidenceBadge } from "@/components/portal/paper-detail/EvidenceBadge";
+
+describe("EvidenceBadge", () =&gt; {
+  it("已分级：渲染中文 + 英文标签 + 衍生标记", () =&gt; {
+    render(&lt;EvidenceBadge level={{ level: "RANDOMIZED_CONTROLLED_TRIAL", rank: 4, label: "随机对照试验", derived: true }} /&gt;);
+    expect(screen.getByText("随机对照试验")).toBeInTheDocument();
+    expect(screen.getByText(/RCT/)).toBeInTheDocument();
+    expect(screen.getByText("衍生")).toBeInTheDocument();
+  });
+  it("UNKNOWN：muted 态显示 ? 且无衍生标记", () =&gt; {
+    render(&lt;EvidenceBadge level={{ level: "UNKNOWN", rank: 0, label: "未分级", derived: false }} /&gt;);
+    expect(screen.getByText("?")).toBeInTheDocument();
+    expect(screen.queryByText("衍生")).not.toBeInTheDocument();
+  });
+});</code></pre>
+            <p><code>AbstractBlock.test.tsx</code>（用 Task 4 测试里的 <code>paper()</code> 工厂思路，内联最小对象）：</p>
+            <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { AbstractBlock } from "@/components/portal/paper-detail/AbstractBlock";
+import type { PaperDetail } from "@/types/portal";
+
+const base = { abstractSections: [], abstractPlainText: null } as unknown as PaperDetail;
+
+describe("AbstractBlock", () =&gt; {
+  it("结构化：渲染段落标签与正文", () =&gt; {
+    render(&lt;AbstractBlock paper={{ ...base, abstractSections: [{ label: "BACKGROUND", text: "bg text" }] }} /&gt;);
+    expect(screen.getByText("BACKGROUND")).toBeInTheDocument();
+    expect(screen.getByText("bg text")).toBeInTheDocument();
+  });
+  it("纯文本：渲染整段", () =&gt; {
+    render(&lt;AbstractBlock paper={{ ...base, abstractPlainText: "plain abs" }} /&gt;);
+    expect(screen.getByText("plain abs")).toBeInTheDocument();
+  });
+  it("空：渲染占位文案", () =&gt; {
+    render(&lt;AbstractBlock paper={base} /&gt;);
+    expect(screen.getByText(/暂无摘要/)).toBeInTheDocument();
+  });
+});</code></pre>
+            <p><code>AuthorList.test.tsx</code>：</p>
+            <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { AuthorList } from "@/components/portal/paper-detail/AuthorList";
+
+describe("AuthorList", () =&gt; {
+  it("渲染作者名 + 通讯/第一作者徽记 + 机构", () =&gt; {
+    render(
+      &lt;AuthorList
+        authors={[
+          { order: 1, first: true, corresponding: true, name: "Zhang San", affiliation: "Peking U" },
+        ]}
+      /&gt;,
+    );
+    expect(screen.getByText("Zhang San")).toBeInTheDocument();
+    expect(screen.getByText("第一作者")).toBeInTheDocument();
+    expect(screen.getByText(/通讯/)).toBeInTheDocument();
+    expect(screen.getByText("Peking U")).toBeInTheDocument();
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（红）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test paper-detail</code> → 组件不存在，失败。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：实现 EvidenceBadge.tsx（RSC）</strong>
+            <p>色温/阶梯由 <code>deriveEvidence</code> 决定；阶梯高度用静态 class 数组避免 inline style。</p>
+            <pre><code class="lang-tsx">import { deriveEvidence } from "@/lib/portal-api/publication-derive";
+import type { EvidenceLevel } from "@/types/portal";
+
+const TONE_CLASS: Record&lt;string, string&gt; = {
+  moss: "bg-(--moss-50) text-(--moss-500) border-[color-mix(in_oklab,var(--moss-500)_30%,transparent)]",
+  amber: "bg-(--amber-50) text-(--amber-500) border-[color-mix(in_oklab,var(--amber-500)_30%,transparent)]",
+  slate: "bg-(--slate-50) text-(--slate-500) border-[color-mix(in_oklab,var(--slate-500)_30%,transparent)]",
+  muted: "border-dashed border-(--border-default) bg-paper-200 text-(--fg-3)",
+};
+const RUNG_CLASS = ["h-[7px]", "h-[10px]", "h-[12px]", "h-[14px]", "h-[16px]"];
+
+export function EvidenceBadge({ level }: { level: EvidenceLevel }) {
+  const ev = deriveEvidence(level);
+  return (
+    &lt;span
+      className={`inline-flex items-center gap-2.5 rounded-md border px-3 py-[7px] ${TONE_CLASS[ev.tone]}`}
+      title={`证据等级 · ${ev.label}`}
+    &gt;
+      {ev.tone === "muted" ? (
+        &lt;span className="font-serif text-lg font-semibold"&gt;?&lt;/span&gt;
+      ) : (
+        &lt;span aria-hidden className="inline-flex h-4 items-end gap-0.5"&gt;
+          {RUNG_CLASS.map((hc, i) =&gt; (
+            &lt;span
+              key={hc}
+              className={`w-1 rounded-[1px] bg-current ${hc} ${i &lt; ev.lit ? "opacity-100" : "opacity-30"}`}
+            /&gt;
+          ))}
+        &lt;/span&gt;
+      )}
+      &lt;span className="flex flex-col leading-[1.15]"&gt;
+        &lt;span className="font-sans text-sm font-semibold"&gt;{ev.label}&lt;/span&gt;
+        &lt;span className="font-mono text-[9px] uppercase tracking-[0.06em] opacity-70"&gt;
+          证据等级 · {ev.en}
+        &lt;/span&gt;
+      &lt;/span&gt;
+      {ev.derived &amp;&amp; (
+        &lt;span className="rounded-[3px] border border-current px-1.5 py-px font-mono text-[9px] uppercase tracking-[0.04em] opacity-50"&gt;
+          衍生
+        &lt;/span&gt;
+      )}
+    &lt;/span&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：实现 AbstractBlock.tsx（RSC）</strong>
+            <pre><code class="lang-tsx">import { deriveAbstract } from "@/lib/portal-api/publication-derive";
+import type { PaperDetail } from "@/types/portal";
+
+export function AbstractBlock({ paper }: { paper: PaperDetail }) {
+  const abstract = deriveAbstract(paper);
+  if (abstract.kind === "empty") {
+    return (
+      &lt;div className="rounded-md border border-dashed border-(--border-default) bg-paper-100 p-5 text-center font-sans text-md italic text-(--fg-3)"&gt;
+        暂无摘要 · 该来源未提供结构化或纯文本摘要
+      &lt;/div&gt;
+    );
+  }
+  if (abstract.kind === "plain") {
+    return &lt;p className="m-0 font-serif text-lg leading-relaxed text-ink-800"&gt;{abstract.text}&lt;/p&gt;;
+  }
+  return (
+    &lt;div&gt;
+      {abstract.sections.map((s, i) =&gt; (
+        &lt;div
+          key={`${s.label}-${i}`}
+          className="grid grid-cols-[92px_1fr] gap-[18px] border-t border-(--border-subtle) py-3.5 first:border-t-0 max-[640px]:grid-cols-1 max-[640px]:gap-[5px]"
+        &gt;
+          &lt;div className="pt-1 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-clay-700"&gt;
+            {s.label}
+          &lt;/div&gt;
+          &lt;p className="m-0 font-serif text-lg leading-relaxed text-ink-800"&gt;{s.text}&lt;/p&gt;
+        &lt;/div&gt;
+      ))}
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：实现 AuthorList.tsx（RSC）</strong>
+            <pre><code class="lang-tsx">import type { Author } from "@/types/portal";
+
+export function AuthorList({ authors }: { authors: Author[] }) {
+  return (
+    &lt;div className="flex flex-col"&gt;
+      {authors.map((a) =&gt; (
+        &lt;div
+          key={a.order}
+          className="flex items-baseline gap-3 border-t border-(--border-subtle) py-2.5 first:border-t-0"
+        &gt;
+          &lt;span className="w-[22px] flex-shrink-0 text-right font-mono text-[11px] tabular-nums text-(--fg-4)"&gt;
+            {a.order}
+          &lt;/span&gt;
+          &lt;span className="flex min-w-0 flex-col gap-0.5"&gt;
+            &lt;span className="font-sans text-md font-semibold text-ink-900"&gt;
+              {a.name}
+              {a.first &amp;&amp; (
+                &lt;span className="ml-2 rounded-sm border border-(--border-default) bg-paper-200 px-1.5 py-px align-middle font-sans text-[9.5px] font-semibold text-(--fg-3)"&gt;
+                  第一作者
+                &lt;/span&gt;
+              )}
+              {a.corresponding &amp;&amp; (
+                &lt;span className="ml-2 rounded-sm border border-clay-200 bg-clay-50 px-1.5 py-px align-middle font-sans text-[9.5px] font-semibold text-clay-800"&gt;
+                  ✉ 通讯
+                &lt;/span&gt;
+              )}
+            &lt;/span&gt;
+            {a.affiliation &amp;&amp; (
+              &lt;span className="font-sans text-sm leading-snug text-(--fg-3)"&gt;{a.affiliation}&lt;/span&gt;
+            )}
+          &lt;/span&gt;
+        &lt;/div&gt;
+      ))}
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：运行测试 + lint（绿）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test paper-detail &amp;&amp; pnpm lint</code></p>
+            <p>预期：组件测试全绿；Biome lint 0 错（class 顺序由 Biome 自动排，必要时 <code>pnpm exec biome check --write</code>）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 7：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail patra-portal/tests/components/portal/paper-detail
+git commit -m "feat(portal): EvidenceBadge / AbstractBlock / AuthorList (PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 6 ============================ -->
+      <article class="task" id="task-6" data-status="pending">
+        <header>
+          <h2>任务 6：FE — PaperHeader + BookmarkButton</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/paper-detail/BookmarkButton.tsx</code>（client）</dd>
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/paper-detail/PaperHeader.tsx</code></dd>
+            <dt>测试</dt><dd><code>tests/components/portal/paper-detail/PaperHeader.test.tsx</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：PaperHeader 渲染测试</strong>
+            <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { PaperHeader } from "@/components/portal/paper-detail/PaperHeader";
+import type { PaperDetail } from "@/types/portal";
+
+function paper(overrides: Partial&lt;PaperDetail&gt; = {}): PaperDetail {
+  return {
+    id: "1", title: "Semaglutide RCT", originalTitle: null,
+    venueId: "42", venueName: "N Engl J Med", publicationYear: 2024,
+    evidenceLevel: { level: "RANDOMIZED_CONTROLLED_TRIAL", rank: 4, label: "随机对照试验", derived: true },
+    abstractType: null, abstractSections: [], abstractPlainText: null,
+    doi: "10.1/x", pmid: "9", pmcid: null, pii: null, primaryType: null,
+    publicationTypes: ["Journal Article"], citationCount: null, numberOfReferences: null,
+    conflictOfInterest: null, isOa: true, oaStatus: null, aiSummary: null,
+    source: "PubMed", fullTextUrl: "https://full", bookmarks: 0, estimatedReadMin: null,
+    ...overrides,
+  };
+}
+
+describe("PaperHeader", () =&gt; {
+  it("渲染标题 + 期刊链接（指向 /journals/[venueId]）+ 去全文链接", () =&gt; {
+    render(&lt;PaperHeader paper={paper()} /&gt;);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Semaglutide RCT");
+    expect(screen.getByRole("link", { name: "N Engl J Med" })).toHaveAttribute("href", "/journals/42");
+    expect(screen.getByRole("link", { name: /去全文/ })).toHaveAttribute("href", "https://full");
+  });
+  it("无全文链接时按钮禁用", () =&gt; {
+    render(&lt;PaperHeader paper={paper({ fullTextUrl: null, doi: null, pmid: null })} /&gt;);
+    expect(screen.getByRole("button", { name: /全文链接不可用/ })).toBeDisabled();
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（红）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperHeader</code> → 失败。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：实现 BookmarkButton.tsx（client · mock）</strong>
+            <pre><code class="lang-tsx">"use client";
+
+import { Bookmark } from "lucide-react";
+import { useState } from "react";
+import { btnBlock, btnSecondary } from "@/lib/portal-ui";
+
+/// 收藏按钮 —— 本版为 mock：无用户系统、无后端，仅本地切换视觉态（图标填充 + 文案）。
+export function BookmarkButton({ block = false }: { block?: boolean }) {
+  const [bookmarked, setBookmarked] = useState(false);
+  return (
+    &lt;button
+      type="button"
+      aria-pressed={bookmarked}
+      onClick={() =&gt; setBookmarked((b) =&gt; !b)}
+      className={`${btnSecondary} ${block ? btnBlock : ""}`}
+    &gt;
+      &lt;Bookmark
+        size={14}
+        strokeWidth={1.5}
+        aria-hidden
+        className={bookmarked ? "fill-clay-500 text-clay-500" : ""}
+      /&gt;
+      {bookmarked ? "已收藏" : "收藏"}
+    &lt;/button&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：实现 PaperHeader.tsx（RSC）</strong>
+            <pre><code class="lang-tsx">import { ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { BookmarkButton } from "@/components/portal/paper-detail/BookmarkButton";
+import { EvidenceBadge } from "@/components/portal/paper-detail/EvidenceBadge";
+import { deriveByline, deriveFullTextHref } from "@/lib/portal-api/publication-derive";
+import { btnPrimary, btnSecondary } from "@/lib/portal-ui";
+import type { PaperDetail } from "@/types/portal";
+
+export function PaperHeader({ paper }: { paper: PaperDetail }) {
+  const { shown, extra } = deriveByline(paper.authors);
+  const fullHref = deriveFullTextHref(paper);
+
+  return (
+    &lt;header className="flex flex-col"&gt;
+      &lt;div className="mb-4 flex flex-wrap items-center gap-2.5"&gt;
+        {paper.publicationTypes.slice(0, 2).map((t) =&gt; (
+          &lt;span
+            key={t}
+            className="rounded-sm bg-paper-200 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.05em] text-(--fg-3)"
+          &gt;
+            {t}
+          &lt;/span&gt;
+        ))}
+        {paper.isOa &amp;&amp; (
+          &lt;span className="inline-flex items-center gap-1.5 rounded-full border border-moss-500 bg-(--moss-50) px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-moss-500"&gt;
+            开放获取
+          &lt;/span&gt;
+        )}
+      &lt;/div&gt;
+
+      &lt;h1 className="m-0 mb-1.5 text-pretty font-serif text-[clamp(26px,3.4vw,36px)] font-medium leading-[1.16] tracking-[-0.02em] text-(--fg-1)"&gt;
+        {paper.title}
+      &lt;/h1&gt;
+      {paper.originalTitle &amp;&amp; (
+        &lt;p className="m-0 mb-4 font-serif text-lg italic leading-snug text-(--fg-3)"&gt;{paper.originalTitle}&lt;/p&gt;
+      )}
+
+      &lt;div className="mb-4 flex flex-wrap items-center font-sans text-md leading-normal text-(--fg-2)"&gt;
+        {shown.map((a, i) =&gt; (
+          &lt;span key={a.order} className="whitespace-nowrap"&gt;
+            {a.name}
+            {a.corresponding &amp;&amp; (
+              &lt;span className="ml-px font-semibold text-clay-600" title="通讯作者"&gt;
+                {" "}✉
+              &lt;/span&gt;
+            )}
+            {i &lt; shown.length - 1 ? "、" : ""}
+          &lt;/span&gt;
+        ))}
+        {extra &gt; 0 &amp;&amp; &lt;span className="italic text-(--fg-3)"&gt;&amp;nbsp;等 {extra} 位&lt;/span&gt;}
+        &lt;span aria-hidden className="mx-2.5 inline-block h-[3px] w-[3px] rounded-full bg-ink-300" /&gt;
+        {paper.venueId &amp;&amp; paper.venueName ? (
+          &lt;Link
+            href={`/journals/${paper.venueId}`}
+            className="font-serif font-medium italic text-(--link) underline decoration-clay-300 underline-offset-[3px] hover:text-clay-800 hover:decoration-clay-600"
+          &gt;
+            {paper.venueName}
+          &lt;/Link&gt;
+        ) : (
+          paper.venueName &amp;&amp; &lt;span className="font-serif italic text-ink-800"&gt;{paper.venueName}&lt;/span&gt;
+        )}
+        {paper.publicationYear != null &amp;&amp; (
+          &lt;span className="tabular-nums text-(--fg-2)"&gt;&amp;nbsp;· {paper.publicationYear}&lt;/span&gt;
+        )}
+      &lt;/div&gt;
+
+      &lt;div className="flex flex-wrap items-center gap-3"&gt;
+        &lt;EvidenceBadge level={paper.evidenceLevel} /&gt;
+        &lt;div className="flex flex-wrap gap-2"&gt;
+          {fullHref ? (
+            &lt;a className={btnPrimary} href={fullHref} target="_blank" rel="noopener noreferrer"&gt;
+              去全文 {paper.isOa ? "· OA" : "· DOI"} &lt;ExternalLink size={14} /&gt;
+            &lt;/a&gt;
+          ) : (
+            &lt;button className={`${btnSecondary} cursor-not-allowed opacity-55`} type="button" disabled&gt;
+              全文链接不可用
+            &lt;/button&gt;
+          )}
+          &lt;BookmarkButton /&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/header&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：运行测试 + lint（绿）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperHeader &amp;&amp; pnpm lint</code> → 全绿。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail patra-portal/tests/components/portal/paper-detail/PaperHeader.test.tsx
+git commit -m "feat(portal): PaperHeader + BookmarkButton（收藏 mock）(PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 7 ============================ -->
+      <article class="task" id="task-7" data-status="pending">
+        <header>
+          <h2>任务 7：FE — PaperRail（右侧 sticky 三卡）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/paper-detail/PaperRail.tsx</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：实现 PaperRail.tsx（RSC）</strong>
+            <p>三卡：操作（全文链接 + 收藏）/ AI 速读（clay accent，mock·占位，生成按钮静态禁用）/ 速览（5 行）。速览中收藏数/阅读时间为占位（0 / "—"），其余真实。</p>
+            <pre><code class="lang-tsx">import { ExternalLink, Sparkles } from "lucide-react";
+import Image from "next/image";
+import { BookmarkButton } from "@/components/portal/paper-detail/BookmarkButton";
+import { deriveEvidence, deriveFullTextHref } from "@/lib/portal-api/publication-derive";
+import { btnBlock, btnPrimary, btnSecondary } from "@/lib/portal-ui";
+import type { PaperDetail } from "@/types/portal";
+
+export function PaperRail({ paper }: { paper: PaperDetail }) {
+  const fullHref = deriveFullTextHref(paper);
+  const ev = deriveEvidence(paper.evidenceLevel);
+  const stats: { k: string; v: string }[] = [
+    { k: "证据等级", v: ev.label },
+    { k: "被引", v: (paper.citationCount ?? 0).toLocaleString() },
+    { k: "来源", v: paper.source ?? "—" },
+    { k: "收藏", v: (paper.bookmarks ?? 0).toLocaleString() },
+    { k: "原文阅读", v: paper.estimatedReadMin != null ? `≈ ${paper.estimatedReadMin} 分钟` : "—" },
+  ];
+
+  return (
+    &lt;&gt;
+      &lt;div className="rounded-lg border border-(--border-default) bg-paper-50 p-4"&gt;
+        &lt;div className="mb-3 font-mono text-[9.5px] uppercase tracking-[0.06em] text-(--fg-3)"&gt;操作&lt;/div&gt;
+        &lt;div className="flex flex-col gap-2"&gt;
+          {fullHref ? (
+            &lt;a
+              className={`${btnPrimary} ${btnBlock}`}
+              href={fullHref}
+              target="_blank"
+              rel="noopener noreferrer"
+            &gt;
+              去全文 {paper.isOa ? "· OA" : "· DOI"} &lt;ExternalLink size={14} /&gt;
+            &lt;/a&gt;
+          ) : (
+            &lt;button
+              className={`${btnSecondary} ${btnBlock} cursor-not-allowed opacity-55`}
+              type="button"
+              disabled
+            &gt;
+              全文链接不可用
+            &lt;/button&gt;
+          )}
+          &lt;BookmarkButton block /&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div className="rounded-lg border border-clay-200 bg-clay-50 p-4"&gt;
+        &lt;div className="mb-2.5 flex items-center gap-2 font-mono text-[9.5px] uppercase tracking-[0.06em] text-(--fg-3)"&gt;
+          &lt;Image src="/brand/patra-mark.svg" alt="" aria-hidden width={4} height={13} /&gt; AI 速读
+          &lt;span className="ml-auto rounded-sm border border-clay-200 bg-paper-50 px-1.5 py-px text-[9px] normal-case text-clay-700"&gt;
+            mock · 占位
+          &lt;/span&gt;
+        &lt;/div&gt;
+        {paper.aiSummary ? (
+          &lt;p className="m-0 font-serif text-sm leading-normal text-ink-800"&gt;{paper.aiSummary}&lt;/p&gt;
+        ) : (
+          &lt;p className="m-0 font-sans text-sm italic text-(--fg-3)"&gt;尚未生成 AI 速读。&lt;/p&gt;
+        )}
+        &lt;button
+          type="button"
+          disabled
+          title="AI 速读为本版占位（mock），未接真实模型"
+          className="mt-3 inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-clay-200 bg-paper-50 px-2.5 py-1.5 font-sans text-sm text-clay-700 opacity-70"
+        &gt;
+          &lt;Sparkles size={13} aria-hidden /&gt; {paper.aiSummary ? "重新生成" : "生成速读"}
+        &lt;/button&gt;
+      &lt;/div&gt;
+
+      &lt;div className="rounded-lg border border-(--border-default) bg-paper-50 p-4"&gt;
+        &lt;div className="mb-3 font-mono text-[9.5px] uppercase tracking-[0.06em] text-(--fg-3)"&gt;速览&lt;/div&gt;
+        &lt;div className="flex flex-col"&gt;
+          {stats.map((s) =&gt; (
+            &lt;div
+              key={s.k}
+              className="flex items-baseline justify-between gap-3 border-t border-(--border-subtle) py-2.5 first:border-t-0"
+            &gt;
+              &lt;span className="font-sans text-sm text-(--fg-3)"&gt;{s.k}&lt;/span&gt;
+              &lt;span className="font-mono text-md font-medium tabular-nums text-ink-900"&gt;{s.v}&lt;/span&gt;
+            &lt;/div&gt;
+          ))}
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：类型检查 + lint</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm typecheck &amp;&amp; pnpm lint</code> → 0 错（PaperRail 由 Task 8 的 DetailView 渲染测试与 e2e 覆盖，无独立单测）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail/PaperRail.tsx
+git commit -m "feat(portal): PaperRail 侧栏（操作/AI 速读 mock/速览）(PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 8 ============================ -->
+      <article class="task" id="task-8" data-status="pending">
+        <header>
+          <h2>任务 8：FE — PublicationDetailView + 路由</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/paper-detail/PublicationDetailView.tsx</code></dd>
+            <dt>创建</dt><dd><code>patra-portal/src/app/papers/[id]/page.tsx</code></dd>
+            <dt>创建</dt><dd><code>patra-portal/src/app/papers/[id]/loading.tsx</code></dd>
+            <dt>创建</dt><dd><code>patra-portal/src/app/papers/[id]/not-found.tsx</code></dd>
+            <dt>测试</dt><dd><code>tests/components/portal/paper-detail/PublicationDetailView.test.tsx</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：PublicationDetailView 渲染测试</strong>
+            <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { PublicationDetailView } from "@/components/portal/paper-detail/PublicationDetailView";
+import type { PaperDetail } from "@/types/portal";
+
+function paper(overrides: Partial&lt;PaperDetail&gt; = {}): PaperDetail {
+  return {
+    id: "319041872872550658", title: "Semaglutide RCT", originalTitle: null,
+    venueId: "42", venueName: "N Engl J Med", publicationYear: 2024,
+    evidenceLevel: { level: "RANDOMIZED_CONTROLLED_TRIAL", rank: 4, label: "随机对照试验", derived: true },
+    abstractType: "structured",
+    abstractSections: [{ label: "BACKGROUND", text: "bg" }],
+    abstractPlainText: null, doi: "10.1/x", pmid: "9", pmcid: null, pii: null,
+    primaryType: "Journal Article", publicationTypes: ["Journal Article"],
+    citationCount: 142, numberOfReferences: 30, conflictOfInterest: null,
+    isOa: true, oaStatus: null, aiSummary: null, source: "PubMed",
+    fullTextUrl: "https://full", bookmarks: 0, estimatedReadMin: null,
+    ...overrides,
+  };
+}
+
+describe("PublicationDetailView", () =&gt; {
+  it("渲染面包屑（pmid）+ 标题 + 摘要节 + 关键标识", () =&gt; {
+    render(&lt;PublicationDetailView paper={paper({ authors: [] }) as PaperDetail} /&gt;);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Semaglutide RCT");
+    expect(screen.getByText("摘要")).toBeInTheDocument();
+    expect(screen.getByText("关键标识")).toBeInTheDocument();
+    expect(screen.getByText("bg")).toBeInTheDocument();
+  });
+});</code></pre>
+            <p>注意：<code>paper()</code> 工厂未含 <code>authors/meshHeadings/keywords/funding/dates</code>，测试里需补 <code>authors: []</code> 等空数组（PaperDetail 必填）。为简化，给工厂补默认空数组字段：在工厂 return 对象里加 <code>authors: [], meshHeadings: [], keywords: [], funding: [], dates: [],</code>。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（红）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PublicationDetailView</code> → 失败。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：实现 PublicationDetailView.tsx（RSC）</strong>
+            <p>镜像 <code>JournalDetailView</code> 骨架：面包屑 sticky bar + 两栏栅格 + 左主区 5 段（Header / 摘要 / 关键标识 / 深度数据 6 折叠）+ 右 sticky rail。</p>
+            <pre><code class="lang-tsx">import Link from "next/link";
+import { Fragment } from "react";
+import { DisclosureSection } from "@/components/portal/DisclosureSection";
+import { IdentifierChip } from "@/components/portal/IdentifierChip";
+import { SectionEyebrow } from "@/components/portal/journal-detail/SectionEyebrow";
+import { AbstractBlock } from "@/components/portal/paper-detail/AbstractBlock";
+import { AuthorList } from "@/components/portal/paper-detail/AuthorList";
+import { PaperHeader } from "@/components/portal/paper-detail/PaperHeader";
+import { PaperRail } from "@/components/portal/paper-detail/PaperRail";
+import type { PaperDetail } from "@/types/portal";
+
+const DL = "grid grid-cols-[max-content_1fr] gap-x-5 gap-y-2.5 max-[540px]:grid-cols-1";
+const DT = "whitespace-nowrap font-sans text-sm text-(--fg-3)";
+const DD = "m-0 font-sans text-md text-(--fg-1)";
+const DD_MONO = "m-0 font-mono text-sm text-(--fg-1)";
+
+const DATE_LABELS: Record&lt;string, string&gt; = {
+  received: "投稿",
+  accepted: "接收",
+  epublished: "电子出版",
+  published: "正式出版",
+};
+
+export function PublicationDetailView({ paper }: { paper: PaperDetail }) {
+  const mesh = paper.meshHeadings;
+  const funding = paper.funding;
+  const hasOtherIds = Boolean(paper.pmcid || paper.pii);
+  const crumb = paper.pmid ?? paper.id;
+
+  return (
+    &lt;div className="pb-6"&gt;
+      &lt;nav
+        aria-label="面包屑"
+        className="sticky top-14 z-30 border-b border-(--border-default) bg-[rgba(247,242,232,0.88)] backdrop-blur"
+      &gt;
+        &lt;ol className="mx-auto flex h-11 max-w-[1200px] items-center gap-2 px-6 font-sans text-sm text-(--fg-3)"&gt;
+          &lt;li&gt;
+            &lt;Link href="/" className="rounded-sm px-1 py-0.5 text-(--fg-2) hover:bg-paper-200 hover:text-clay-700"&gt;
+              Patra
+            &lt;/Link&gt;
+          &lt;/li&gt;
+          &lt;li aria-hidden className="text-ink-300"&gt;/&lt;/li&gt;
+          &lt;li className="max-[720px]:hidden"&gt;
+            &lt;Link href="/" className="rounded-sm px-1 py-0.5 text-(--fg-2) hover:bg-paper-200 hover:text-clay-700"&gt;
+              文献
+            &lt;/Link&gt;
+          &lt;/li&gt;
+          &lt;li aria-hidden className="text-ink-300 max-[720px]:hidden"&gt;/&lt;/li&gt;
+          &lt;li aria-current="page" className="truncate font-mono font-medium text-(--fg-1)"&gt;{crumb}&lt;/li&gt;
+        &lt;/ol&gt;
+      &lt;/nav&gt;
+
+      &lt;div className="mx-auto grid max-w-[1200px] grid-cols-[minmax(0,1fr)_340px] items-start gap-10 px-6 pt-8 max-[980px]:grid-cols-1 max-[980px]:gap-7 max-[980px]:pt-6"&gt;
+        &lt;div className="flex min-w-0 flex-col gap-7"&gt;
+          &lt;PaperHeader paper={paper} /&gt;
+
+          &lt;section aria-label="摘要"&gt;
+            &lt;SectionEyebrow&gt;摘要&lt;/SectionEyebrow&gt;
+            &lt;AbstractBlock paper={paper} /&gt;
+          &lt;/section&gt;
+
+          &lt;section aria-label="关键标识"&gt;
+            &lt;SectionEyebrow&gt;关键标识&lt;/SectionEyebrow&gt;
+            &lt;div className="flex flex-wrap gap-2.5"&gt;
+              &lt;IdentifierChip label="DOI" value={paper.doi} href={paper.doi ? `https://doi.org/${paper.doi}` : null} /&gt;
+              &lt;IdentifierChip
+                label="PMID"
+                value={paper.pmid}
+                href={paper.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${paper.pmid}` : null}
+              /&gt;
+            &lt;/div&gt;
+          &lt;/section&gt;
+
+          &lt;section aria-label="深度数据"&gt;
+            &lt;SectionEyebrow&gt;深度数据 · 按需展开&lt;/SectionEyebrow&gt;
+            &lt;div&gt;
+              &lt;DisclosureSection title="完整作者与机构" count={`${paper.authors.length} 位`}&gt;
+                &lt;AuthorList authors={paper.authors} /&gt;
+              &lt;/DisclosureSection&gt;
+
+              {mesh.length &gt; 0 &amp;&amp; (
+                &lt;DisclosureSection title="MeSH 主题词 / 关键词" count={`${mesh.length} 项`}&gt;
+                  &lt;div className="flex flex-wrap gap-2"&gt;
+                    {mesh.map((h) =&gt; (
+                      &lt;span
+                        key={h.descriptorUi}
+                        className={
+                          h.major
+                            ? "rounded-sm border border-clay-200 bg-clay-50 px-2 py-0.5 font-sans text-sm text-clay-800"
+                            : "rounded-sm border border-(--border-default) bg-paper-100 px-2 py-0.5 font-sans text-sm text-(--fg-2)"
+                        }
+                      &gt;
+                        {h.major &amp;&amp; &lt;span title="主要主题词"&gt;★ &lt;/span&gt;}
+                        {h.term}
+                      &lt;/span&gt;
+                    ))}
+                  &lt;/div&gt;
+                  {paper.keywords.length &gt; 0 &amp;&amp; (
+                    &lt;div className="mt-3 flex flex-wrap gap-2"&gt;
+                      {paper.keywords.map((k) =&gt; (
+                        &lt;span key={k} className="font-mono text-[11px] text-(--fg-3)"&gt;#{k}&lt;/span&gt;
+                      ))}
+                    &lt;/div&gt;
+                  )}
+                &lt;/DisclosureSection&gt;
+              )}
+
+              {funding.length &gt; 0 &amp;&amp; (
+                &lt;DisclosureSection title="资助信息" count={`${funding.length} 项`}&gt;
+                  &lt;dl className={DL}&gt;
+                    {funding.map((f, i) =&gt; (
+                      &lt;Fragment key={`${f.funder}-${i}`}&gt;
+                        &lt;dt className={DT}&gt;资助方&lt;/dt&gt;
+                        &lt;dd className={DD}&gt;
+                          {f.funder ?? "—"}
+                          {f.grantId &amp;&amp; &lt;span className="ml-2 font-mono text-sm text-(--fg-3)"&gt;· {f.grantId}&lt;/span&gt;}
+                        &lt;/dd&gt;
+                      &lt;/Fragment&gt;
+                    ))}
+                  &lt;/dl&gt;
+                &lt;/DisclosureSection&gt;
+              )}
+
+              {hasOtherIds &amp;&amp; (
+                &lt;DisclosureSection title="其他标识符"&gt;
+                  &lt;div className="flex flex-wrap gap-2.5"&gt;
+                    {paper.pmcid &amp;&amp; (
+                      &lt;IdentifierChip
+                        label="PMCID"
+                        value={paper.pmcid}
+                        href={`https://www.ncbi.nlm.nih.gov/pmc/articles/${paper.pmcid}/`}
+                      /&gt;
+                    )}
+                    {paper.pii &amp;&amp; &lt;IdentifierChip label="PII" value={paper.pii} /&gt;}
+                  &lt;/div&gt;
+                &lt;/DisclosureSection&gt;
+              )}
+
+              {paper.dates.length &gt; 0 &amp;&amp; (
+                &lt;DisclosureSection title="各类日期"&gt;
+                  &lt;dl className={DL}&gt;
+                    {paper.dates.map((d) =&gt; (
+                      &lt;Fragment key={d.type}&gt;
+                        &lt;dt className={DT}&gt;{DATE_LABELS[d.type.toLowerCase()] ?? d.type}&lt;/dt&gt;
+                        &lt;dd className={DD_MONO}&gt;{d.date}&lt;/dd&gt;
+                      &lt;/Fragment&gt;
+                    ))}
+                  &lt;/dl&gt;
+                &lt;/DisclosureSection&gt;
+              )}
+
+              &lt;DisclosureSection title="参考文献与声明"&gt;
+                &lt;dl className={DL}&gt;
+                  &lt;dt className={DT}&gt;参考文献数&lt;/dt&gt;
+                  &lt;dd className={DD_MONO}&gt;
+                    {paper.numberOfReferences != null ? paper.numberOfReferences.toLocaleString() : "—"}
+                  &lt;/dd&gt;
+                  &lt;dt className={DT}&gt;利益冲突&lt;/dt&gt;
+                  &lt;dd className={DD}&gt;{paper.conflictOfInterest || "未声明 / 暂无数据"}&lt;/dd&gt;
+                &lt;/dl&gt;
+              &lt;/DisclosureSection&gt;
+            &lt;/div&gt;
+          &lt;/section&gt;
+        &lt;/div&gt;
+
+        {/* sticky top = TopNav 56px + 面包屑 bar 44px + 16px 间距 = 116px */}
+        &lt;aside className="sticky top-[116px] flex flex-col gap-4 max-[980px]:static"&gt;
+          &lt;PaperRail paper={paper} /&gt;
+        &lt;/aside&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：实现路由 page.tsx（RSC）</strong>
+            <pre><code class="lang-tsx">import { notFound } from "next/navigation";
+import { Footer } from "@/components/portal/Footer";
+import { PublicationDetailView } from "@/components/portal/paper-detail/PublicationDetailView";
+import { TopNav } from "@/components/portal/TopNav";
+import { fetchPublicationDetail } from "@/lib/portal-api/publications";
+
+export default async function PaperDetailPage({ params }: { params: Promise&lt;{ id: string }&gt; }) {
+  const { id } = await params;
+  const paper = await fetchPublicationDetail(id); // 5xx/超时会 throw → 全局 error.tsx
+  if (!paper) {
+    notFound(); // 非数字 id 或 BE 404 → [id]/not-found.tsx
+  }
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;PublicationDetailView paper={paper} /&gt;
+      &lt;/main&gt;
+      &lt;Footer /&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：实现 not-found.tsx + loading.tsx</strong>
+            <p><code>not-found.tsx</code>：</p>
+            <pre><code class="lang-tsx">import { NotFoundState } from "@/components/portal/status/NotFoundState";
+import { TopNav } from "@/components/portal/TopNav";
+
+export default function PaperNotFound() {
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;NotFoundState kind="paper" /&gt;
+      &lt;/main&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+            <p><code>loading.tsx</code>（两栏骨架，对齐 DetailView 布局，无封面）：</p>
+            <pre><code class="lang-tsx">import { TopNav } from "@/components/portal/TopNav";
+
+function Block({ className }: { className?: string }) {
+  return &lt;div className={`animate-pulse rounded-lg bg-paper-200 ${className ?? ""}`} /&gt;;
+}
+
+export default function Loading() {
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;div className="border-b border-(--border-default)"&gt;
+          &lt;div className="mx-auto h-11 max-w-[1200px] px-6" /&gt;
+        &lt;/div&gt;
+        &lt;div
+          className="mx-auto grid max-w-[1200px] grid-cols-[minmax(0,1fr)_340px] items-start gap-10 px-6 pt-8 max-[980px]:grid-cols-1"
+          aria-hidden
+        &gt;
+          &lt;div className="flex min-w-0 flex-col gap-7"&gt;
+            &lt;div className="flex flex-col gap-3"&gt;
+              &lt;Block className="h-5 w-24" /&gt;
+              &lt;Block className="h-9 w-11/12" /&gt;
+              &lt;Block className="h-9 w-2/3" /&gt;
+              &lt;Block className="mt-2 h-4 w-3/4" /&gt;
+              &lt;Block className="mt-2 h-9 w-48" /&gt;
+            &lt;/div&gt;
+            &lt;Block className="h-32" /&gt;
+            &lt;Block className="h-16" /&gt;
+            &lt;Block className="h-16" /&gt;
+            &lt;Block className="h-16" /&gt;
+          &lt;/div&gt;
+          &lt;div className="flex flex-col gap-4 max-[980px]:hidden"&gt;
+            &lt;Block className="h-36" /&gt;
+            &lt;Block className="h-36" /&gt;
+            &lt;Block className="h-44" /&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/main&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：运行测试 + 类型 + lint（绿）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PublicationDetailView &amp;&amp; pnpm typecheck &amp;&amp; pnpm lint</code> → 全绿。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 7：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail/PublicationDetailView.tsx patra-portal/src/app/papers patra-portal/tests/components/portal/paper-detail/PublicationDetailView.test.tsx
+git commit -m "feat(portal): PublicationDetailView + /papers/[id] 路由 (PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================ TASK 9 ============================ -->
+      <article class="task" id="task-9" data-status="pending">
+        <header>
+          <h2>任务 9：FE — PaperCard 接通 + e2e smoke</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/PaperCard.tsx:69-78</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/PaperCard.test.tsx</code></dd>
+            <dt>创建</dt><dd><code>patra-portal/tests/e2e/paper-detail.spec.ts</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1（RED）：PaperCard 加 link 断言</strong>
+            <p>在 <code>PaperCard.test.tsx</code> 的 describe 末尾追加：</p>
+            <pre><code class="lang-tsx">  it("详情链接指向 /papers/[id]", () =&gt; {
+    render(&lt;PaperCard paper={makePaper({ id: "319041872872550658" })} /&gt;);
+    expect(screen.getByRole("link", { name: /详情/ })).toHaveAttribute(
+      "href",
+      "/papers/319041872872550658",
+    );
+  });</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（红）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperCard</code> → 失败（当前是 disabled button，无 link role）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：PaperCard button → Link</strong>
+            <p>在 <code>PaperCard.tsx</code> 顶部加 <code>import Link from "next/link";</code>，把第 69–78 行的「详情」<code>&lt;button&gt;</code> 整块替换为：</p>
+            <pre><code class="lang-tsx">        &lt;Link
+          href={`/papers/${paper.id}`}
+          className="inline-flex items-center gap-1 text-fg-2 hover:text-ink-900"
+        &gt;
+          详情
+          &lt;ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden /&gt;
+        &lt;/Link&gt;</code></pre>
+            <p>其余三个 disabled button（收藏 / 评论 / 分享）保持不动（本次不在范围）。<code>ChevronRight</code> import 已存在。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：运行单测确认通过（绿）</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperCard</code> → 全绿（含原 6 个用例 + 新 link 用例）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：创建 e2e smoke（paper-detail.spec.ts）</strong>
+            <p>镜像 <code>journal-detail.spec.ts</code>：happy-path 依赖后端，无卡时跳过；not-found 不依赖后端始终执行。</p>
+            <pre><code class="lang-ts">import { expect, test } from "@playwright/test";
+
+test("explore-feed 点文献 → 跳转详情页并渲染摘要区", async ({ page }) =&gt; {
+  await page.goto("/");
+  const links = page.getByRole("link", { name: "详情" });
+  // explore-feed 由 RSC fetchFeed 取自后端；无可达后端时（纯前端 portal-ci 的 e2e job）
+  // 首页渲染不出文献卡。该 happy-path 依赖服务端取数，故无卡时跳过，留给有后端的本地/staging e2e。
+  test.skip((await links.count()) === 0, "explore-feed 无文献卡（后端不可达）：跳过 happy-path e2e");
+
+  const first = links.first();
+  await expect(first).toBeVisible();
+  await first.click();
+
+  await expect(page).toHaveURL(/\/papers\/\d+/);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/.+/);
+  await expect(page.getByText("摘要")).toBeVisible();
+});
+
+test("非数字 id → not-found 页", async ({ page }) =&gt; {
+  await page.goto("/papers/not-a-real-id");
+  await expect(page.getByRole("heading", { name: "没有这一页" })).toBeVisible();
+  await expect(page.getByText(/这篇文献不在 Patra/)).toBeVisible();
+});</code></pre>
+            <p>若 not-found 文案/标题与实际 <code>NotFoundState kind="paper"</code> 不符，以组件实际渲染文本为准调整断言（运行 <code>pnpm exec playwright test paper-detail</code> 验证）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：全栈门控</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test &amp;&amp; pnpm exec playwright test paper-detail</code></p>
+            <p>预期：lint / typecheck / 全部单测 / e2e（not-found 通过；happy-path 本地无后端则 skip）全绿。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 7：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/PaperCard.tsx patra-portal/tests/components/portal/PaperCard.test.tsx patra-portal/tests/e2e/paper-detail.spec.ts
+git commit -m "feat(portal): explore-feed 文献卡接通 /papers/[id] + e2e smoke (PAP-45)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec §3 后端补齐 → Task 1（读链路 source/fullTextUrl）+ Task 2（DTO/Converter 4 字段 + 占位）；§4 数据层 → Task 3（wire type + fetch）+ Task 4（derive）；§5 组件 → Task 5/6/7（EvidenceBadge/AbstractBlock/AuthorList/PaperHeader/BookmarkButton/PaperRail）+ Task 8（PublicationDetailView + 路由）；§5.5 卡片接通 → Task 9；§6 Mock/占位 → Task 2（BE 占位）+ Task 6/7（收藏 mock、AI 速读 mock、速览占位）。Done 判定 7 条均有对应任务。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无「待定/后续/类似任务 N」等计划占位；每个代码步骤均含完整代码块。代码中的 <code>TODO(read-time)</code> 是 BE 字段的有意占位注释（对齐列表端点先例），非计划缺陷。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>BE：<code>provenanceCode</code>/<code>fullTextUrl</code> 在 ReadModel(Task1)→DTO(Task2) 命名一致；DTO 字段名 <code>source</code>/<code>fullTextUrl</code>/<code>bookmarks</code>/<code>estimatedReadMin</code> 对齐 <code>PortalPaperResponse</code>。FE：<code>PaperDetail</code> 及子类型(Task3) 被 derive(Task4)、各组件(Task5-8) 一致消费；<code>deriveEvidence/deriveAbstract/deriveFullTextHref/deriveByline</code> 签名跨任务一致；<code>fetchPublicationDetail</code> 在 fetch(Task3)→page.tsx(Task8) 一致；<code>BookmarkButton</code> 的 <code>block</code> prop 在 Header(Task6)/Rail(Task7) 一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>9 个 <code>&lt;article class="task" id="task-N" data-status="pending"&gt;</code> 唯一且初始 pending；所有 <code>&lt;li class="step"&gt;</code> 初始 pending；TOC <code>toc-tasks</code> 9 条与中栏 article 一一对应（id/href 匹配，初始 data-task-status=pending）；head 含 spec-theme.css + plan-extras.css 两个 link，无 inline style 块；meta 含 目标/架构/技术栈/关联 spec 四项。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+    </ol>
+
+    <p class="empty-state">no notes yet</p>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">0</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>
