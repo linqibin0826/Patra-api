@@ -1,25 +1,7 @@
+import Link from "next/link";
 import type { CSSProperties } from "react";
+import { pickCover } from "@/lib/portal-api/cover-palette";
 import type { VenueBrowse } from "@/types/portal";
-
-/** 深色学术调色板（延续原 mock 视觉质感）：bg 深底 + ink 浅字。 */
-const COVER_PALETTE = [
-  { bg: "#3C1611", ink: "#F6E8DA" },
-  { bg: "#1F2E45", ink: "#E9EEF4" },
-  { bg: "#0E574F", ink: "#ECF5F3" },
-  { bg: "#1C1917", ink: "#F4D9B8" },
-  { bg: "#5A1A14", ink: "#F6E8DA" },
-  { bg: "#6E3216", ink: "#FBF1E8" },
-] as const;
-
-/** 按期刊 id 稳定 hash 选取调色板（同一期刊每次同色，SSR/CSR 一致）。 */
-function pickCover(id: string): { bg: string; ink: string } {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  // 取模保证索引落在 [0, length) 内；?? 兜底首元素让 TS 在 noUncheckedIndexedAccess 下推断为非空
-  return COVER_PALETTE[Math.abs(hash) % COVER_PALETTE.length] ?? COVER_PALETTE[0];
-}
 
 interface JournalCoverCardProps {
   journal: VenueBrowse;
@@ -36,20 +18,18 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
   } as CSSProperties;
 
   return (
-    <button
-      type="button"
-      disabled
-      aria-disabled="true"
-      title={`${journal.name} · 功能即将上线`}
+    <Link
+      href={`/journals/${journal.id}`}
+      title={journal.name}
       className={
-        "flex flex-col overflow-hidden rounded-lg border border-border-default bg-paper-50 text-inherit no-underline transition hover:-translate-y-px hover:border-ink-300 hover:shadow-[0_6px_16px_-10px_rgba(28,25,23,0.18)] disabled:cursor-not-allowed " +
+        "flex flex-col overflow-hidden rounded-lg border border-border-default bg-paper-50 text-inherit no-underline transition hover:-translate-y-px hover:border-ink-300 hover:shadow-[0_6px_16px_-10px_rgba(28,25,23,0.18)] " +
         (className ?? "")
       }
     >
       <div
         data-cover
         style={coverVars}
-        className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[var(--cover-bg)] p-4 text-center text-[var(--cover-ink)] before:absolute before:inset-2 before:border before:border-current before:opacity-20 before:content-['']"
+        className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-(--cover-bg) p-4 text-center text-(--cover-ink) before:absolute before:inset-2 before:border before:border-current before:opacity-20 before:content-['']"
       >
         {journal.foundedYear !== null && (
           <div className="absolute left-2 right-2 top-3 text-center font-mono text-[9.5px] uppercase tracking-[0.18em] opacity-70">
@@ -89,6 +69,6 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
           </div>
         </div>
       </div>
-    </button>
+    </Link>
   );
 }

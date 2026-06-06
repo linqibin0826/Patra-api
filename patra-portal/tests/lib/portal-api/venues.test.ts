@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchVenues } from "@/lib/portal-api/venues";
+import { fetchVenueDetail, fetchVenues } from "@/lib/portal-api/venues";
 import type { PageResult, VenueBrowse } from "@/types/portal";
 
 const SAMPLE_VENUE: VenueBrowse = {
@@ -94,5 +94,62 @@ describe("fetchVenues", () => {
     );
     const result = await fetchVenues();
     expect(result).toEqual([]);
+  });
+});
+
+describe("fetchVenueDetail", () => {
+  beforeEach(() => {
+    process.env.PATRA_GATEWAY_BASE_URL = "http://gw.test:9528";
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.PATRA_GATEWAY_BASE_URL;
+  });
+
+  it("非数字 id 直接返回 null，不发起请求", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchVenueDetail("abc")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("BE 404 → 返回 null", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    expect(await fetchVenueDetail("123")).toBeNull();
+  });
+
+  it("成功 → 返回解析后的 VenueDetail", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ id: "123", title: "Nature" }), { status: 200 }),
+        ),
+    );
+    const v = await fetchVenueDetail("123");
+    expect(v).toEqual({ id: "123", title: "Nature" });
+  });
+
+  it("拼出正确的 gateway URL", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ id: "123" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchVenueDetail("123");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://gw.test:9528/patra-catalog/portal/venues/123",
+      expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("5xx → 抛错冒泡到 error boundary", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("err", { status: 503 })));
+    await expect(fetchVenueDetail("123")).rejects.toThrow(/503/);
+  });
+
+  it("缺 PATRA_GATEWAY_BASE_URL 抛错", async () => {
+    delete process.env.PATRA_GATEWAY_BASE_URL;
+    await expect(fetchVenueDetail("123")).rejects.toThrow(/PATRA_GATEWAY_BASE_URL/);
   });
 });

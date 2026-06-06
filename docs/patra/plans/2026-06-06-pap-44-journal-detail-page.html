@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>期刊详情页 /journals/[id] — 实现计划（PAP-44）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li data-task-status="done"><a href="#task-1">Task 1 — VenueDetail 类型 + 子类型</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — fetchVenueDetail（404/坏 URL/throw）+ 单测</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 抽取 cover-palette 共享件</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — venue-derive 派生视图 + 单测</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — 状态屏基元 + 全局壳重构</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 共享交互基元 Disclosure / IdentifierChip</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 期刊详情视觉组件</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — 页面编排 page / View / loading</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — 接通首页卡片跳转</a></li>
+          <li data-task-status="done"><a href="#task-10">Task 10 — e2e smoke + 验证闸</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>期刊详情页 <code>/journals/[id]</code> — 实现计划</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-06</span>
+        <span>🌿 pap-44-fe-journal-detail-page</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped），并同步左栏 TOC 的 <code>data-task-status</code>。
+        每完成一个 task 立即 commit。遵循 TDD：先写失败测试 → 跑红 → 最小实现 → 跑绿 → commit。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>在 <code>src/app/journals/[id]</code> 以 RSC 服务端取数实现期刊详情页，像素级复刻 v0.5 hi-fi（masthead + 影响力速览 + 渐进式披露折叠区 + 双栏布局），消费 PAP-42 的 <code>GET /patra-catalog/portal/venues/{id}</code>；连带重构全站状态屏并接通首页卡片跳转。</dd>
+        <dt>架构</dt> <dd>RSC 直取（沿用首页 <code>Journals.tsx</code> 的 <code>await fetchX()</code> 模式，不引 TanStack Query）。wire 类型 <code>VenueDetail</code> 扁平贴 BE、零运行时映射；<code>venue-derive.ts</code> 纯函数把扁平响应算成组件视图对象（最新年评级重组 / 学科标签 / 速览卡资格 / 降级）。组件用 Tailwind v4 utility + tokens CSS 变量复刻 hi-fi，不搬 detail.css 语义 class。404 → <code>notFound()</code>，其他失败 → <code>throw</code> 冒泡到全局 <code>error.tsx</code>。</dd>
+        <dt>技术栈</dt> <dd>Next.js 15 App Router · React 19（RSC 优先）· TypeScript 5 strict · Tailwind v4 + tokens.css · Vitest + Testing Library · Playwright · Biome</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-06-05-portal-journal-detail-page-design.html">期刊详情页 /journals/[id] — 设计文档（PAP-44）</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>本 plan 仅覆盖 PAP-44 期刊详情页（单一子系统：portal 前端一个新路由 + 配套读取/派生/状态屏/首页接通）。文献详情页（PAP-45）、期刊列表页（PAP-47）、补 BE 字段均在范围外，不在本 plan。无需拆分。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>patra-portal/src/
+├── types/portal.ts                                  <span class="pill modify">modify</span> 加 VenueDetail + 5 个子类型（wire，扁平贴 BE）
+├── lib/portal-api/
+│   ├── venues.ts                                    <span class="pill modify">modify</span> 加 fetchVenueDetail(id)：坏 URL/404→null，其他→throw
+│   ├── venue-derive.ts                              <span class="pill create">create</span> 派生纯函数：扁平响应 → 组件视图对象
+│   └── cover-palette.ts                             <span class="pill create">create</span> 抽出 pickCover + COVER_PALETTE（两处共用）
+├── app/
+│   ├── not-found.tsx                                <span class="pill modify">modify</span> 极简占位 → 包 NotFoundState（RSC）
+│   ├── error.tsx                                    <span class="pill modify">modify</span> 极简占位（泄漏 message）→ 包 ErrorState（"use client"）
+│   └── journals/[id]/
+│       ├── page.tsx                                 <span class="pill create">create</span> RSC：await fetchVenueDetail → notFound()/throw → View
+│       ├── loading.tsx                              <span class="pill create">create</span> 期刊页 skeleton（镜像双栏）
+│       └── not-found.tsx                            <span class="pill create">create</span> 期刊不存在，复用 NotFoundState kind="journal"
+├── components/portal/
+│   ├── JournalCoverCard.tsx                         <span class="pill modify">modify</span> 解除 disabled，button→Link 接 /journals/[id]；改用 cover-palette
+│   ├── status/
+│   │   ├── NotFoundState.tsx                        <span class="pill create">create</span> 404 基元（RSC）
+│   │   └── ErrorState.tsx                           <span class="pill create">create</span> error 基元（"use client"，重试）
+│   ├── DisclosureSection.tsx                        <span class="pill create">create</span> 折叠区（"use client"，button[aria-expanded]）— 两页共用
+│   ├── IdentifierChip.tsx                           <span class="pill create">create</span> 标识符复制+外链（"use client"）— 两页共用
+│   └── journal-detail/
+│       ├── JournalDetailView.tsx                    <span class="pill create">create</span> 整页编排（RSC）：面包屑 + 双栏
+│       ├── JournalMasthead.tsx                      <span class="pill create">create</span> 封面（调色板词标）+ 刊名 + 身份 + 主操作
+│       ├── MetricBadge.tsx                          <span class="pill create">create</span> 影响力速览单卡（纯展示，对应 hi-fi .metric）
+│       ├── JournalPositioning.tsx                   <span class="pill create">create</span> 定位结构化标签
+│       ├── RatingTable.tsx                          <span class="pill create">create</span> JCR/CAS/Scopus 三套评级
+│       ├── TrendChart.tsx                           <span class="pill create">create</span> 年度双柱图（纯 CSS，RSC）
+│       └── JournalRail.tsx                          <span class="pill create">create</span> 侧栏速览卡 + 边界说明卡
+
+patra-portal/tests/
+├── lib/portal-api/
+│   ├── venues.test.ts                               <span class="pill modify">modify</span> +describe("fetchVenueDetail") 分支（扩展现有文件）
+│   └── venue-derive.test.ts                         <span class="pill create">create</span> 派生纯函数单测（核心，含 deriveMetricCards 降级）
+├── components/portal/
+│   ├── DisclosureSection.test.tsx                   <span class="pill create">create</span> 展开/收起 + aria-expanded
+│   ├── status-screens.test.tsx                      <span class="pill create">create</span> NotFoundState/ErrorState 渲染 + 交互
+│   └── JournalMasthead.test.tsx                     <span class="pill create">create</span> homepageUrl null → 主操作 disabled / 无封面占位
+└── e2e/journal-detail.spec.ts                       <span class="pill create">create</span> Playwright smoke：首页点卡→详情 / 不存在 id→not-found</pre>
+      </div>
+      <p class="hint">测试统一放 <code>tests/</code>（vitest 仅扫 <code>tests/**</code>；与被测件并列的 <code>*.test.tsx</code> 不会执行）。<strong>沿用现有目录约定</strong>：lib 单测入 <code>tests/lib/portal-api/</code>，组件测试入 <code>tests/components/portal/</code>，e2e 在 <code>tests/e2e/</code>（vitest 已 exclude）。组件测试每文件首行 <code>import "@testing-library/jest-dom/vitest";</code> 启用 matchers；fetch 测试用 <code>vi.stubGlobal("fetch", …)</code>。</p>
+
+      <aside class="callout info">
+        <span class="title">实现约定：Tailwind class 写法（全组件适用）</span>
+        <p>组件复刻 hi-fi 视觉，class 分两类：<strong>① 基础色 / 字号 / 字距 / 圆角 / 阴影</strong>（clay·teal·ink·paper·moss·amber·rust·slate、<code>text-*</code> 标度、<code>tracking-*</code>、<code>rounded-*</code>、<code>shadow-*</code>）已在 <code>globals.css @theme</code> 映射 → 用现成 utility（<code>bg-clay-600</code>/<code>text-ink-900</code>/<code>tracking-caps</code>/<code>text-lg</code>/<code>rounded-md</code>）。<strong>② 语义 token</strong>（<code>--fg-1/2/3/4</code>、<code>--border-subtle</code>、<code>--link</code>、<code>--fg-on-clay</code>）<strong>未进 @theme</strong> → 必须 arbitrary value：<code>text-[var(--fg-3)]</code>/<code>border-[var(--border-subtle)]</code>/<code>text-[var(--link)]</code>/<code>text-[var(--fg-on-clay)]</code>；默认描边 <code>border border-[var(--border-default)]</code>。数据驱动色（封面）走 <code>style={{ "--cover-bg": … }}</code> + <code>bg-[var(--cover-bg)]</code>；clamp 字号走 arbitrary（<code>text-[clamp(26px,3.6vw,38px)]</code>）。<strong>实测警示</strong>：现有首页组件用的 <code>text-fg-3</code> 等在当前 @theme 下<strong>不生成</strong>（编译产物为 0，靠 body 继承蒙混）——新组件<strong>不</strong>沿用该写法，一律 arbitrary value 保配色正确。图标用 <code>lucide-react</code>，品牌标记用 <code>next/image</code> <code>/brand/patra-mark.svg</code>。</p>
+      </aside>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <article class="task" id="task-1" data-status="done">
+        <header>
+          <h2>任务 1：VenueDetail 类型 + 子类型（wire，扁平贴 BE）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/types/portal.ts</code>（在 <code>VenueBrowse</code> 接口之后、<code>Paper</code> 之前插入）</dd>
+          </dl>
+        </header>
+        <p>决策 A：TS 类型镜像 <code>PortalVenueDetailResponse</code> 的扁平 + 评级列表结构，零运行时映射。类型本身无运行时行为，验证闸为 <code>pnpm typecheck</code>。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：在 <code>portal.ts</code> 追加 5 个子类型 + VenueDetail</strong>
+            <p>插到 <code>VenueBrowse</code> 接口结束（第 60 行 <code>}</code>）之后、<code>export interface Paper</code> 之前。字段名/可空性已对照 BE record 校验；<code>jifRank</code> 为 <code>string</code>，BigDecimal 字段为 <code>number</code>。</p>
+            <pre><code class="lang-ts">export interface JcrRating {
+  year: number;
+  impactFactor: number | null;
+  quartile: string | null;
+  subject: string | null;
+  jifRank: string | null; // 形如 "5/245"
+  jifPercentile: number | null;
+}
+
+export interface CasRating {
+  year: number;
+  edition: string | null;
+  majorCategory: string | null;
+  majorQuartile: string | null;
+  minorSubject: string | null;
+  minorQuartile: string | null;
+  isTop: boolean | null;
+  isReview: boolean | null;
+}
+
+export interface ScopusRating {
+  year: number;
+  citeScore: number | null;
+  sjr: number | null;
+  snip: number | null;
+  quartile: string | null;
+  percentile: number | null;
+}
+
+export interface YearlyStat {
+  year: number;
+  worksCount: number | null;
+  citedByCount: number | null;
+  oaWorksCount: number | null;
+}
+
+export interface VenueIdentifier {
+  type: string;
+  value: string;
+  primary: boolean;
+}
+
+/**
+ * 期刊详情端点 `GET /portal/venues/{id}` 响应（VenueDetail）。
+ * 对应后端 `PortalVenueDetailResponse`——扁平"最新值快照" + 评级列表，零运行时映射。
+ * id 为 string（BE 用 String 避免 JS 超 2^53 精度损失）。
+ */
+export interface VenueDetail {
+  id: string;
+  title: string;
+  abbreviatedTitle: string | null;
+  venueType: string | null;
+  issnL: string | null;
+  countryCode: string | null;
+  primaryLanguage: string | null;
+  foundedYear: number | null;
+  coverObjectKey: string | null;
+  homepageUrl: string | null; // BE 恒 null → 主操作降级
+  isOpenAccess: boolean | null;
+  // 顶层"最新值"快照
+  impactFactor: number | null;
+  jcrQuartile: string | null;
+  jcrSubject: string | null;
+  casMajorCategory: string | null;
+  casMajorQuartile: string | null;
+  casIsTop: boolean | null;
+  citeScore: number | null;
+  hIndex: number | null;
+  citedByCount: number | null;
+  worksCount: number | null;
+  frequency: string | null;
+  medlineIndexed: boolean | null;
+  oaType: string | null;
+  apcUsd: number | null;
+  isInDoaj: boolean | null;
+  // 完整评级列表（深数据层明细 + 派生来源）
+  jcrRatings: JcrRating[];
+  casRatings: CasRating[];
+  scopusRatings: ScopusRating[];
+  yearlyStats: YearlyStat[];
+  identifiers: VenueIdentifier[];
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：typecheck 验证</strong>
+            <p>运行：<code>cd patra-portal && pnpm typecheck</code></p>
+            <p>预期：无错误退出（exit 0）。新类型无引用方时不会报错；若 Biome 抱怨成员排序，下一步交给它。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：lint + commit</strong>
+            <pre><code class="lang-bash">cd patra-portal && pnpm lint
+git add patra-portal/src/types/portal.ts
+git commit -m "feat(portal): VenueDetail 类型 + 子类型（扁平贴 BE）(PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：fetchVenueDetail（坏 URL / 404 / throw）+ 单测</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/lib/portal-api/venues.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/portal-api/venues.test.ts</code>（扩展现有，加 describe 块）</dd>
+          </dl>
+        </header>
+        <p>决策 D：区分 404（→ null → 调用方 <code>notFound()</code>）与其他失败（→ throw → 全局 error boundary）。坏 URL（非数字 id）预校验为 null，不触达 BE。沿用现有 <code>fetchVenues</code> 的 server-only / <code>no-store</code> / 10s 超时模式。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：先写失败测试（red）</strong>
+            <p>扩展现有 <code>tests/lib/portal-api/venues.test.ts</code>（与 fetchVenues 同模块同文件）：顶部 import 增补 <code>fetchVenueDetail</code>，文件末尾追加 <code>describe</code> 块。沿用现有 <code>vi.stubGlobal</code> 取数测试 idiom（<code>server-only</code> 已由 <code>tests/stubs/server-only.ts</code> alias 打桩）。</p>
+            <pre><code class="lang-ts">// 顶部 import 改为：
+import { fetchVenueDetail, fetchVenues } from "@/lib/portal-api/venues";
+
+// 文件末尾追加：
+describe("fetchVenueDetail", () =&gt; {
+  beforeEach(() =&gt; {
+    process.env.PATRA_GATEWAY_BASE_URL = "http://gw.test:9528";
+  });
+  afterEach(() =&gt; {
+    vi.unstubAllGlobals();
+    delete process.env.PATRA_GATEWAY_BASE_URL;
+  });
+
+  it("非数字 id 直接返回 null，不发起请求", async () =&gt; {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchVenueDetail("abc")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("BE 404 → 返回 null", async () =&gt; {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 404 })));
+    expect(await fetchVenueDetail("123")).toBeNull();
+  });
+
+  it("成功 → 返回解析后的 VenueDetail", async () =&gt; {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "123", title: "Nature" }), { status: 200 })),
+    );
+    const v = await fetchVenueDetail("123");
+    expect(v?.id).toBe("123");
+    expect(v?.title).toBe("Nature");
+  });
+
+  it("拼出正确的 gateway URL", async () =&gt; {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "123" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchVenueDetail("123");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://gw.test:9528/patra-catalog/portal/venues/123",
+      expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("5xx → 抛错冒泡到 error boundary", async () =&gt; {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("err", { status: 503 })));
+    await expect(fetchVenueDetail("123")).rejects.toThrow(/503/);
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：跑红</strong>
+            <p>运行：<code>cd patra-portal && pnpm test venues</code></p>
+            <p>预期：失败——<code>fetchVenueDetail</code> 尚未导出（import 报错 / 5 个新用例红，原 fetchVenues 用例不受影响）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：实现 fetchVenueDetail（green，最小）</strong>
+            <p>在 <code>venues.ts</code> 顶部 import 追加 <code>VenueDetail</code>（与现有 <code>PageResult, VenueBrowse</code> 同行）；在文件末尾追加函数。</p>
+            <pre><code class="lang-ts">// 顶部 import 改为：
+import type { PageResult, VenueBrowse, VenueDetail } from "@/types/portal";
+
+// 文件末尾追加：
+/**
+ * 在服务端拉取单个期刊详情（按数字 id）。仅 RSC 调用（server-only）。
+ *
+ * 端点：`GET /patra-catalog/portal/venues/{id}`，响应 `VenueDetail`（扁平 + 评级列表）。
+ * 返回约定：
+ * - 非数字 id（坏 URL）→ 直接 `null`，不触达 BE（BE 对非数字会 400、对 0/负数 @Positive 422）
+ * - BE 404（CATALOG-0404，刊不存在）→ `null`，由调用方转 `notFound()`
+ * - 其他失败（5xx / 超时 / 网络）→ throw，冒泡到全局 error boundary
+ */
+export async function fetchVenueDetail(id: string): Promise<VenueDetail | null> {
+  if (!/^\d+$/.test(id)) {
+    return null;
+  }
+  const baseUrl = process.env.PATRA_GATEWAY_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("PATRA_GATEWAY_BASE_URL 未配置");
+  }
+  const url = `${baseUrl}/patra-catalog/portal/venues/${id}`;
+  const res = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`期刊详情加载失败：${res.status}`);
+  }
+  return (await res.json()) as VenueDetail;
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：跑绿 + typecheck</strong>
+            <p>运行：<code>cd patra-portal && pnpm test venues && pnpm typecheck</code></p>
+            <p>预期：5 个新用例全绿（原 fetchVenues 用例继续绿）；typecheck exit 0。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：lint + commit</strong>
+            <pre><code class="lang-bash">cd patra-portal && pnpm lint
+git add patra-portal/src/lib/portal-api/venues.ts patra-portal/tests/lib/portal-api/venues.test.ts
+git commit -m "feat(portal): fetchVenueDetail 区分 404/坏URL/失败 + 单测 (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：抽取 cover-palette 共享件</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/lib/portal-api/cover-palette.ts</code></dd>
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/JournalCoverCard.tsx</code>（删内联调色板，改 import）</dd>
+          </dl>
+        </header>
+        <p><code>pickCover</code> 现内联在 <code>JournalCoverCard</code> 且未导出；详情页 masthead（Task 7）也要复用。抽到共享模块，两处统一引用，避免重复实现（DRY）。本任务只搬调色板，不动卡片标记（button→Link 在 Task 9）。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：新建 cover-palette.ts</strong>
+            <pre><code class="lang-ts">/** 深色学术调色板（延续原 mock 视觉质感）：bg 深底 + ink 浅字。期刊封面占位用。 */
+export const COVER_PALETTE = [
+  { bg: "#3C1611", ink: "#F6E8DA" },
+  { bg: "#1F2E45", ink: "#E9EEF4" },
+  { bg: "#0E574F", ink: "#ECF5F3" },
+  { bg: "#1C1917", ink: "#F4D9B8" },
+  { bg: "#5A1A14", ink: "#F6E8DA" },
+  { bg: "#6E3216", ink: "#FBF1E8" },
+] as const;
+
+/** 按期刊 id 稳定 hash 选取调色板（同一期刊每次同色，SSR/CSR 一致）。 */
+export function pickCover(id: string): { bg: string; ink: string } {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  // 取模保证索引落在 [0, length) 内；?? 兜底首元素让 TS 在 noUncheckedIndexedAccess 下推断为非空
+  return COVER_PALETTE[Math.abs(hash) % COVER_PALETTE.length] ?? COVER_PALETTE[0];
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：JournalCoverCard 改用共享件</strong>
+            <p>删除文件内的 <code>COVER_PALETTE</code> 常量与 <code>pickCover</code> 函数（原第 4–22 行），在顶部 import 区追加：</p>
+            <pre><code class="lang-ts">import { pickCover } from "@/lib/portal-api/cover-palette";</code></pre>
+            <p>组件体内 <code>const { bg, ink } = pickCover(journal.id);</code> 保持不变（现在解析到共享实现）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：typecheck + 首页单测/e2e 不回归</strong>
+            <p>运行：<code>cd patra-portal && pnpm typecheck && pnpm test</code></p>
+            <p>预期：typecheck exit 0；现有测试（含首页）仍全绿——抽取是纯重构，调色板逻辑逐字保留。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：commit</strong>
+            <pre><code class="lang-bash">cd patra-portal && pnpm lint
+git add patra-portal/src/lib/portal-api/cover-palette.ts patra-portal/src/components/portal/JournalCoverCard.tsx
+git commit -m "refactor(portal): 抽取 cover-palette 共享件供详情页复用 (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：venue-derive 派生视图 + 单测（核心）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/lib/portal-api/venue-derive.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/portal-api/venue-derive.test.ts</code></dd>
+          </dl>
+        </header>
+        <p>决策 A/B 的落点：wire 类型保持扁平；本模块纯函数把扁平响应算成组件视图对象——头条值取顶层"最新快照"标量，顶层没有的（percentile/rank/minor/sjr/snip）取评级列表最新年项；某套评级完全无信号 → view 为 null（模块隐藏不占位）。组件只消费派生结果，不在 JSX 散落 <code>.find()/.sort()</code>。这是全 plan 唯一逻辑密集模块，重点 TDD。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：先写失败测试（red）</strong>
+            <p>新建 <code>tests/lib/portal-api/venue-derive.test.ts</code>。用 <code>makeVenue()</code> fixture 构造（VenueDetail 字段多，base 全 null + 覆写）。</p>
+            <pre><code class="lang-ts">import { describe, expect, it } from "vitest";
+import type { VenueDetail } from "@/types/portal";
+import {
+  deriveMetricCards,
+  deriveMetrics,
+  deriveSubjectAreas,
+} from "@/lib/portal-api/venue-derive";
+
+function makeVenue(overrides: Partial&lt;VenueDetail&gt; = {}): VenueDetail {
+  return {
+    id: "1", title: "Test Journal", abbreviatedTitle: null, venueType: null,
+    issnL: null, countryCode: null, primaryLanguage: null, foundedYear: null,
+    coverObjectKey: null, homepageUrl: null, isOpenAccess: null,
+    impactFactor: null, jcrQuartile: null, jcrSubject: null,
+    casMajorCategory: null, casMajorQuartile: null, casIsTop: null,
+    citeScore: null, hIndex: null, citedByCount: null, worksCount: null,
+    frequency: null, medlineIndexed: null, oaType: null, apcUsd: null, isInDoaj: null,
+    jcrRatings: [], casRatings: [], scopusRatings: [], yearlyStats: [], identifiers: [],
+    ...overrides,
+  };
+}
+
+describe("deriveMetrics", () =&gt; {
+  it("percentile/rank 取 jcrRatings 中 year 最大的项", () =&gt; {
+    const v = makeVenue({
+      impactFactor: 50.5, jcrQuartile: "Q1", jcrSubject: "Oncology",
+      jcrRatings: [
+        { year: 2022, impactFactor: 40, quartile: "Q1", subject: "Oncology", jifRank: "9/300", jifPercentile: 95 },
+        { year: 2023, impactFactor: 50.5, quartile: "Q1", subject: "Oncology", jifRank: "5/300", jifPercentile: 98 },
+      ],
+    });
+    const m = deriveMetrics(v);
+    expect(m.jcr?.impactFactor).toBe(50.5); // 头条取顶层快照
+    expect(m.jcr?.percentile).toBe(98);     // 取 2023
+    expect(m.jcr?.rank).toBe("5/300");
+  });
+
+  it("评级列表空但顶层有快照 → jcr 仍在，percentile/rank 为 null", () =&gt; {
+    const m = deriveMetrics(makeVenue({ impactFactor: 12.3, jcrQuartile: "Q1" }));
+    expect(m.jcr?.impactFactor).toBe(12.3);
+    expect(m.jcr?.percentile).toBeNull();
+    expect(m.jcr?.rank).toBeNull();
+  });
+
+  it("某套评级完全无信号 → 该 view 为 null", () =&gt; {
+    const m = deriveMetrics(makeVenue());
+    expect(m.jcr).toBeNull();
+    expect(m.cas).toBeNull();
+    expect(m.scopus).toBeNull();
+    expect(m.bibliometric).toBeNull();
+  });
+
+  it("citeScore 顶层缺失时退 scopusRatings 最新年", () =&gt; {
+    const m = deriveMetrics(makeVenue({
+      scopusRatings: [
+        { year: 2022, citeScore: 8.1, sjr: 2.1, snip: 1.5, quartile: "Q1", percentile: 90 },
+        { year: 2023, citeScore: 9.4, sjr: 2.3, snip: 1.7, quartile: "Q1", percentile: 92 },
+      ],
+    }));
+    expect(m.scopus?.citeScore).toBe(9.4);
+    expect(m.scopus?.sjr).toBe(2.3);
+  });
+});
+
+describe("deriveSubjectAreas", () =&gt; {
+  it("jcrSubject + casMajorCategory 去重", () =&gt; {
+    expect(deriveSubjectAreas(makeVenue({ jcrSubject: "Oncology", casMajorCategory: "Oncology" }))).toEqual(["Oncology"]);
+    expect(deriveSubjectAreas(makeVenue({ jcrSubject: "Oncology", casMajorCategory: "Medicine" }))).toEqual(["Oncology", "Medicine"]);
+  });
+  it("皆空 → []", () =&gt; {
+    expect(deriveSubjectAreas(makeVenue())).toEqual([]);
+  });
+});
+
+describe("deriveMetricCards", () =&gt; {
+  it("全量 → 3 张卡（IF accent / JCR 分区 / 中科院）", () =&gt; {
+    const m = deriveMetrics(makeVenue({
+      impactFactor: 50.5, jcrQuartile: "Q1", jcrSubject: "Oncology",
+      casMajorCategory: "医学", casMajorQuartile: "1区", casIsTop: true,
+      jcrRatings: [{ year: 2023, impactFactor: 50.5, quartile: "Q1", subject: "Oncology", jifRank: "5/300", jifPercentile: 98 }],
+    }));
+    const cards = deriveMetricCards(m);
+    expect(cards.map((c) =&gt; c.key)).toEqual(["if", "q", "cas"]);
+    expect(cards[0]?.accent).toBe(true);
+    expect(cards[0]?.value).toBe("50.5");
+    expect(cards[1]?.sub).toBe("排名 5/300");
+    expect(cards[2]?.sub).toContain("Top");
+  });
+
+  it("无中科院但有 Scopus → 第 3 卡退 CiteScore", () =&gt; {
+    const m = deriveMetrics(makeVenue({ impactFactor: 10, jcrQuartile: "Q2", citeScore: 9.4 }));
+    expect(deriveMetricCards(m).map((c) =&gt; c.key)).toEqual(["if", "q", "cs"]);
+  });
+
+  it("无 IF → 不出第 1 卡", () =&gt; {
+    const cards = deriveMetricCards(deriveMetrics(makeVenue({ jcrQuartile: "Q1" })));
+    expect(cards.find((c) =&gt; c.key === "if")).toBeUndefined();
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：跑红</strong>
+            <p>运行：<code>cd patra-portal && pnpm test venue-derive</code></p>
+            <p>预期：失败——<code>venue-derive.ts</code> 不存在 / 函数未导出。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：实现 venue-derive.ts（green）</strong>
+            <pre><code class="lang-ts">import type {
+  VenueDetail,
+  YearlyStat,
+} from "@/types/portal";
+
+// ---- 派生视图类型（FE 内部，非 wire 契约） ----
+export interface JcrView {
+  impactFactor: number | null;
+  quartile: string | null;
+  subject: string | null;
+  percentile: number | null;
+  rank: string | null;
+}
+export interface CasView {
+  majorCategory: string | null;
+  majorQuartile: string | null;
+  minorSubject: string | null;
+  minorQuartile: string | null;
+  isTop: boolean;
+  isReview: boolean;
+}
+export interface ScopusView {
+  citeScore: number | null;
+  sjr: number | null;
+  snip: number | null;
+  percentile: number | null;
+}
+export interface BibliometricView {
+  hIndex: number | null;
+  i10Index: number | null; // BE 无来源 → 恒 null（渲染 "—"）
+  citedByCount: number | null;
+  worksCount: number | null;
+}
+export interface JournalMetrics {
+  jcr: JcrView | null;
+  cas: CasView | null;
+  scopus: ScopusView | null;
+  bibliometric: BibliometricView | null;
+}
+export interface MetricCard {
+  key: string;
+  label: string;
+  value: string;
+  sub: string;
+  accent: boolean;
+}
+
+/** 取列表中 year 最大的一项；空列表 → null。 */
+function latest&lt;T extends { year: number }&gt;(list: T[]): T | null {
+  if (!list || list.length === 0) {
+    return null;
+  }
+  return list.reduce((a, b) =&gt; (b.year &gt; a.year ? b : a));
+}
+
+/**
+ * 把扁平 VenueDetail 重组为组件视图对象。某套评级完全无信号 → 对应 view 为 null。
+ */
+export function deriveMetrics(v: VenueDetail): JournalMetrics {
+  const jcrLatest = latest(v.jcrRatings);
+  const casLatest = latest(v.casRatings);
+  const scopusLatest = latest(v.scopusRatings);
+
+  const jcr: JcrView | null =
+    v.impactFactor != null || v.jcrQuartile != null || v.jcrSubject != null || jcrLatest != null
+      ? {
+          impactFactor: v.impactFactor,
+          quartile: v.jcrQuartile,
+          subject: v.jcrSubject,
+          percentile: jcrLatest?.jifPercentile ?? null,
+          rank: jcrLatest?.jifRank ?? null,
+        }
+      : null;
+
+  const cas: CasView | null =
+    v.casMajorCategory != null || v.casMajorQuartile != null || casLatest != null
+      ? {
+          majorCategory: v.casMajorCategory ?? casLatest?.majorCategory ?? null,
+          majorQuartile: v.casMajorQuartile ?? casLatest?.majorQuartile ?? null,
+          minorSubject: casLatest?.minorSubject ?? null,
+          minorQuartile: casLatest?.minorQuartile ?? null,
+          isTop: v.casIsTop ?? casLatest?.isTop ?? false,
+          isReview: casLatest?.isReview ?? false,
+        }
+      : null;
+
+  const scopus: ScopusView | null =
+    v.citeScore != null || scopusLatest != null
+      ? {
+          citeScore: v.citeScore ?? scopusLatest?.citeScore ?? null,
+          sjr: scopusLatest?.sjr ?? null,
+          snip: scopusLatest?.snip ?? null,
+          percentile: scopusLatest?.percentile ?? null,
+        }
+      : null;
+
+  const bibliometric: BibliometricView | null =
+    v.hIndex != null || v.citedByCount != null || v.worksCount != null
+      ? { hIndex: v.hIndex, i10Index: null, citedByCount: v.citedByCount, worksCount: v.worksCount }
+      : null;
+
+  return { jcr, cas, scopus, bibliometric };
+}
+
+/** 定位·学科领域标签：jcrSubject + casMajorCategory 去重；皆空 → []。 */
+export function deriveSubjectAreas(v: VenueDetail): string[] {
+  const out: string[] = [];
+  for (const s of [v.jcrSubject, v.casMajorCategory]) {
+    const t = s?.trim();
+    if (t && !out.includes(t)) {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** 影响力速览卡（最多 3 张，缺值降级）。 */
+export function deriveMetricCards(m: JournalMetrics): MetricCard[] {
+  const cards: MetricCard[] = [];
+  if (m.jcr?.impactFactor != null) {
+    cards.push({ key: "if", label: "JCR 影响因子", value: m.jcr.impactFactor.toFixed(1), sub: "最新年度", accent: true });
+  }
+  if (m.jcr?.quartile) {
+    cards.push({ key: "q", label: "JCR 分区", value: m.jcr.quartile, sub: m.jcr.rank ? `排名 ${m.jcr.rank}` : (m.jcr.subject ?? ""), accent: false });
+  }
+  if (m.cas?.majorQuartile) {
+    cards.push({ key: "cas", label: "中科院分区", value: m.cas.majorQuartile, sub: `${m.cas.majorCategory ?? "—"}${m.cas.isTop ? " · Top" : ""}`, accent: false });
+  } else if (m.scopus?.citeScore != null) {
+    cards.push({ key: "cs", label: "Scopus CiteScore", value: m.scopus.citeScore.toFixed(1), sub: m.scopus.percentile != null ? `${m.scopus.percentile}% 百分位` : "", accent: false });
+  }
+  return cards;
+}
+
+/** 年度趋势：按 year 升序；空 → []。组件据此渲染双柱图（无则不显）。 */
+export function deriveYearlyStats(v: VenueDetail): YearlyStat[] {
+  return [...v.yearlyStats].sort((a, b) =&gt; a.year - b.year);
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：跑绿 + typecheck</strong>
+            <p>运行：<code>cd patra-portal && pnpm test venue-derive && pnpm typecheck</code></p>
+            <p>预期：全部用例绿；typecheck exit 0。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：lint + commit</strong>
+            <pre><code class="lang-bash">cd patra-portal && pnpm lint
+git add patra-portal/src/lib/portal-api/venue-derive.ts patra-portal/tests/lib/portal-api/venue-derive.test.ts
+git commit -m "feat(portal): venue-derive 扁平响应→视图对象派生 + 单测 (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：状态屏基元 + 全局壳重构</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/lib/portal-ui.ts</code>（暖纸按钮 class 串，详情/状态屏共用）</dd>
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/status/NotFoundState.tsx</code>（RSC）</dd>
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/status/ErrorState.tsx</code>（"use client"）</dd>
+            <dt>修改</dt><dd><code>patra-portal/src/app/not-found.tsx</code>、<code>patra-portal/src/app/error.tsx</code>（极简占位 → 壳）</dd>
+            <dt>创建</dt><dd><code>patra-portal/src/app/journals/[id]/not-found.tsx</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/status-screens.test.tsx</code></dd>
+          </dl>
+        </header>
+        <p>决策 E：重构已存在的极简占位 <code>not-found.tsx</code>/<code>error.tsx</code> 为薄壳，包全站复用 State 基元；现 error.tsx 直接渲染 <code>error.message</code>，重构后<strong>只传受控文案</strong>，不泄漏。TopNav/Footer 是页面级（不在 layout），故壳需自带 <code>&lt;TopNav/&gt;</code>。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：portal-ui.ts 按钮 class 串</strong>
+            <pre><code class="lang-ts">/// 详情页 / 状态屏共用的暖纸按钮 class 串（复刻 hi-fi .btn-primary=clay / .btn-sec）。
+const BTN_BASE =
+  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border px-3.5 py-2 font-sans text-base font-semibold no-underline transition-colors outline-none focus-visible:shadow-[var(--ring-focus)] disabled:cursor-not-allowed";
+
+export const btnPrimary = `${BTN_BASE} border-clay-700 bg-clay-600 text-[var(--fg-on-clay)] hover:bg-clay-700 active:bg-clay-800`;
+export const btnSecondary = `${BTN_BASE} border-[var(--border-default)] bg-paper-50 text-[var(--fg-1)] hover:bg-paper-200`;
+export const btnBlock = "w-full px-3.5 py-2.5";</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：先写状态屏测试（red）</strong>
+            <p>新建 <code>tests/components/portal/status-screens.test.tsx</code>（首行 import jest-dom matchers）。</p>
+            <pre><code class="lang-tsx">import "@testing-library/jest-dom/vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { ErrorState } from "@/components/portal/status/ErrorState";
+import { NotFoundState } from "@/components/portal/status/NotFoundState";
+
+describe("NotFoundState", () =&gt; {
+  it("渲染 404 标题、期刊文案与返回首页链接", () =&gt; {
+    render(&lt;NotFoundState kind="journal" /&gt;);
+    expect(screen.getByRole("heading", { name: "没有这一页" })).toBeInTheDocument();
+    expect(screen.getByText(/这本期刊不在 Patra/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /返回首页/ })).toHaveAttribute("href", "/");
+  });
+});
+
+describe("ErrorState", () =&gt; {
+  it("点击重试调用 onRetry，不渲染原始堆栈", async () =&gt; {
+    const onRetry = vi.fn();
+    render(&lt;ErrorState onRetry={onRetry} context="加载期刊" /&gt;);
+    expect(screen.getByRole("heading", { name: "这一页没能加载出来" })).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: /重试/ }));
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：NotFoundState.tsx（RSC，green）</strong>
+            <pre><code class="lang-tsx">import { Home, Search } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { btnPrimary, btnSecondary } from "@/lib/portal-ui";
+
+type NotFoundKind = "journal" | "paper" | "page";
+
+const LINES: Record&lt;NotFoundKind, string&gt; = {
+  journal: "这本期刊不在 Patra 的索引里 —— 可能 ID 有误，或它尚未被收录。",
+  paper: "这篇文献不在 Patra 的索引里 —— 可能 ID 有误，或它尚未被采集。",
+  page: "这个地址在 Patra 里找不到对应内容。链接可能已失效，或从未存在。",
+};
+
+/// 全站复用 404 状态屏（RSC）。暖纸编辑风，不暴露堆栈。
+export function NotFoundState({ kind = "page" }: { kind?: NotFoundKind }) {
+  return (
+    &lt;div className="flex min-h-[calc(100vh-56px)] items-center justify-center px-6 py-[72px]"&gt;
+      &lt;div className="flex w-full max-w-[540px] flex-col items-center text-center"&gt;
+        &lt;div className="mb-7 inline-flex items-center justify-center gap-[clamp(16px,4vw,28px)]"&gt;
+          &lt;span className="shrink-0 border-r border-[var(--border-default)] pr-[clamp(16px,4vw,28px)] opacity-90"&gt;
+            &lt;Image src="/brand/patra-mark.svg" alt="" aria-hidden width={25} height={88} /&gt;
+          &lt;/span&gt;
+          &lt;span className="font-serif font-medium leading-[0.9] tracking-[-0.04em] text-ink-200 tabular-nums text-[clamp(64px,13vw,120px)]"&gt;
+            404
+          &lt;/span&gt;
+        &lt;/div&gt;
+        &lt;span className="mb-3.5 inline-flex items-center gap-2 whitespace-nowrap font-mono text-xs uppercase tracking-[0.1em] text-clay-700"&gt;
+          &lt;span className="h-1.5 w-1.5 rounded-full bg-clay-500" /&gt; HTTP 404 · not found
+        &lt;/span&gt;
+        &lt;h1 className="mb-3.5 font-serif font-medium leading-[1.18] tracking-tight text-[var(--fg-1)] text-balance text-[clamp(24px,4vw,32px)]"&gt;
+          没有这一页
+        &lt;/h1&gt;
+        &lt;p className="mb-7 max-w-[440px] font-serif text-lg leading-relaxed text-[var(--fg-2)] text-pretty"&gt;
+          {LINES[kind]}
+        &lt;/p&gt;
+        &lt;div className="flex flex-wrap justify-center gap-2.5"&gt;
+          &lt;Link href="/" className={btnPrimary}&gt;
+            &lt;Home size={15} /&gt; 返回首页
+          &lt;/Link&gt;
+          &lt;Link href="/" className={btnSecondary}&gt;
+            &lt;Search size={15} /&gt; 去检索
+          &lt;/Link&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：ErrorState.tsx（"use client"，green）</strong>
+            <pre><code class="lang-tsx">"use client";
+
+import { Home, RefreshCw } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { btnPrimary, btnSecondary } from "@/lib/portal-ui";
+
+interface ErrorStateProps {
+  onRetry: () =&gt; void;
+  context?: string;
+}
+
+/// 全站复用 error 兜底屏（client，带重试）。只展示受控文案，绝不渲染 error.message / 堆栈。
+export function ErrorState({ onRetry, context = "加载" }: ErrorStateProps) {
+  return (
+    &lt;div className="flex min-h-[calc(100vh-56px)] items-center justify-center px-6 py-[72px]"&gt;
+      &lt;div className="flex w-full max-w-[540px] flex-col items-center text-center"&gt;
+        &lt;div className="mb-7 inline-flex items-center justify-center gap-[clamp(16px,4vw,28px)]"&gt;
+          &lt;span className="shrink-0 border-r border-[var(--border-default)] pr-[clamp(16px,4vw,28px)] opacity-85"&gt;
+            &lt;Image src="/brand/patra-mark.svg" alt="" aria-hidden width={25} height={88} /&gt;
+          &lt;/span&gt;
+          &lt;span className="font-serif font-medium leading-[0.9] tracking-[-0.04em] text-rust-500 tabular-nums text-[clamp(64px,13vw,120px)]"&gt;
+            500
+          &lt;/span&gt;
+        &lt;/div&gt;
+        &lt;span className="mb-3.5 inline-flex items-center gap-2 whitespace-nowrap font-mono text-xs uppercase tracking-[0.1em] text-rust-500"&gt;
+          &lt;span className="h-1.5 w-1.5 rounded-full bg-rust-500" /&gt; 服务异常 · 兜底页
+        &lt;/span&gt;
+        &lt;h1 className="mb-3.5 font-serif font-medium leading-[1.18] tracking-tight text-[var(--fg-1)] text-balance text-[clamp(24px,4vw,32px)]"&gt;
+          这一页没能加载出来
+        &lt;/h1&gt;
+        &lt;p className="mb-7 max-w-[440px] font-serif text-lg leading-relaxed text-[var(--fg-2)] text-pretty"&gt;
+          {context}时出了点问题 —— 可能是上游来源短暂不可用，或一次性的网络抖动。这通常重试就能恢复。
+        &lt;/p&gt;
+        &lt;div className="flex flex-wrap justify-center gap-2.5"&gt;
+          &lt;button type="button" onClick={onRetry} className={btnPrimary}&gt;
+            &lt;RefreshCw size={15} /&gt; 重试
+          &lt;/button&gt;
+          &lt;Link href="/" className={btnSecondary}&gt;
+            &lt;Home size={15} /&gt; 返回首页
+          &lt;/Link&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：三个壳（全局 not-found / error + 期刊 not-found）</strong>
+            <p>替换 <code>src/app/not-found.tsx</code> 全文（RSC，包 NotFoundState kind="page"）：</p>
+            <pre><code class="lang-tsx">import { NotFoundState } from "@/components/portal/status/NotFoundState";
+import { TopNav } from "@/components/portal/TopNav";
+
+export default function NotFound() {
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;NotFoundState kind="page" /&gt;
+      &lt;/main&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+            <p>替换 <code>src/app/error.tsx</code> 全文（"use client"；接收 <code>error</code> 但<strong>不</strong>使用它，只用 <code>reset</code>）：</p>
+            <pre><code class="lang-tsx">"use client";
+
+import { ErrorState } from "@/components/portal/status/ErrorState";
+import { TopNav } from "@/components/portal/TopNav";
+
+export default function GlobalError({
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () =&gt; void;
+}) {
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;ErrorState onRetry={reset} /&gt;
+      &lt;/main&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+            <p>新建 <code>src/app/journals/[id]/not-found.tsx</code>（RSC，kind="journal"；not-found 边界拿不到 params，故不传具体 id）：</p>
+            <pre><code class="lang-tsx">import { NotFoundState } from "@/components/portal/status/NotFoundState";
+import { TopNav } from "@/components/portal/TopNav";
+
+export default function JournalNotFound() {
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;NotFoundState kind="journal" /&gt;
+      &lt;/main&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：跑绿 + typecheck + lint + commit</strong>
+            <p>运行：<code>cd patra-portal && pnpm test status-screens && pnpm typecheck && pnpm lint</code></p>
+            <p>预期：2 个用例绿；typecheck/lint 通过。</p>
+            <pre><code class="lang-bash">git add patra-portal/src/lib/portal-ui.ts patra-portal/src/components/portal/status/ patra-portal/src/app/not-found.tsx patra-portal/src/app/error.tsx "patra-portal/src/app/journals/[id]/not-found.tsx" patra-portal/tests/components/portal/status-screens.test.tsx
+git commit -m "feat(portal): 全站状态屏基元 NotFoundState/ErrorState + 壳重构 (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：共享交互基元 DisclosureSection / IdentifierChip</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/DisclosureSection.tsx</code>（"use client"）— 两页共用</dd>
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/IdentifierChip.tsx</code>（"use client"）— 两页共用</dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/DisclosureSection.test.tsx</code></dd>
+          </dl>
+        </header>
+        <p>两页共用件放 <code>portal/</code>（非 <code>journal-detail/</code> 子目录），供 PAP-45 直接复用。DisclosureSection = 受控 <code>button[aria-expanded]</code>（非原生 <code>&lt;details&gt;</code>），chevron 180ms 旋转，相邻区 <code>-1px</code> 合并边框。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：先写 DisclosureSection 测试（red）</strong>
+            <pre><code class="lang-tsx">import "@testing-library/jest-dom/vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { DisclosureSection } from "@/components/portal/DisclosureSection";
+
+describe("DisclosureSection", () =&gt; {
+  it("默认收起：aria-expanded=false，body 不在文档", () =&gt; {
+    render(
+      &lt;DisclosureSection title="完整评级明细"&gt;
+        &lt;p&gt;评级内容&lt;/p&gt;
+      &lt;/DisclosureSection&gt;,
+    );
+    expect(screen.getByRole("button", { name: /完整评级明细/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("评级内容")).not.toBeInTheDocument();
+  });
+
+  it("defaultOpen：初始展开，body 可见", () =&gt; {
+    render(
+      &lt;DisclosureSection title="完整评级明细" defaultOpen&gt;
+        &lt;p&gt;评级内容&lt;/p&gt;
+      &lt;/DisclosureSection&gt;,
+    );
+    expect(screen.getByText("评级内容")).toBeInTheDocument();
+  });
+
+  it("点击在展开/收起间切换", async () =&gt; {
+    const user = userEvent.setup();
+    render(
+      &lt;DisclosureSection title="文献计量与趋势"&gt;
+        &lt;p&gt;趋势内容&lt;/p&gt;
+      &lt;/DisclosureSection&gt;,
+    );
+    const btn = screen.getByRole("button", { name: /文献计量与趋势/ });
+    await user.click(btn);
+    expect(btn).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("趋势内容")).toBeInTheDocument();
+    await user.click(btn);
+    expect(btn).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("趋势内容")).not.toBeInTheDocument();
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：跑红</strong>
+            <p>运行：<code>cd patra-portal && pnpm test DisclosureSection</code> → 失败（组件不存在）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：实现 DisclosureSection.tsx（green）</strong>
+            <pre><code class="lang-tsx">"use client";
+
+import { ChevronRight } from "lucide-react";
+import { type ReactNode, useId, useState } from "react";
+
+interface DisclosureSectionProps {
+  title: string;
+  count?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}
+
+/// 渐进式披露折叠区（受控 button[aria-expanded]，非原生 details）。相邻区 -1px 合并边框。
+export function DisclosureSection({
+  title,
+  count,
+  defaultOpen = false,
+  children,
+}: DisclosureSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const bodyId = useId();
+  return (
+    &lt;section className="overflow-hidden rounded-lg border border-[var(--border-default)] bg-paper-50 [&amp;+&amp;]:-mt-px"&gt;
+      &lt;button
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() =&gt; setOpen((o) =&gt; !o)}
+        className="flex w-full items-center gap-3 px-5 py-4 text-left font-sans transition-colors hover:bg-paper-100 focus-visible:shadow-[var(--ring-focus)] focus-visible:outline-none"
+      &gt;
+        &lt;ChevronRight
+          size={16}
+          data-open={open}
+          className="shrink-0 text-[var(--fg-3)] transition-transform duration-200 data-[open=true]:rotate-90"
+        /&gt;
+        &lt;span className="text-lg font-semibold leading-snug tracking-tight text-ink-900"&gt;{title}&lt;/span&gt;
+        {count != null &amp;&amp; (
+          &lt;span className="ml-auto shrink-0 font-mono text-xs tabular-nums text-[var(--fg-3)]"&gt;{count}&lt;/span&gt;
+        )}
+      &lt;/button&gt;
+      {open &amp;&amp; (
+        &lt;div id={bodyId} className="border-t border-[var(--border-subtle)] px-5 pb-5 pt-4"&gt;
+          {children}
+        &lt;/div&gt;
+      )}
+    &lt;/section&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：实现 IdentifierChip.tsx</strong>
+            <pre><code class="lang-tsx">"use client";
+
+import { Check, Copy, Link2 } from "lucide-react";
+import { useState } from "react";
+
+interface IdentifierChipProps {
+  label: string;
+  value: string | null;
+  href?: string | null;
+}
+
+/// 标识符 chip：整块 key+value 即复制按钮；可选外链尾格。value 为空 → 不渲染。
+export function IdentifierChip({ label, value, href }: IdentifierChipProps) {
+  const [done, setDone] = useState(false);
+  if (!value) {
+    return null;
+  }
+  const onCopy = async () =&gt; {
+    try {
+      await navigator.clipboard.writeText(value);
+      setDone(true);
+      setTimeout(() =&gt; setDone(false), 1400);
+    } catch {
+      // 无 clipboard 权限时静默，不打断
+    }
+  };
+  return (
+    &lt;span
+      className={`inline-flex items-stretch overflow-hidden rounded-md border bg-paper-50 font-mono transition-colors ${done ? "border-moss-500" : "border-[var(--border-default)] hover:border-ink-300"}`}
+    &gt;
+      &lt;button
+        type="button"
+        onClick={onCopy}
+        aria-label={`复制 ${label}：${value}`}
+        title={`复制 ${label}`}
+        className="inline-flex items-stretch bg-transparent transition-colors hover:bg-paper-200 focus-visible:shadow-[var(--ring-focus)] focus-visible:outline-none"
+      &gt;
+        &lt;span
+          className={`inline-flex items-center border-r px-2.5 text-[9.5px] uppercase tracking-[0.06em] ${done ? "border-moss-500 text-moss-500" : "border-[var(--border-default)] text-[var(--fg-3)]"}`}
+        &gt;
+          {label}
+        &lt;/span&gt;
+        &lt;span className={`inline-flex items-center px-2.5 py-1.5 text-sm tabular-nums ${done ? "text-moss-500" : "text-ink-900"}`}&gt;
+          {value}
+        &lt;/span&gt;
+        &lt;span className={`inline-flex items-center pr-2.5 pl-0.5 ${done ? "text-moss-500" : "text-[var(--fg-4)]"}`} aria-hidden&gt;
+          {done ? &lt;Check size={13} /&gt; : &lt;Copy size={13} /&gt;}
+        &lt;/span&gt;
+      &lt;/button&gt;
+      {href &amp;&amp; (
+        &lt;a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`在新窗口打开 ${label}`}
+          title="打开链接 ↗"
+          className="inline-flex w-8 items-center justify-center border-l border-[var(--border-default)] bg-paper-50 text-[var(--fg-3)] transition-colors hover:bg-clay-50 hover:text-clay-700 focus-visible:shadow-[var(--ring-focus)] focus-visible:outline-none"
+        &gt;
+          &lt;Link2 size={13} /&gt;
+        &lt;/a&gt;
+      )}
+    &lt;/span&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：跑绿 + typecheck + lint + commit</strong>
+            <p>运行：<code>cd patra-portal && pnpm test DisclosureSection && pnpm typecheck && pnpm lint</code></p>
+            <p>预期：3 个用例绿；typecheck/lint 通过。</p>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/DisclosureSection.tsx patra-portal/src/components/portal/IdentifierChip.tsx patra-portal/tests/components/portal/DisclosureSection.test.tsx
+git commit -m "feat(portal): 共享 DisclosureSection / IdentifierChip 基元 (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-7" data-status="done">
+        <header>
+          <h2>任务 7：期刊详情视觉组件</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>SectionEyebrow.tsx</code>（小标题，含品牌叶；3+ 处复用 — 较 spec 文件清单新增，记 DEVIATION）</dd>
+            <dt>创建</dt><dd><code>MetricBadge.tsx</code> · <code>JournalMasthead.tsx</code> · <code>JournalPositioning.tsx</code> · <code>RatingTable.tsx</code> · <code>TrendChart.tsx</code> · <code>JournalRail.tsx</code>（均在 <code>src/components/portal/journal-detail/</code>，RSC）</dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/JournalMasthead.test.tsx</code></dd>
+          </dl>
+        </header>
+        <p>纯展示 RSC 组件，消费 Task 4 的派生视图（<code>JournalMetrics</code>/<code>MetricCard</code>）与扁平 <code>VenueDetail</code>。class 遵循"实现约定"callout。<strong>注意 BE 无 publisher 字段</strong>——masthead/侧栏的"出版商"一律省略（同 affiliatedSocieties）。仅 masthead 有可单测的降级行为（homepageUrl null），其余由 typecheck + e2e + 截图肉眼核对覆盖。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：先写 masthead 测试（red）</strong>
+            <pre><code class="lang-tsx">import "@testing-library/jest-dom/vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { JournalMasthead } from "@/components/portal/journal-detail/JournalMasthead";
+import type { VenueDetail } from "@/types/portal";
+
+function makeVenue(o: Partial&lt;VenueDetail&gt; = {}): VenueDetail {
+  return {
+    id: "1", title: "Nature", abbreviatedTitle: "Nat", venueType: null, issnL: null,
+    countryCode: null, primaryLanguage: null, foundedYear: 1869, coverObjectKey: null,
+    homepageUrl: null, isOpenAccess: null, impactFactor: null, jcrQuartile: null,
+    jcrSubject: null, casMajorCategory: null, casMajorQuartile: null, casIsTop: null,
+    citeScore: null, hIndex: null, citedByCount: null, worksCount: null, frequency: null,
+    medlineIndexed: null, oaType: null, apcUsd: null, isInDoaj: null,
+    jcrRatings: [], casRatings: [], scopusRatings: [], yearlyStats: [], identifiers: [], ...o,
+  };
+}
+
+describe("JournalMasthead", () =&gt; {
+  it("homepageUrl 为 null → 主操作 disabled + 待采集文案", () =&gt; {
+    render(&lt;JournalMasthead venue={makeVenue({ homepageUrl: null })} /&gt;);
+    expect(screen.getByRole("button", { name: /官网链接待采集/ })).toBeDisabled();
+  });
+
+  it("homepageUrl 存在 → 渲染官网外链", () =&gt; {
+    render(&lt;JournalMasthead venue={makeVenue({ homepageUrl: "https://nature.com" })} /&gt;);
+    expect(screen.getByRole("link", { name: /访问期刊官网/ })).toHaveAttribute("href", "https://nature.com");
+  });
+
+  it("封面词标来自缩写", () =&gt; {
+    render(&lt;JournalMasthead venue={makeVenue({ abbreviatedTitle: "Nat" })} /&gt;);
+    expect(screen.getAllByText("Nat").length).toBeGreaterThanOrEqual(1);
+  });
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：跑红</strong>
+            <p>运行：<code>cd patra-portal && pnpm test JournalMasthead</code> → 失败（组件不存在）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：SectionEyebrow + MetricBadge + JournalMasthead（green）</strong>
+            <p><code>journal-detail/SectionEyebrow.tsx</code>：</p>
+            <pre><code class="lang-tsx">import Image from "next/image";
+import type { ReactNode } from "react";
+
+/// 区块小标题（品牌叶 + 大写标签），详情页多处复用。
+export function SectionEyebrow({ children }: { children: ReactNode }) {
+  return (
+    &lt;p className="mb-3.5 flex items-center gap-2 font-sans text-2xs font-semibold uppercase tracking-caps text-[var(--fg-3)]"&gt;
+      &lt;Image src="/brand/patra-mark.svg" alt="" aria-hidden width={4} height={14} /&gt;
+      {children}
+    &lt;/p&gt;
+  );
+}</code></pre>
+            <p><code>journal-detail/MetricBadge.tsx</code>：</p>
+            <pre><code class="lang-tsx">import type { MetricCard } from "@/lib/portal-api/venue-derive";
+
+/// 影响力速览单卡（纯展示）。accent=true 为 clay 高亮（IF 卡）。
+export function MetricBadge({ card }: { card: MetricCard }) {
+  return (
+    &lt;div className={`flex flex-col gap-1 rounded-md border p-4 ${card.accent ? "border-clay-200 bg-clay-50" : "border-[var(--border-default)] bg-paper-50"}`}&gt;
+      &lt;span className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-[var(--fg-3)]"&gt;{card.label}&lt;/span&gt;
+      &lt;span className={`font-serif text-[30px] font-medium leading-[1.05] tracking-tight tabular-nums ${card.accent ? "text-clay-800" : "text-ink-900"}`}&gt;
+        {card.value}
+      &lt;/span&gt;
+      {card.sub &amp;&amp; &lt;span className="font-sans text-xs text-[var(--fg-3)]"&gt;{card.sub}&lt;/span&gt;}
+    &lt;/div&gt;
+  );
+}</code></pre>
+            <p><code>journal-detail/JournalMasthead.tsx</code>（封面=词标+调色板，复用 pickCover；facts 省略 publisher）：</p>
+            <pre><code class="lang-tsx">import { Book, ExternalLink, Leaf } from "lucide-react";
+import type { CSSProperties } from "react";
+import { pickCover } from "@/lib/portal-api/cover-palette";
+import { btnPrimary, btnSecondary } from "@/lib/portal-ui";
+import type { VenueDetail } from "@/types/portal";
+
+const ISSN_PLACEHOLDER = "XXXX-XXXX";
+
+export function JournalMasthead({ venue }: { venue: VenueDetail }) {
+  const { bg, ink } = pickCover(venue.id);
+  const coverVars = { "--cover-bg": bg, "--cover-ink": ink } as CSSProperties;
+  const word = venue.abbreviatedTitle?.trim() || venue.title;
+  const issn = venue.issnL &amp;&amp; venue.issnL !== ISSN_PLACEHOLDER ? venue.issnL : null;
+  const factSep =
+    "before:mx-2.5 before:text-ink-300 before:content-['·'] first:before:content-['']";
+
+  return (
+    &lt;header className="grid grid-cols-[132px_minmax(0,1fr)] items-start gap-7 max-[540px]:grid-cols-[92px_1fr] max-[540px]:gap-[18px]"&gt;
+      {word ? (
+        &lt;div
+          style={coverVars}
+          className="relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--cover-bg)] p-2.5 text-center text-[var(--cover-ink)] before:absolute before:inset-[7px] before:border before:border-current before:opacity-20 before:content-['']"
+        &gt;
+          &lt;span className="whitespace-pre-line font-serif font-medium leading-[1.05] tracking-tight text-[clamp(16px,4.4vw,22px)]"&gt;{word}&lt;/span&gt;
+          {venue.foundedYear != null &amp;&amp; (
+            &lt;span className="absolute right-1.5 bottom-2.5 left-1.5 text-center font-mono text-[8px] uppercase tracking-[0.14em] opacity-60"&gt;est. {venue.foundedYear}&lt;/span&gt;
+          )}
+        &lt;/div&gt;
+      ) : (
+        &lt;div className="flex aspect-[3/4] items-center justify-center rounded-lg border border-dashed border-[var(--border-default)] bg-paper-200 text-ink-400"&gt;
+          &lt;span className="flex flex-col items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.08em]"&gt;&lt;Book size={22} /&gt; 暂无封面&lt;/span&gt;
+        &lt;/div&gt;
+      )}
+
+      &lt;div className="flex min-w-0 flex-col gap-2.5"&gt;
+        {venue.isOpenAccess ? (
+          &lt;span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-moss-500 bg-moss-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-moss-500"&gt;
+            &lt;Leaf size={12} /&gt; 开放获取
+          &lt;/span&gt;
+        ) : (
+          &lt;span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-[var(--border-default)] bg-paper-100 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--fg-3)]"&gt;
+            订阅 · 混合 OA
+          &lt;/span&gt;
+        )}
+        &lt;h1 className="m-0 font-serif font-medium leading-[1.08] tracking-[-0.02em] text-[var(--fg-1)] text-balance text-[clamp(26px,3.6vw,38px)]"&gt;{venue.title}&lt;/h1&gt;
+        {venue.abbreviatedTitle &amp;&amp; &lt;div className="font-mono text-sm tracking-[0.02em] text-[var(--fg-3)]"&gt;{venue.abbreviatedTitle}&lt;/div&gt;}
+        &lt;div className="flex flex-wrap items-center gap-y-1 font-sans text-md text-[var(--fg-2)]"&gt;
+          {issn &amp;&amp; &lt;span className={`font-mono text-sm ${factSep}`}&gt;ISSN {issn}&lt;/span&gt;}
+          {venue.countryCode &amp;&amp; &lt;span className={factSep}&gt;{venue.countryCode}&lt;/span&gt;}
+          {venue.foundedYear != null &amp;&amp; &lt;span className={factSep}&gt;创刊 {venue.foundedYear}&lt;/span&gt;}
+        &lt;/div&gt;
+        &lt;div className="mt-1.5 flex flex-wrap gap-2.5"&gt;
+          {venue.homepageUrl ? (
+            &lt;a href={venue.homepageUrl} target="_blank" rel="noopener noreferrer" className={btnPrimary}&gt;
+              访问期刊官网 &lt;ExternalLink size={14} /&gt;
+            &lt;/a&gt;
+          ) : (
+            &lt;button type="button" disabled title="官网链接待采集" className={`${btnSecondary} opacity-55`}&gt;
+              官网链接待采集
+            &lt;/button&gt;
+          )}
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/header&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：跑绿</strong>
+            <p>运行：<code>cd patra-portal && pnpm test JournalMasthead</code> → 3 用例绿。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：Positioning / RatingTable / TrendChart / Rail</strong>
+            <p><code>journal-detail/JournalPositioning.tsx</code>：</p>
+            <pre><code class="lang-tsx">import { SectionEyebrow } from "@/components/portal/journal-detail/SectionEyebrow";
+import type { VenueDetail } from "@/types/portal";
+
+export function JournalPositioning({ venue, subjects }: { venue: VenueDetail; subjects: string[] }) {
+  const tags: { k: string; v: string }[] = [];
+  for (const s of subjects) {
+    tags.push({ k: "学科", v: s });
+  }
+  if (venue.frequency) {
+    tags.push({ k: "出版", v: venue.frequency });
+  }
+  if (venue.medlineIndexed != null) {
+    tags.push({ k: "索引", v: venue.medlineIndexed ? "MEDLINE 收录" : "未被 MEDLINE 收录" });
+  }
+  tags.push({
+    k: "获取",
+    v: venue.isOpenAccess ? `开放获取${venue.oaType ? ` · ${venue.oaType}` : ""}` : "订阅 / 混合",
+  });
+
+  return (
+    &lt;section className="rounded-lg border border-[var(--border-default)] bg-paper-50 px-5 py-[18px]"&gt;
+      &lt;SectionEyebrow&gt;定位与范围&lt;/SectionEyebrow&gt;
+      &lt;p className="mb-3 font-sans text-sm leading-normal text-[var(--fg-3)]"&gt;由结构化事实组合 —— 该刊暂无编辑撰写的简介文本。&lt;/p&gt;
+      &lt;div className="flex flex-wrap gap-2"&gt;
+        {tags.map((t) =&gt; (
+          &lt;span key={`${t.k}-${t.v}`} className="inline-flex items-center gap-1.5 rounded-sm border border-[var(--border-default)] bg-paper-100 px-2.5 py-1 font-sans text-sm font-medium leading-normal text-[var(--fg-2)]"&gt;
+            &lt;span className="mr-px border-r border-[var(--border-default)] pr-1.5 font-mono text-[9.5px] uppercase tracking-[0.05em] text-[var(--fg-4)]"&gt;{t.k}&lt;/span&gt;
+            {t.v}
+          &lt;/span&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/section&gt;
+  );
+}</code></pre>
+            <p><code>journal-detail/RatingTable.tsx</code>（hairline 网格 = gap-px + 底色；消费派生 metrics）：</p>
+            <pre><code class="lang-tsx">import type { ReactNode } from "react";
+import type { JournalMetrics } from "@/lib/portal-api/venue-derive";
+
+function Cell({ label, children, accent }: { label: string; children: ReactNode; accent?: boolean }) {
+  return (
+    &lt;div className="flex flex-col gap-0.5 bg-paper-50 px-3 py-2.5"&gt;
+      &lt;span className="font-mono text-[9px] uppercase tracking-[0.05em] text-[var(--fg-3)]"&gt;{label}&lt;/span&gt;
+      &lt;span className={`font-sans text-lg font-semibold leading-tight tabular-nums ${accent ? "text-clay-700" : "text-ink-900"}`}&gt;{children}&lt;/span&gt;
+    &lt;/div&gt;
+  );
+}
+
+function System({ name, source, children }: { name: string; source: string; children: ReactNode }) {
+  return (
+    &lt;div&gt;
+      &lt;div className="mb-2 flex items-baseline gap-2.5"&gt;
+        &lt;span className="font-sans text-md font-semibold text-ink-900"&gt;{name}&lt;/span&gt;
+        &lt;span className="font-mono text-[9.5px] uppercase tracking-[0.06em] text-[var(--fg-4)]"&gt;{source}&lt;/span&gt;
+      &lt;/div&gt;
+      {children}
+    &lt;/div&gt;
+  );
+}
+
+const GRID = "grid gap-px overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)]";
+
+export function RatingTable({ metrics }: { metrics: JournalMetrics }) {
+  const { jcr, cas, scopus } = metrics;
+  return (
+    &lt;div className="flex flex-col gap-[18px]"&gt;
+      {jcr &amp;&amp; (
+        &lt;System name="JCR · 期刊引证报告" source="Clarivate"&gt;
+          &lt;div className={`${GRID} grid-cols-4 max-[540px]:grid-cols-2`}&gt;
+            &lt;Cell label="影响因子"&gt;{jcr.impactFactor != null ? jcr.impactFactor.toFixed(1) : "—"}&lt;/Cell&gt;
+            &lt;Cell label="分区" accent&gt;{jcr.quartile ?? "—"}&lt;/Cell&gt;
+            &lt;Cell label="学科百分位"&gt;{jcr.percentile != null ? `${jcr.percentile}%` : "—"}&lt;/Cell&gt;
+            &lt;Cell label="排名"&gt;{jcr.rank ?? "—"}&lt;/Cell&gt;
+          &lt;/div&gt;
+          {jcr.subject &amp;&amp; &lt;p className="mt-2 font-sans text-xs text-[var(--fg-3)]"&gt;学科 · {jcr.subject}&lt;/p&gt;}
+        &lt;/System&gt;
+      )}
+      {cas ? (
+        &lt;System name="中科院分区 · CAS" source="中科院文献情报中心"&gt;
+          &lt;div className={`${GRID} grid-cols-2`}&gt;
+            &lt;Cell label="大类" accent&gt;{cas.majorCategory ?? "—"} · {cas.majorQuartile ?? "—"}&lt;/Cell&gt;
+            &lt;Cell label="小类" accent&gt;{cas.minorSubject ?? "—"} · {cas.minorQuartile ?? "—"}&lt;/Cell&gt;
+          &lt;/div&gt;
+          {(cas.isTop || cas.isReview) &amp;&amp; (
+            &lt;div className="mt-2 flex flex-wrap gap-1.5"&gt;
+              {cas.isTop &amp;&amp; &lt;span className="rounded-full border border-clay-200 bg-clay-50 px-2.5 py-0.5 font-sans text-xs font-semibold text-clay-800"&gt;Top 期刊&lt;/span&gt;}
+              {cas.isReview &amp;&amp; &lt;span className="rounded-full border border-clay-200 bg-clay-50 px-2.5 py-0.5 font-sans text-xs font-semibold text-clay-800"&gt;综述期刊&lt;/span&gt;}
+            &lt;/div&gt;
+          )}
+        &lt;/System&gt;
+      ) : (
+        &lt;System name="中科院分区 · CAS" source="CAS"&gt;
+          &lt;p className="rounded-md border border-dashed border-[var(--border-default)] bg-paper-100 px-3 py-2.5 font-sans text-sm text-[var(--fg-3)]"&gt;该刊暂无中科院分区数据。&lt;/p&gt;
+        &lt;/System&gt;
+      )}
+      {scopus &amp;&amp; (
+        &lt;System name="Scopus 指标" source="Elsevier"&gt;
+          &lt;div className={`${GRID} grid-cols-4 max-[540px]:grid-cols-2`}&gt;
+            &lt;Cell label="CiteScore"&gt;{scopus.citeScore != null ? scopus.citeScore.toFixed(1) : "—"}&lt;/Cell&gt;
+            &lt;Cell label="SJR"&gt;{scopus.sjr != null ? scopus.sjr.toFixed(2) : "—"}&lt;/Cell&gt;
+            &lt;Cell label="SNIP"&gt;{scopus.snip != null ? scopus.snip.toFixed(2) : "—"}&lt;/Cell&gt;
+            &lt;Cell label="百分位"&gt;{scopus.percentile != null ? `${scopus.percentile}%` : "—"}&lt;/Cell&gt;
+          &lt;/div&gt;
+        &lt;/System&gt;
+      )}
+    &lt;/div&gt;
+  );
+}</code></pre>
+            <p><code>journal-detail/TrendChart.tsx</code>（纯 CSS 双柱，RSC；空 → null）：</p>
+            <pre><code class="lang-tsx">import type { YearlyStat } from "@/types/portal";
+
+export function TrendChart({ stats }: { stats: YearlyStat[] }) {
+  if (stats.length === 0) {
+    return null;
+  }
+  const maxW = Math.max(...stats.map((s) =&gt; s.worksCount ?? 0), 1);
+  const maxC = Math.max(...stats.map((s) =&gt; s.citedByCount ?? 0), 1);
+  return (
+    &lt;div className="flex flex-col gap-3.5"&gt;
+      &lt;div className="flex items-center gap-4 font-mono text-2xs uppercase tracking-[0.05em] text-[var(--fg-3)]"&gt;
+        &lt;span className="inline-flex items-center gap-1.5"&gt;&lt;i className="inline-block h-2.5 w-2.5 rounded-[2px] bg-ink-800" /&gt; 年发文量&lt;/span&gt;
+        &lt;span className="inline-flex items-center gap-1.5"&gt;&lt;i className="inline-block h-2.5 w-2.5 rounded-[2px] bg-clay-400" /&gt; 年被引&lt;/span&gt;
+      &lt;/div&gt;
+      &lt;div className="grid h-[150px] auto-cols-fr grid-flow-col items-end gap-3.5 border-b border-[var(--border-default)] pt-2"&gt;
+        {stats.map((s) =&gt; (
+          &lt;div key={s.year} className="flex h-full flex-col items-center justify-end gap-1.5"&gt;
+            &lt;div className="flex h-full w-full items-end justify-center gap-[3px]"&gt;
+              &lt;div
+                className="w-3.5 rounded-t-[2px] bg-ink-800"
+                style={{ height: `${Math.round(((s.worksCount ?? 0) / maxW) * 100)}%` }}
+                title={`${s.year} · 发文 ${(s.worksCount ?? 0).toLocaleString()}`}
+              /&gt;
+              &lt;div
+                className="w-3.5 rounded-t-[2px] bg-clay-400"
+                style={{ height: `${Math.round(((s.citedByCount ?? 0) / maxC) * 100)}%` }}
+                title={`${s.year} · 被引 ${(s.citedByCount ?? 0).toLocaleString()}`}
+              /&gt;
+            &lt;/div&gt;
+            &lt;span className="font-mono text-[10px] tabular-nums text-[var(--fg-3)]"&gt;{String(s.year).slice(2)}&lt;/span&gt;
+          &lt;/div&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+            <p><code>journal-detail/JournalRail.tsx</code>（侧栏速览 + 边界卡）：</p>
+            <pre><code class="lang-tsx">import { ExternalLink } from "lucide-react";
+import Image from "next/image";
+import type { JournalMetrics } from "@/lib/portal-api/venue-derive";
+import { btnBlock, btnPrimary } from "@/lib/portal-ui";
+import type { VenueDetail } from "@/types/portal";
+
+export function JournalRail({ venue, metrics }: { venue: VenueDetail; metrics: JournalMetrics }) {
+  const { jcr, cas, bibliometric } = metrics;
+  const stats: { k: string; v: string }[] = [];
+  if (jcr?.impactFactor != null) {
+    stats.push({ k: "影响因子", v: jcr.impactFactor.toFixed(1) });
+  }
+  if (jcr?.quartile) {
+    stats.push({ k: "JCR 分区", v: jcr.quartile });
+  }
+  if (cas) {
+    stats.push({ k: "中科院", v: `${cas.majorCategory ?? "—"} ${cas.majorQuartile ?? ""}`.trim() });
+  }
+  if (bibliometric?.hIndex != null) {
+    stats.push({ k: "h-index", v: bibliometric.hIndex.toLocaleString() });
+  }
+  if (bibliometric?.citedByCount != null) {
+    stats.push({ k: "被引总数", v: bibliometric.citedByCount.toLocaleString() });
+  }
+  if (venue.foundedYear != null) {
+    stats.push({ k: "创刊", v: String(venue.foundedYear) });
+  }
+
+  return (
+    &lt;&gt;
+      &lt;div className="rounded-lg border border-clay-200 bg-clay-50 p-4"&gt;
+        &lt;div className="mb-3 flex items-center gap-2 font-mono text-[9.5px] uppercase tracking-[0.06em] text-[var(--fg-3)]"&gt;
+          &lt;Image src="/brand/patra-mark.svg" alt="" aria-hidden width={4} height={13} /&gt; 本刊速览
+        &lt;/div&gt;
+        &lt;div className="flex flex-col"&gt;
+          {stats.map((s) =&gt; (
+            &lt;div key={s.k} className="flex items-baseline justify-between gap-3 border-t border-[var(--border-subtle)] py-2.5 first:border-t-0"&gt;
+              &lt;span className="font-sans text-sm text-[var(--fg-3)]"&gt;{s.k}&lt;/span&gt;
+              &lt;span className="font-mono text-md font-medium tabular-nums text-ink-900"&gt;{s.v}&lt;/span&gt;
+            &lt;/div&gt;
+          ))}
+        &lt;/div&gt;
+        {venue.homepageUrl &amp;&amp; (
+          &lt;a href={venue.homepageUrl} target="_blank" rel="noopener noreferrer" className={`${btnPrimary} ${btnBlock} mt-3.5`}&gt;
+            访问官网 &lt;ExternalLink size={14} /&gt;
+          &lt;/a&gt;
+        )}
+      &lt;/div&gt;
+
+      &lt;div className="rounded-lg border border-[var(--border-default)] bg-paper-50 p-4"&gt;
+        &lt;div className="mb-3 font-mono text-[9.5px] uppercase tracking-[0.06em] text-[var(--fg-3)]"&gt;边界 · v0.5&lt;/div&gt;
+        &lt;p className="m-0 font-sans text-sm leading-normal text-[var(--fg-3)]"&gt;
+          本页用于认识与评估期刊，&lt;b className="text-[var(--fg-2)]"&gt;不含该刊的文献列表&lt;/b&gt;。文献浏览将在后续版本提供。
+        &lt;/p&gt;
+      &lt;/div&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 6：typecheck + lint + commit</strong>
+            <p>运行：<code>cd patra-portal && pnpm test JournalMasthead && pnpm typecheck && pnpm lint</code></p>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/journal-detail/ patra-portal/tests/components/portal/JournalMasthead.test.tsx
+git commit -m "feat(portal): 期刊详情视觉组件 masthead/metric/rating/trend/rail (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-8" data-status="done">
+        <header>
+          <h2>任务 8：页面编排 page / View / loading</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>src/components/portal/journal-detail/JournalDetailView.tsx</code>（RSC 编排：面包屑 + 双栏 + 5 折叠区）</dd>
+            <dt>创建</dt><dd><code>src/app/journals/[id]/page.tsx</code>（RSC：取数 → notFound()/throw）</dd>
+            <dt>创建</dt><dd><code>src/app/journals/[id]/loading.tsx</code>（skeleton）</dd>
+          </dl>
+        </header>
+        <p>决策 C/D：page 是 RSC，<code>await fetchVenueDetail(id)</code> → <code>null</code> 调 <code>notFound()</code>（命中 [id]/not-found.tsx），其他失败 throw → 全局 error.tsx。Next 15 <code>params</code> 是 Promise。TopNav/Footer 页面级自渲染。无单测，靠 typecheck + Task 10 e2e/截图。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：JournalDetailView.tsx（编排，RSC）</strong>
+            <pre><code class="lang-tsx">import Link from "next/link";
+import { DisclosureSection } from "@/components/portal/DisclosureSection";
+import { IdentifierChip } from "@/components/portal/IdentifierChip";
+import { JournalMasthead } from "@/components/portal/journal-detail/JournalMasthead";
+import { JournalPositioning } from "@/components/portal/journal-detail/JournalPositioning";
+import { JournalRail } from "@/components/portal/journal-detail/JournalRail";
+import { MetricBadge } from "@/components/portal/journal-detail/MetricBadge";
+import { RatingTable } from "@/components/portal/journal-detail/RatingTable";
+import { SectionEyebrow } from "@/components/portal/journal-detail/SectionEyebrow";
+import { TrendChart } from "@/components/portal/journal-detail/TrendChart";
+import {
+  deriveMetricCards,
+  deriveMetrics,
+  deriveSubjectAreas,
+  deriveYearlyStats,
+} from "@/lib/portal-api/venue-derive";
+import type { VenueDetail } from "@/types/portal";
+
+const ISSN_PLACEHOLDER = "XXXX-XXXX";
+const DL = "grid grid-cols-[max-content_1fr] gap-x-5 gap-y-2.5 max-[540px]:grid-cols-1";
+const DT = "whitespace-nowrap font-sans text-sm text-[var(--fg-3)]";
+const DD = "m-0 font-sans text-md text-[var(--fg-1)]";
+const DD_MONO = "m-0 font-mono text-sm text-[var(--fg-1)]";
+
+export function JournalDetailView({ venue }: { venue: VenueDetail }) {
+  const metrics = deriveMetrics(venue);
+  const cards = deriveMetricCards(metrics);
+  const subjects = deriveSubjectAreas(venue);
+  const yearly = deriveYearlyStats(venue);
+  const { bibliometric } = metrics;
+  const idents = venue.identifiers.filter((i) =&gt; i.value &amp;&amp; i.value !== ISSN_PLACEHOLDER);
+  const hasBiblio = bibliometric != null || yearly.length &gt; 0;
+
+  return (
+    &lt;div className="pb-6"&gt;
+      &lt;div className="sticky top-14 z-30 border-b border-[var(--border-default)] bg-[rgba(247,242,232,0.88)] backdrop-blur"&gt;
+        &lt;div className="mx-auto flex h-11 max-w-[1200px] items-center gap-2 px-6 font-sans text-sm text-[var(--fg-3)]"&gt;
+          &lt;Link href="/" className="rounded-sm px-1 py-0.5 text-[var(--fg-2)] hover:bg-paper-200 hover:text-clay-700"&gt;Patra&lt;/Link&gt;
+          &lt;span className="text-ink-300"&gt;/&lt;/span&gt;
+          &lt;Link href="/" className="rounded-sm px-1 py-0.5 text-[var(--fg-2)] hover:bg-paper-200 hover:text-clay-700 max-[720px]:hidden"&gt;期刊&lt;/Link&gt;
+          &lt;span className="text-ink-300 max-[720px]:hidden"&gt;/&lt;/span&gt;
+          &lt;span className="truncate font-medium text-[var(--fg-1)]"&gt;{venue.abbreviatedTitle || venue.title}&lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+
+      &lt;div className="mx-auto grid max-w-[1200px] grid-cols-[minmax(0,1fr)_340px] items-start gap-10 px-6 pt-8 max-[980px]:grid-cols-1 max-[980px]:gap-7 max-[980px]:pt-6"&gt;
+        &lt;div className="flex min-w-0 flex-col gap-7"&gt;
+          &lt;JournalMasthead venue={venue} /&gt;
+
+          {cards.length &gt; 0 &amp;&amp; (
+            &lt;section&gt;
+              &lt;SectionEyebrow&gt;影响力速览&lt;/SectionEyebrow&gt;
+              &lt;div className="grid grid-cols-3 gap-3 max-[540px]:grid-cols-2"&gt;
+                {cards.map((c) =&gt; (
+                  &lt;MetricBadge key={c.key} card={c} /&gt;
+                ))}
+              &lt;/div&gt;
+            &lt;/section&gt;
+          )}
+
+          &lt;JournalPositioning venue={venue} subjects={subjects} /&gt;
+
+          &lt;section&gt;
+            &lt;SectionEyebrow&gt;深度数据 · 按需展开&lt;/SectionEyebrow&gt;
+            &lt;div&gt;
+              &lt;DisclosureSection title="完整评级明细" count="JCR · CAS · Scopus" defaultOpen&gt;
+                &lt;RatingTable metrics={metrics} /&gt;
+              &lt;/DisclosureSection&gt;
+
+              {hasBiblio &amp;&amp; (
+                &lt;DisclosureSection title="文献计量与趋势"&gt;
+                  {bibliometric &amp;&amp; (
+                    &lt;dl className={`${DL} ${yearly.length &gt; 0 ? "mb-6" : ""}`}&gt;
+                      &lt;dt className={DT}&gt;h-index&lt;/dt&gt;&lt;dd className={DD_MONO}&gt;{bibliometric.hIndex?.toLocaleString() ?? "—"}&lt;/dd&gt;
+                      &lt;dt className={DT}&gt;i10-index&lt;/dt&gt;&lt;dd className={DD_MONO}&gt;{bibliometric.i10Index?.toLocaleString() ?? "—"}&lt;/dd&gt;
+                      &lt;dt className={DT}&gt;被引总数&lt;/dt&gt;&lt;dd className={DD_MONO}&gt;{bibliometric.citedByCount?.toLocaleString() ?? "—"}&lt;/dd&gt;
+                      &lt;dt className={DT}&gt;累计发文&lt;/dt&gt;&lt;dd className={DD_MONO}&gt;{bibliometric.worksCount?.toLocaleString() ?? "—"}&lt;/dd&gt;
+                    &lt;/dl&gt;
+                  )}
+                  &lt;TrendChart stats={yearly} /&gt;
+                &lt;/DisclosureSection&gt;
+              )}
+
+              &lt;DisclosureSection title="收录与出版"&gt;
+                &lt;dl className={DL}&gt;
+                  &lt;dt className={DT}&gt;出版频率&lt;/dt&gt;&lt;dd className={DD}&gt;{venue.frequency ?? "—"}&lt;/dd&gt;
+                  &lt;dt className={DT}&gt;创刊年&lt;/dt&gt;&lt;dd className={DD_MONO}&gt;{venue.foundedYear ?? "—"}&lt;/dd&gt;
+                  &lt;dt className={DT}&gt;MEDLINE 索引&lt;/dt&gt;&lt;dd className={DD}&gt;{venue.medlineIndexed == null ? "—" : venue.medlineIndexed ? "当前收录中" : "未收录"}&lt;/dd&gt;
+                  &lt;dt className={DT}&gt;语言&lt;/dt&gt;&lt;dd className={DD}&gt;{venue.primaryLanguage ?? "—"}&lt;/dd&gt;
+                  &lt;dt className={DT}&gt;国家 / 地区&lt;/dt&gt;&lt;dd className={DD}&gt;{venue.countryCode ?? "—"}&lt;/dd&gt;
+                &lt;/dl&gt;
+              &lt;/DisclosureSection&gt;
+
+              &lt;DisclosureSection title="开放获取细节"&gt;
+                &lt;dl className={DL}&gt;
+                  &lt;dt className={DT}&gt;OA 类型&lt;/dt&gt;&lt;dd className={DD}&gt;{venue.isOpenAccess ? (venue.oaType ?? "开放获取") : "订阅 / 混合"}&lt;/dd&gt;
+                  {venue.apcUsd != null &amp;&amp; (
+                    &lt;&gt;
+                      &lt;dt className={DT}&gt;APC 费用&lt;/dt&gt;&lt;dd className={DD_MONO}&gt;US$ {venue.apcUsd.toLocaleString()}&lt;/dd&gt;
+                    &lt;/&gt;
+                  )}
+                  &lt;dt className={DT}&gt;DOAJ 收录&lt;/dt&gt;&lt;dd className={DD}&gt;{venue.isInDoaj == null ? "—" : venue.isInDoaj ? "是" : "否"}&lt;/dd&gt;
+                &lt;/dl&gt;
+              &lt;/DisclosureSection&gt;
+
+              {idents.length &gt; 0 &amp;&amp; (
+                &lt;DisclosureSection title="关系与标识"&gt;
+                  &lt;div className="flex flex-wrap gap-2.5"&gt;
+                    {idents.map((i) =&gt; (
+                      &lt;IdentifierChip key={`${i.type}-${i.value}`} label={i.type} value={i.value} /&gt;
+                    ))}
+                  &lt;/div&gt;
+                &lt;/DisclosureSection&gt;
+              )}
+            &lt;/div&gt;
+          &lt;/section&gt;
+        &lt;/div&gt;
+
+        &lt;aside className="sticky top-[116px] flex flex-col gap-4 max-[980px]:static"&gt;
+          &lt;JournalRail venue={venue} metrics={metrics} /&gt;
+        &lt;/aside&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：page.tsx（RSC 取数 → notFound/throw）</strong>
+            <pre><code class="lang-tsx">import { notFound } from "next/navigation";
+import { Footer } from "@/components/portal/Footer";
+import { JournalDetailView } from "@/components/portal/journal-detail/JournalDetailView";
+import { TopNav } from "@/components/portal/TopNav";
+import { fetchVenueDetail } from "@/lib/portal-api/venues";
+
+export default async function JournalDetailPage({
+  params,
+}: {
+  params: Promise&lt;{ id: string }&gt;;
+}) {
+  const { id } = await params;
+  const venue = await fetchVenueDetail(id); // 5xx/超时会 throw → 全局 error.tsx
+  if (!venue) {
+    notFound(); // 非数字 id 或 BE 404 → [id]/not-found.tsx
+  }
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;JournalDetailView venue={venue} /&gt;
+      &lt;/main&gt;
+      &lt;Footer /&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：loading.tsx（skeleton，镜像双栏）</strong>
+            <pre><code class="lang-tsx">import { TopNav } from "@/components/portal/TopNav";
+
+function Block({ className }: { className?: string }) {
+  return &lt;div className={`animate-pulse rounded-lg bg-paper-200 ${className ?? ""}`} /&gt;;
+}
+
+export default function Loading() {
+  return (
+    &lt;&gt;
+      &lt;TopNav /&gt;
+      &lt;main&gt;
+        &lt;div className="border-b border-[var(--border-default)]"&gt;
+          &lt;div className="mx-auto h-11 max-w-[1200px] px-6" /&gt;
+        &lt;/div&gt;
+        &lt;div className="mx-auto grid max-w-[1200px] grid-cols-[minmax(0,1fr)_340px] items-start gap-10 px-6 pt-8 max-[980px]:grid-cols-1" aria-hidden&gt;
+          &lt;div className="flex min-w-0 flex-col gap-7"&gt;
+            &lt;div className="grid grid-cols-[132px_minmax(0,1fr)] gap-7 max-[540px]:grid-cols-[92px_1fr]"&gt;
+              &lt;Block className="aspect-[3/4]" /&gt;
+              &lt;div className="flex flex-col gap-3"&gt;
+                &lt;Block className="h-5 w-16" /&gt;
+                &lt;Block className="h-9 w-4/5" /&gt;
+                &lt;Block className="h-9 w-2/5" /&gt;
+                &lt;Block className="mt-2 h-4 w-3/4" /&gt;
+                &lt;Block className="mt-2 h-9 w-32" /&gt;
+              &lt;/div&gt;
+            &lt;/div&gt;
+            &lt;div className="grid grid-cols-3 gap-3 max-[540px]:grid-cols-2"&gt;
+              &lt;Block className="h-24" /&gt;&lt;Block className="h-24" /&gt;&lt;Block className="h-24" /&gt;
+            &lt;/div&gt;
+            &lt;Block className="h-24" /&gt;
+            &lt;Block className="h-16" /&gt;
+            &lt;Block className="h-16" /&gt;
+          &lt;/div&gt;
+          &lt;div className="flex flex-col gap-4 max-[980px]:hidden"&gt;
+            &lt;Block className="h-44" /&gt;
+            &lt;Block className="h-32" /&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/main&gt;
+    &lt;/&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：typecheck + lint + 本地起服务肉眼核对</strong>
+            <p>运行：<code>cd patra-portal && pnpm typecheck && pnpm lint</code>（exit 0）。</p>
+            <p>起 dev（需 <code>PATRA_GATEWAY_BASE_URL</code> 指向可达 gateway）：<code>pnpm dev</code>，浏览器开 <code>http://localhost:4000/journals/&lt;真实期刊id&gt;</code>，核对 masthead/速览/定位/5 折叠区/侧栏渲染真实数据；切换 1440×900 与 375×812 两视图（&lt;980 单栏 / &lt;720 隐藏面包屑"期刊"段）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：commit</strong>
+            <pre><code class="lang-bash">git add "patra-portal/src/app/journals/[id]/page.tsx" "patra-portal/src/app/journals/[id]/loading.tsx" patra-portal/src/components/portal/journal-detail/JournalDetailView.tsx
+git commit -m "feat(portal): 期刊详情页编排 page/View/loading + RSC 取数 (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-9" data-status="done">
+        <header>
+          <h2>任务 9：接通首页卡片跳转</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/JournalCoverCard.tsx</code>（button[disabled] → Link）</dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/JournalCoverCard.test.tsx</code>（扩展：加链接断言）</dd>
+          </dl>
+        </header>
+        <p>决策 F：只解除<strong>期刊卡片</strong>的 disabled 接 <code>/journals/[id]</code>；首页"浏览全部期刊"按钮（在 Journals.tsx）<strong>不动</strong>，保留 disabled 留 PAP-47。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：先加链接测试（red）</strong>
+            <p>在现有 <code>JournalCoverCard.test.tsx</code> 追加：</p>
+            <pre><code class="lang-tsx">it("链接到对应期刊详情页", () =&gt; {
+  render(&lt;JournalCoverCard journal={journal} /&gt;);
+  expect(screen.getByRole("link", { name: /Annals of oncology/ })).toHaveAttribute(
+    "href",
+    "/journals/319041872872550658",
+  );
+});</code></pre>
+            <p>运行 <code>cd patra-portal && pnpm test JournalCoverCard</code> → 该用例红（当前是 disabled button，无 link role）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：button → Link（green）</strong>
+            <p>顶部 import 追加 <code>import Link from "next/link";</code>。把根 <code>&lt;button&gt;</code> 换成 <code>&lt;Link&gt;</code>：删 <code>disabled</code> / <code>aria-disabled</code> / <code>disabled:cursor-not-allowed</code> 与"功能即将上线"占位 title，改 <code>href</code>；闭合标签 <code>&lt;/button&gt;</code> → <code>&lt;/Link&gt;</code>。封面与信息区内容整体保留。新的根元素：</p>
+            <pre><code class="lang-tsx">    &lt;Link
+      href={`/journals/${journal.id}`}
+      title={journal.name}
+      className={
+        "flex flex-col overflow-hidden rounded-lg border border-border-default bg-paper-50 text-inherit no-underline transition hover:-translate-y-px hover:border-ink-300 hover:shadow-[0_6px_16px_-10px_rgba(28,25,23,0.18)] " +
+        (className ?? "")
+      }
+    &gt;
+      {/* …封面 div 与信息区 div 原样保留… */}
+    &lt;/Link&gt;</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：跑绿（含首页相关测试不回归）+ typecheck + lint + commit</strong>
+            <p>运行：<code>cd patra-portal && pnpm test JournalCoverCard Journals && pnpm typecheck && pnpm lint</code></p>
+            <p>预期：新链接用例 + 原有渲染用例全绿（原测试无 disabled 断言，不受影响）；Journals 测试不回归。</p>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/JournalCoverCard.tsx patra-portal/tests/components/portal/JournalCoverCard.test.tsx
+git commit -m "feat(portal): 首页期刊卡片接通详情页跳转 (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-10" data-status="done">
+        <header>
+          <h2>任务 10：e2e smoke + 验证闸</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/tests/e2e/journal-detail.spec.ts</code></dd>
+          </dl>
+        </header>
+        <p>仿现有 <code>homepage.spec.ts</code>（webServer 自动起 <code>pnpm dev</code>、baseURL :4000）。覆盖 Done 判定 5/6：首页点卡→详情渲染、坏 id→not-found。最后跑全套验证闸。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：journal-detail.spec.ts</strong>
+            <p>not-found 用<strong>非数字 id</strong>（<code>fetchVenueDetail</code> 预校验直接 <code>notFound()</code>，不依赖 BE）。首页点卡路径依赖 BE 期刊榜可达（与 homepage.spec 同前提）。</p>
+            <pre><code class="lang-ts">import { expect, test } from "@playwright/test";
+
+test("首页点期刊卡 → 跳转详情页并渲染核心区块", async ({ page }) =&gt; {
+  await page.goto("/");
+  const firstCard = page
+    .locator('[data-section="journals"] a[href^="/journals/"]')
+    .first();
+  await expect(firstCard).toBeVisible();
+  await firstCard.click();
+
+  await expect(page).toHaveURL(/\/journals\/\d+/);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByText("深度数据 · 按需展开")).toBeVisible();
+  await expect(page.getByRole("button", { name: /完整评级明细/ })).toBeVisible();
+});
+
+test("非数字 id → not-found 页", async ({ page }) =&gt; {
+  await page.goto("/journals/not-a-real-id");
+  await expect(page.getByRole("heading", { name: "没有这一页" })).toBeVisible();
+  await expect(page.getByText(/这本期刊不在 Patra/)).toBeVisible();
+});</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：跑 e2e</strong>
+            <p>运行：<code>cd patra-portal && pnpm test:e2e journal-detail</code></p>
+            <p>预期：2 个 spec 绿（首页点卡需 gateway 可达；not-found 不依赖 BE）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：全套验证闸（Done 判定）</strong>
+            <p>运行：<code>cd patra-portal && pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e</code></p>
+            <p>预期：全绿。再人工核对：① <code>/journals/[id]</code> 渲染真实数据、无文献列表；② 首页卡可点、"浏览全部"仍 disabled；③ 坏 id→not-found、5xx→error；④ 字段降级（无封面/缺评级/无趋势/无 APC/homepageUrl null/无 identifiers）；⑤ 1440×900 与 375×812 两视图布局正确。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/tests/e2e/journal-detail.spec.ts
+git commit -m "test(portal): 期刊详情页 Playwright smoke (PAP-44)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec §3 架构/文件结构 → Task 1–9 全部文件；§4 数据契约 → Task 1（wire 类型）+ Task 4（派生视图）；§5 组件树/渐进式披露 → Task 6（Disclosure）+ Task 7（视觉组件）+ Task 8（编排）；§6 错误流/状态屏 → Task 2（fetch 分支）+ Task 5（状态屏）；§7 测试 → Task 2/4/6/7 单测 + Task 10 e2e + 验证闸；§8 决策 A–F → 分别落在 Task 1/4（A/B）、Task 8（C/D）、Task 5（E）、Task 9（F）。Done 判定 6 条 → Task 8（1）、Task 9（2）、Task 5（3）、Task 4/7（4）、Task 10（5/6）。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无 TODO / 待补 / "类似任务 N" / 后续实现；每个代码步骤含完整可粘贴代码；无 <code>&lt;!-- FILL --&gt;</code> 残留。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p><code>VenueDetail</code> + 子类型（Task 1）被 <code>fetchVenueDetail</code>（Task 2）、<code>venue-derive</code>（Task 4）、各组件（Task 7）一致引用；派生视图类型 <code>JournalMetrics</code> / <code>MetricCard</code>（Task 4）被 MetricBadge/RatingTable/Rail（Task 7）与 View（Task 8）一致消费；<code>fetchVenueDetail</code> 返回 <code>VenueDetail | null</code>，page 据此 <code>notFound()</code>（Task 8）签名一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>10 个 <code>&lt;article class="task"&gt;</code> 各有唯一 <code>id="task-N"</code> + 初始 <code>data-status="pending"</code>；每个 <code>&lt;li class="step"&gt;</code> 初始 <code>data-status="pending"</code>；头部 <code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec；<code>&lt;head&gt;</code> 2 个 <code>&lt;link&gt;</code> 指向 spec-theme.css + plan-extras.css，无 inline style；TOC 10 条 <code>data-task-status</code> 与中栏 article 一一对应。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：Implementation Notes（实施期由 Claude Code 维护）
+       ============================================================ -->
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+      <li class="note" data-type="change" data-time="2026-06-06T18:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T18:10">06-06 18:10</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 里 commit subject 写作 <code>VenueDetail 类型…</code>，但仓库 commitlint <code>subject-case</code> 拒绝 ASCII 大写开头 → 实现者改为 <code>venueDetail 类型…</code>。通用约束：后续任务 commit subject 若以大写 ASCII 词开头需同样改小写（中文 / 小驼峰开头不受影响）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-06T18:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T18:55">06-06 18:55</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>plan 的 NotFoundState 设计了两个动作（返回首页 + 去检索），但二者同 <code>href="/"</code>、且暂无搜索/列表路由 → 代码质量审查判定冗余误导，删去"去检索"，只留"返回首页"。待 PAP-47 列表页或检索页就绪后可再加差异化动作。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-06T19:25">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T19:25">06-06 19:25</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>plan 里 DisclosureSection body 用条件渲染 <code>{open &amp;&amp; &lt;div&gt;}</code>，质量审查指出收起时 <code>aria-controls</code> 指向的 id 不在 DOM（悬空引用，破坏屏幕阅读器关联）→ 改为 body 始终渲染、用 <code>hidden={!open}</code> 切换（WAI-ARIA disclosure 标准做法）。配套：测试断言由 <code>not.toBeInTheDocument()</code> 改 <code>not.toBeVisible()</code>。下游影响：JournalDetailView 的 5 个折叠区 body 始终在 DOM（收起时 hidden），属预期。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-06T20:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T20:05">06-06 20:05</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>plan 的 JournalDetailView 面包屑用 <code>&lt;div&gt;</code> + <code>&lt;span&gt;</code>，质量审查指出缺导航语义 → 改为 <code>&lt;nav aria-label="面包屑"&gt;</code> + <code>&lt;ol&gt;/&lt;li&gt;</code>，分隔符 <code>aria-hidden</code>、末项 <code>aria-current="page"</code>；两个裸 <code>&lt;section&gt;</code>（影响力速览 / 深度数据）补 <code>aria-label</code> 成具名 landmark。纯 a11y 语义增强，视觉不变。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-06-06T20:05">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-06-06T20:05">06-06 20:05</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>follow-up（本版不做）：详情页缺 <code>generateMetadata</code>（浏览器 tab 标题 / SEO description 用刊名）。未做原因：spec 未含，且 <code>fetchVenueDetail</code> 是 <code>cache:"no-store"</code>——page 与 generateMetadata 会各拉一次 BE，优雅做法需用 React <code>cache()</code> 包装取数去重，属独立小改进，留后续。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-06-06T20:35">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-06-06T20:35">06-06 20:35</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>验证闸单测全绿（lint 0 / typecheck 0 / vitest 112 测试通过）。e2e：「非数字 id→not-found」通过；「首页点卡→详情」<strong>在本执行环境未跑通</strong>——后端 gateway 不可达、首页期刊榜无数据故无卡可点（环境限制，非代码缺陷）。Done 判定 #6 的该 e2e 用例需在 <code>PATRA_GATEWAY_BASE_URL</code> 指向可达 BE 的环境下复跑确认；spec 逻辑已就绪。</p>
+      </li>
+    </ol>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">4</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">2</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>

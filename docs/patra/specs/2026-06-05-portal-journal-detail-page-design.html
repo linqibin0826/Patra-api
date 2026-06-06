@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>期刊详情页 /journals/[id] — 设计文档（PAP-44）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题。相对路径 ../styles/ 从生成位置 docs/patra/specs/ 出发；
+       放进子目录的 spec（如 docs/patra/specs/<feature>/）改成 ../../styles/。
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 spec 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#architecture">架构与文件结构</a></li>
+      <li><a href="#data-contract">数据契约与 FE 组装</a></li>
+      <li><a href="#component-tree">组件树与渐进式披露</a></li>
+      <li><a href="#error-flow">错误流与状态屏</a></li>
+      <li><a href="#testing">测试与验证</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>期刊详情页 <code>/journals/[id]</code> — 设计文档</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-05</span>
+        <span>🌿 pap-44-fe-journal-detail-page</span>
+        <span>👤 linqibin</span>
+        <span>🎫 PAP-44</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>在 <code>src/app/journals/[id]/</code> 以 RSC 服务端取数实现期刊详情页，消费 PAP-42 的 <code>GET /portal/venues/{id}</code> 端点。<strong>VenueDetail 类型直接贴 BE 扁平响应（零运行时映射）</strong>，hi-fi 原型只取其 UI 形态、不照搬 mock 数据结构；UI 上 BE 顶层未给的字段（学科领域 / 百分位 / 排名 / CiteScore / 语言）由 FE 派生纯函数从评级列表 + 顶层字段组装，推不出的（关联学会）按"缺失即隐藏"降级。取数走 RSC 直取（沿用首页 <code>Journals.tsx</code> 模式，不引 TanStack Query）；404 → <code>notFound()</code>，其他失败 → <code>throw</code> 冒泡到全局 <code>error.tsx</code>。本 issue 连带<strong>重构</strong>已存在的极简占位 <code>not-found.tsx</code> / <code>error.tsx</code> 为全站可复用状态屏（供 PAP-45 文献页复用），并解除首页期刊卡片 disabled 接通跳转。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>Patra 门户（patra-portal，Next 15 App Router / React 19 / Tailwind v4）首页已上线，期刊模块（<code>Journals.tsx</code> + <code>JournalCoverCard.tsx</code>）已接入真实数据，但期刊卡片当前是 <code>&lt;button disabled&gt;</code> 占位（"功能即将上线"），点击无跳转。后端 PAP-42 已合并，暴露 <code>GET /patra-catalog/portal/venues/{id}</code>，返回 <code>PortalVenueDetailResponse</code>——一个<strong>专为前端零映射设计的扁平响应 + 评级列表</strong>结构（id 为 String 避免 JS 精度损失，顶层摊平最新值快照，深层评级以 <code>jcrRatings[]</code>/<code>casRatings[]</code>/<code>scopusRatings[]</code>/<code>yearlyStats[]</code>/<code>identifiers[]</code> 列表给全量明细）；不存在的 id 由后端抛 <code>VenueNotFoundException</code> → <code>CATALOG-0404</code>。</p>
+      <p>Claude Design 已交付 v0.5 详情页 hi-fi，已作为快照入库 <code>docs/patra/design/snapshots/2026-06-06-detail-pages-hifi.zip</code>（含 <code>detail-pages.jsx</code> 编排 / <code>detail-shared.jsx</code> 共享基元 / <code>detail.css</code> / <code>status-screens.jsx</code> + <code>patra-ds-cards/</code> 组件卡 + 64 张截图），确立了 masthead + 影响力速览 + 渐进式披露折叠区 + 双栏布局的视觉与交互。本 issue 的工作是<strong>按 hi-fi 视觉像素级复刻期刊详情页</strong>（组件视觉照搬、数据 props 改吃扁平 BE 响应），并接通首页 → 详情页跳转闭环。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li><code>src/app/journals/[id]/page.tsx</code>（RSC 服务端取数）+ <code>loading.tsx</code> + <code>not-found.tsx</code></li>
+            <li><code>fetchVenueDetail(id)</code> + <code>VenueDetail</code> 类型（贴 BE 扁平响应）+ 派生纯函数 <code>venue-derive.ts</code></li>
+            <li>按 hi-fi 落地期刊详情组件（masthead / 影响力速览 / 定位 / 折叠深数据层 / 侧栏速览）</li>
+            <li>全站可复用状态屏：<code>src/app/not-found.tsx</code> + <code>src/app/error.tsx</code> + <code>portal/status/</code> 基元</li>
+            <li>首页 <code>JournalCoverCard</code> 解除 disabled，接 <code>Link</code> → <code>/journals/[id]</code></li>
+            <li>派生函数 + 关键组件 Vitest 单测 + Playwright smoke</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>期刊页<strong>不含</strong>该刊文献列表（边界 A）</li>
+            <li>暗色模式（边界 E，单一 light theme）</li>
+            <li>首页"浏览全部期刊"按钮——保留 disabled，留给 PAP-47（期刊浏览页 <code>/journals</code>）</li>
+            <li>回头修改 BE 补字段（<code>affiliatedSocieties</code>/<code>languages[]</code> 等本版用现有字段或隐藏）</li>
+            <li>侧栏"边界说明卡"为 v0.5 占位文案，非真实功能</li>
+            <li>文献详情页 <code>/papers/[id]</code>（PAP-45）</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 架构与文件结构</h2>
+      <p><strong>取数模型</strong>：RSC 服务端直取，沿用首页 <code>Journals.tsx</code> 已确立的 <code>await fetchX()</code> 模式——详情页是纯展示、无客户端交互取数，<strong>不引入 TanStack Query</strong>（state.md 规定 API 数据走 Query，但 RSC 服务端取数是 Next 官方的等价路径，且已是 portal 既有约定，避免为单次取数引入 client 数据层）。</p>
+      <pre><code>src/app/journals/[id]/
+├── page.tsx          # RSC：await fetchVenueDetail(id) → notFound() / throw
+├── loading.tsx       # 期刊页 skeleton（镜像两栏布局）
+└── not-found.tsx     # 期刊不存在 → 复用全局 NotFoundState 基元
+
+src/app/
+├── not-found.tsx     # 【全局·已存在极简占位→重构】坏 URL 统一落地（包 NotFoundState）
+└── error.tsx         # 【全局·已存在极简占位→重构】取数失败/抛错兜底（包 ErrorState，"use client"；现版直接渲染 error.message，重构时移除）
+
+src/lib/portal-api/
+├── venues.ts         # 加 fetchVenueDetail(id)：404→null，其他失败→throw
+└── venue-derive.ts   # 派生纯函数（学科拼接/最新年取值/降级）
+
+src/types/portal.ts   # 加 VenueDetail + 子类型（贴 BE 扁平响应，零映射）
+
+src/components/portal/journal-detail/   # 期刊详情专属组件
+├── JournalDetailView.tsx     # 整页编排（RSC）
+├── JournalMasthead.tsx       # 封面+刊名+身份+主操作
+├── MetricBadge.tsx           # 影响力速览单卡
+├── JournalPositioning.tsx    # 定位结构化标签
+├── RatingTable.tsx           # JCR/CAS/Scopus 三套评级
+├── TrendChart.tsx            # 年度发文/被引双柱图（纯 CSS/SVG，RSC）
+└── JournalRail.tsx           # 侧栏速览卡
+
+src/components/portal/   # 两页共用 / 全站资产
+├── DisclosureSection.tsx     # 折叠区（"use client"，button[aria-expanded]）
+├── IdentifierChip.tsx        # 标识符复制+外链（"use client"）
+└── status/
+    ├── NotFoundState.tsx     # 404 基元（RSC）
+    └── ErrorState.tsx        # error 基元（"use client"，重试）</code></pre>
+      <p><strong>共享件归属</strong>：<code>DisclosureSection</code> / <code>IdentifierChip</code> / <code>NotFoundState</code> / <code>ErrorState</code> 是两页共用 + 全站资产，因此<strong>不放</strong> <code>journal-detail/</code> 子目录，放 <code>portal/</code> 或 <code>portal/status/</code>，让 PAP-45 文献页直接复用，避免重复实现。</p>
+    </section>
+
+    <section id="data-contract">
+      <h2>4. 数据契约与 FE 组装</h2>
+      <p><strong>VenueDetail 类型贴 BE 扁平响应</strong>（<code>src/types/portal.ts</code>，零运行时映射，与现有 <code>VenueBrowse</code> 风格一致）。顶层为"最新值快照"（影响力速览 + 侧栏直接用），评级列表给深数据层全量明细：</p>
+      <pre><code>export interface VenueDetail {
+  id: string;
+  title: string;
+  abbreviatedTitle: string | null;
+  venueType: string | null;
+  issnL: string | null;
+  countryCode: string | null;
+  primaryLanguage: string | null;
+  foundedYear: number | null;
+  coverObjectKey: string | null;
+  homepageUrl: string | null;        // BE 恒 null → 主操作降级
+  isOpenAccess: boolean | null;
+  // 顶层"最新值"快照
+  impactFactor: number | null;
+  jcrQuartile: string | null;
+  jcrSubject: string | null;
+  casMajorCategory: string | null;
+  casMajorQuartile: string | null;
+  casIsTop: boolean | null;
+  citeScore: number | null;
+  hIndex: number | null;
+  citedByCount: number | null;
+  worksCount: number | null;
+  frequency: string | null;
+  medlineIndexed: boolean | null;
+  oaType: string | null;
+  apcUsd: number | null;
+  isInDoaj: boolean | null;
+  // 完整评级列表（深数据层明细 + 派生来源）
+  jcrRatings: JcrRating[];
+  casRatings: CasRating[];
+  scopusRatings: ScopusRating[];
+  yearlyStats: YearlyStat[];
+  identifiers: VenueIdentifier[];
+}</code></pre>
+      <p>子类型逐字段对应 BE 内嵌 record（已对照 <code>PortalVenueDetailResponse</code> 校验）：</p>
+      <pre><code>interface JcrRating    { year: number; impactFactor: number | null; quartile: string | null; subject: string | null; jifRank: string | null; jifPercentile: number | null; }
+interface CasRating    { year: number; edition: string | null; majorCategory: string | null; majorQuartile: string | null; minorSubject: string | null; minorQuartile: string | null; isTop: boolean | null; isReview: boolean | null; }
+interface ScopusRating { year: number; citeScore: number | null; sjr: number | null; snip: number | null; quartile: string | null; percentile: number | null; }
+interface YearlyStat   { year: number; worksCount: number | null; citedByCount: number | null; oaWorksCount: number | null; }
+interface VenueIdentifier { type: string; value: string; primary: boolean; }  // BE record 名为 Identifier，JSON key 是 identifiers[]</code></pre>
+      <p><strong>类型注意</strong>：BE 中 <code>impactFactor</code>/<code>citeScore</code>/<code>jifPercentile</code>/<code>sjr</code>/<code>snip</code>/<code>percentile</code> 是 <code>BigDecimal</code>——Jackson 默认序列化为 JSON number，TS 用 <code>number</code> 正确（IF 这类小数无精度风险）；<code>jifRank</code> 是 <code>String</code>（形如 <code>"5/245"</code>）→ TS <code>string</code>；<code>apcUsd</code> 是 <code>Integer</code>（整数美元）。</p>
+      <p><strong>FE 派生规则</strong>（hi-fi UI 要、但 BE 顶层未直接给的，从列表/顶层派生；纯函数集中到 <code>venue-derive.ts</code>，组件只消费派生结果，不在 JSX 散落 <code>.find()/.sort()</code>）：</p>
+      <table>
+        <thead>
+          <tr><th>hi-fi UI</th><th>组装来源</th><th>推不出时降级</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>定位 · 学科领域标签</td><td><code>jcrSubject</code> + <code>casMajorCategory</code> 去重拼</td><td>两者皆空 → 标签不显</td></tr>
+          <tr><td>速览卡 percentile / rank</td><td><code>jcrRatings</code> 取 <code>year</code> 最大项的 <code>jifPercentile</code> / <code>jifRank</code></td><td>空列表 → 不显该行</td></tr>
+          <tr><td>Scopus 速览 CiteScore</td><td>顶层 <code>citeScore</code>（BE 已摊平）或 <code>scopusRatings</code> 最新年</td><td>null → 第 3 卡退中科院 / 不显</td></tr>
+          <tr><td>收录 · 语言</td><td><code>primaryLanguage</code> 单值（BE 无 <code>languages[]</code>）</td><td>null → 不显</td></tr>
+          <tr><td>关系 · 关联学会</td><td><strong>无 BE 来源</strong></td><td>整块隐藏（不占位）</td></tr>
+        </tbody>
+      </table>
+      <p><strong>派生视图对象 vs wire 类型</strong>：hi-fi 组件（<code>RatingTable metrics={m}</code>、masthead 读 <code>j.metrics.jcr.*</code>）围绕嵌套视图构建。落地时 wire 类型 <code>VenueDetail</code> <strong>保持扁平、零映射地贴 BE</strong>（决策 A）；<code>venue-derive.ts</code> 从扁平响应 + 评级列表算出组件要的<strong>派生视图对象</strong>（把"最新年评级"重组为 <code>{ jcr, cas, scopus, bibliometric }</code>、拼 <code>subjectAreas</code> 标签、定 cover 调色板）。这<strong>不是</strong>决策 A 否决的"还原成嵌套 wire 类型的 mapper"——视图对象是纯前端派生产物（从扁平算出、不与 BE 同步的契约），组件消费它即可像素级复刻 hi-fi，而不在 JSX 散落 <code>.find()/.sort()</code>。</p>
+      <p><strong>字段级降级总则</strong>（沿用 hi-fi）：masthead 封面 = 刊名缩写词标 + 调色板底色（<strong>复用首页 <code>JournalCoverCard</code> 的 <code>pickCover(id)</code> 调色板，不渲染 <code>coverObjectKey</code> 图片</strong>），无缩写词标时退 <code>.jmast-cover.noimg</code> 虚线占位框（<code>IconBook</code> + "暂无封面"）；某套评级缺失 → 该模块隐藏不占位；无趋势 → 趋势区不显；无 APC → 不显；<code>homepageUrl</code> 为 null → 主操作 disabled + title 提示"官网链接待采集"；ISSN 占位值 <code>"XXXX-XXXX"</code> 过滤不显。</p>
+    </section>
+
+    <section id="component-tree">
+      <h2>5. 组件树与渐进式披露</h2>
+      <p><strong>页面结构</strong>（桌面 ≥980px 双栏 / 移动 &lt;980px 单栏 stack，沿用 hi-fi）：</p>
+      <pre><code>page.tsx (RSC)
+└── JournalDetailView (RSC, 接收 VenueDetail)
+    ├── 面包屑栏（sticky：首页 › 期刊 › 刊名）
+    ├── [主内容栏]
+    │   ├── JournalMasthead        默认层：封面/刊名/缩写/出版商·ISSN·国家·创刊年/主操作
+    │   ├── MetricRow              默认层：3 张 MetricBadge（IF / JCR分区 / 中科院或CiteScore）
+    │   ├── JournalPositioning     默认层：结构化标签（学科/频率/索引/OA）
+    │   └── DisclosureGroup        深数据层（5 个 DisclosureSection，沿用 hi-fi）：
+    │       ├── 完整评级明细        RatingTable（JCR/CAS/Scopus）— defaultOpen
+    │       ├── 文献计量与趋势      h-index/i10/被引/累计发文 + TrendChart（bib 或 yearlyStats 任一有才显）
+    │       ├── 收录与出版          频率/创刊年/MEDLINE/语言/国家
+    │       ├── 开放获取细节        oaType/APC（有才显）/DOAJ
+    │       └── 关系与标识          出版商 + ISSN 标识符 chip（关联学会 BE 无来源→该行隐藏）
+    └── [侧栏 aside, sticky]
+        ├── 本刊速览卡（IF/分区/中科院/h-index/被引/创刊年 + 访问官网）
+        └── 边界说明卡（v0.5 占位文案）</code></pre>
+      <p><strong>客户端边界</strong>（RSC 优先，最小化 <code>"use client"</code>）：整个 <code>JournalDetailView</code> 及大部分子组件为 RSC（纯展示）；仅 <code>DisclosureSection</code>（<code>useState</code> 展开/收起）与 <code>IdentifierChip</code>（点击复制）下沉为 client 组件；<code>TrendChart</code> 用纯 CSS/SVG 条形（<strong>不引图表库</strong>），保持 RSC。</p>
+      <p><strong>渐进式披露语义</strong>（沿用 hi-fi + 无障碍）：<code>DisclosureSection</code> = <code>&lt;button aria-expanded aria-controls&gt;</code> + 受控 body（非原生 <code>details</code>，与 hi-fi 一致）；chevron 180ms 旋转过渡；仅"完整评级"默认展开，其余收起；相邻折叠区 <code>-1px</code> 合并边框。</p>
+      <p><strong>复用首页既有件</strong>：<code>TopNav</code>、<code>tokens.css</code> 暖纸令牌、card/badge/button 原语、explore-feed skeleton 语言（给 <code>loading.tsx</code> 复用）。</p>
+    </section>
+
+    <section id="error-flow">
+      <h2>6. 错误流与状态屏</h2>
+      <p><strong>错误流</strong>：</p>
+      <ul>
+        <li><code>fetchVenueDetail(id)</code> 收到 BE 404（<code>CATALOG-0404</code>）→ 返回 <code>null</code> → page 调 <code>notFound()</code> → 命中 <code>[id]/not-found.tsx</code></li>
+        <li>fetch 其他失败（5xx / 超时 / 网络）→ <code>throw</code> → 冒泡到全局 <code>error.tsx</code>（Next error boundary）</li>
+        <li>坏 URL（如 <code>/journals/abc</code>，非数字 id）→ <code>fetchVenueDetail</code> 先做 <code>/^\d+$/</code> 预校验，非数字直接 <code>notFound()</code>（不触达 BE）；若放行到 BE，非数字无法绑定 <code>long</code> 返回 <strong>400</strong>、<code>0</code>/负数因 <code>@Positive</code> 返回 <strong>422</strong>——故 FE 预校验统一收口为 not-found 最干净</li>
+      </ul>
+      <p><strong>状态屏</strong>（连全局一起落地，供 PAP-45 复用）：</p>
+      <ul>
+        <li><code>portal/status/NotFoundState.tsx</code>：暖纸插画 + Patra 人格文案 + 返回首页（RSC）</li>
+        <li><code>portal/status/ErrorState.tsx</code>：可读错误提示 + 重试按钮 + 返回首页（<code>"use client"</code>，<strong>不暴露堆栈</strong>）</li>
+        <li><code>src/app/not-found.tsx</code> + <code>src/app/error.tsx</code>：<strong>两文件已存在为极简占位（现 error.tsx 直接渲染 <code>error.message</code>），本 issue 重构为薄壳包 State 基元</strong>——error 壳传<strong>受控文案</strong>给 ErrorState（hi-fi 的 <code>detail</code> 是受控串如"上游 503"），<strong>不</strong>把 <code>error.message</code>/堆栈透传给用户</li>
+        <li><code>src/app/journals/[id]/not-found.tsx</code>：期刊专属文案，复用 <code>NotFoundState</code></li>
+      </ul>
+    </section>
+
+    <section id="testing">
+      <h2>7. 测试与验证</h2>
+      <p>遵循 TDD（红绿循环），按测试金字塔分层：</p>
+      <ul>
+        <li><strong>派生纯函数</strong>（<code>venue-derive</code>）：Vitest 单测——学科拼接 / 最新年取值（多年份取 max year）/ 空列表降级 / null 字段降级</li>
+        <li><strong>关键组件</strong>：Vitest + Testing Library（<code>getByRole</code> 优先）——MetricBadge 缺值降级、DisclosureSection 展开收起（<code>getByRole('button')</code> + <code>aria-expanded</code> 断言）、homepageUrl null 时主操作 disabled、无封面占位</li>
+        <li><strong>Playwright smoke</strong>（<code>tests/e2e/journal-detail.spec.ts</code>，仿现有 <code>homepage.spec.ts</code>，webServer 自动起 dev、baseURL :4000）：首页点期刊卡 → 详情页渲染 + masthead/速览/折叠区关键区块断言；不存在 id → not-found 页</li>
+      </ul>
+      <p><strong>测试位置</strong>：单测统一放 <code>tests/</code> 目录——<code>vitest.config.ts</code> 的 <code>include</code> 只扫 <code>tests/**</code>，与被测件并列的 <code>*.test.tsx</code> 不会被执行（testing.md 虽提及"并列"，现网配置只认 <code>tests/</code>）；e2e 放 <code>tests/e2e/</code>（vitest 已 exclude）。</p>
+      <p><strong>验证闸</strong>：<code>pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code> 全绿（<code>lint</code>=Biome；smoke 经 <code>pnpm test:e2e</code>）。375×812 与 1440×900 两视图布局正确。</p>
+    </section>
+
+    <section id="decisions">
+      <h2>8. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 A：VenueDetail 类型贴 BE 扁平响应，零运行时映射</h3>
+        <p>TS 类型镜像 <code>PortalVenueDetailResponse</code> 的扁平 + 评级列表结构，与现有 <code>VenueBrowse</code>/<code>venues.ts</code> 风格一致。hi-fi 原型<strong>只取 UI 形态</strong>（布局、降级态、视觉），其 mock 数据结构（<code>metrics.jcr.*</code> 嵌套）和代码框架不照搬。</p>
+        <p class="alternatives"><strong>备选 A：</strong>写 <code>mapVenueDetail()</code> 把扁平响应还原成 hi-fi 嵌套结构 — 否决：多一层映射 + 一套嵌套类型要维护，YAGNI 反模式；BE 已为前端零映射设计，再加 mapper 是倒退。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 B：BE 顶层缺失字段在 FE 派生组装，推不出则隐藏，不回头改 BE</h3>
+        <p>hi-fi UI 要的学科领域 / 百分位 / 排名 / CiteScore / 语言，绝大多数能从评级列表 + 顶层字段派生（集中到 <code>venue-derive.ts</code> 纯函数）；<code>affiliatedSocieties</code> 无 BE 来源 → 隐藏该行（"关系与标识" section 仍保留出版商 + ISSN）。本版不为补字段反推 BE。</p>
+        <p class="alternatives"><strong>备选 A：</strong>拆 BE 小补丁另开 issue 补 <code>affiliatedSocieties[]</code>/<code>languages[]</code> — 否决：BE 端点刚定稿，能覆盖 ~95% UI；缺的两个字段非核心信号，"缺失即隐藏"已是 hi-fi 既定降级策略，不阻塞 FE。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 C：RSC 服务端直取，不引 TanStack Query</h3>
+        <p>沿用首页 <code>Journals.tsx</code> 的 <code>await fetchX()</code> 模式。详情页纯展示、无客户端交互取数，RSC 直取是 Next 官方等价路径，也是 portal 既有约定。</p>
+        <p class="alternatives"><strong>备选 A：</strong>客户端 TanStack Query 取数 — 否决：详情页无需客户端缓存/重取/乐观更新，引 Query 反增 client bundle 与水合成本，违背 RSC 优先。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 D：404 走 notFound()，其他失败 throw 到全局 error.tsx</h3>
+        <p><code>fetchVenueDetail</code> 区分 404（返回 null → <code>notFound()</code>）与其他失败（<code>throw</code> → Next error boundary）。两类失败映射到两个不同状态屏，符合 AC"id 不存在→not-found / 取数失败→error 页"。</p>
+        <p class="alternatives"><strong>备选 A：</strong>所有失败统一渲染同一错误页 — 否决：丢失 404（资源不存在）与 5xx（服务异常）的语义区别，用户无法分辨是"刊不存在"还是"系统挂了"。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 E：重构现有全局状态屏为 State 基元，供 PAP-45 复用</h3>
+        <p><code>src/app/not-found.tsx</code> / <code>error.tsx</code> <strong>已存在为 v0.1 极简占位</strong>（无暖纸主题；现 error.tsx 还把 <code>error.message</code> 直接渲染给用户）。本 issue 将其重构为薄壳，包 <code>portal/status/</code> 下的 <code>NotFoundState</code> / <code>ErrorState</code> 基元（hi-fi 已设计为全站复用资产，含技术细节 <code>&lt;details&gt;</code> 折叠区但不暴露真实堆栈）。略超 PAP-44 最小 AC，但 PAP-45 文献页直接复用，且顺带修掉现有 error.tsx 的信息泄漏。</p>
+        <p class="alternatives"><strong>备选 A：</strong>只做期刊页自己的 <code>[id]/not-found.tsx</code>，全局屏维持现状 — 否决：现有全局屏是占位、且 error.tsx 泄漏 message；PAP-45 紧接其后也要 404/error，分两次做必然重写；hi-fi 已出全站稿，一次到位最省。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 F：首页"浏览全部期刊"保留 disabled，留给 PAP-47</h3>
+        <p>本 issue 只解除<strong>期刊详情卡片</strong>（<code>JournalCoverCard</code>）的 disabled 接通 <code>/journals/[id]</code>。"浏览全部期刊"指向 <code>/journals</code> 列表页（PAP-47 范围），现在接 Link 会 404，故保留 disabled 由 PAP-47 一并解除。</p>
+        <p class="alternatives"><strong>备选 A：</strong>本 issue 就把"浏览全部"接 Link → /journals — 否决：/journals 列表页尚不存在，点击即 404 断链，体验劣化；职责应留在 PAP-47。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>9. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BE 详情端点真实数据中评级列表为空 / 字段大面积 null，触发大量降级，页面显得空</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>派生函数 + 组件全程 null-safe；smoke 用真实 BE 数据跑一遍肉眼核对；降级态本就是 hi-fi 一等设计目标，非异常</td>
+          </tr>
+          <tr>
+            <td>hi-fi 原型 mock 字段（嵌套 metrics.*）与 BE 扁平字段语义对不齐，组装逻辑写错</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>派生逻辑全部纯函数 + Vitest 单测覆盖（含取最新年、拼接、降级分支）；不在 JSX 散落取数逻辑</td>
+          </tr>
+          <tr>
+            <td><code>homepageUrl</code> BE 恒 null，主操作"访问官网"长期 disabled，hi-fi 主 CTA 形同虚设</td>
+            <td><span class="pill low">low</span></td>
+            <td>已知约定（BE 注释明确恒 null 待采集）；按 hi-fi 降级为 disabled + title 提示，不阻塞页面；待采集补齐后零改动生效</td>
+          </tr>
+          <tr>
+            <td>RSC 中 fetch 区分 404 vs 5xx 处理不当，导致 error boundary / notFound 错触发</td>
+            <td><span class="pill low">low</span></td>
+            <td><code>fetchVenueDetail</code> 显式判 <code>res.status === 404</code> 返 null、其余 <code>!res.ok</code> throw；smoke 覆盖不存在 id 路径</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>10. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>src/types/portal.ts</code></td><td><span class="pill modify">modify</span></td><td>加 <code>VenueDetail</code> + 子类型（JcrRating/CasRating/ScopusRating/YearlyStat/VenueIdentifier）</td></tr>
+          <tr><td>2</td><td><code>src/lib/portal-api/venues.ts</code></td><td><span class="pill modify">modify</span></td><td>加 <code>fetchVenueDetail(id)</code>：404→null，其他失败→throw</td></tr>
+          <tr><td>3</td><td><code>src/lib/portal-api/venue-derive.ts</code></td><td><span class="pill create">create</span></td><td>派生纯函数：扁平响应 → 组件视图对象（最新年评级重组 {jcr,cas,scopus,bibliometric} / 学科标签拼接 / cover 调色板 / 降级）+ 单测</td></tr>
+          <tr><td>4</td><td><code>src/app/journals/[id]/page.tsx</code></td><td><span class="pill create">create</span></td><td>RSC：取数 → notFound()/throw → 渲染 JournalDetailView</td></tr>
+          <tr><td>5</td><td><code>src/app/journals/[id]/loading.tsx</code></td><td><span class="pill create">create</span></td><td>期刊页 skeleton（镜像双栏）</td></tr>
+          <tr><td>6</td><td><code>src/app/journals/[id]/not-found.tsx</code></td><td><span class="pill create">create</span></td><td>期刊不存在，复用 NotFoundState</td></tr>
+          <tr><td>7</td><td><code>src/app/not-found.tsx</code></td><td><span class="pill modify">modify</span></td><td>已存在极简占位 → 重构为全局 404 薄壳（包 NotFoundState）</td></tr>
+          <tr><td>8</td><td><code>src/app/error.tsx</code></td><td><span class="pill modify">modify</span></td><td>已存在极简占位（泄漏 error.message）→ 重构为全局 error 薄壳（"use client"，包 ErrorState，传受控文案）</td></tr>
+          <tr><td>9</td><td><code>src/components/portal/status/NotFoundState.tsx</code></td><td><span class="pill create">create</span></td><td>404 基元（RSC）</td></tr>
+          <tr><td>10</td><td><code>src/components/portal/status/ErrorState.tsx</code></td><td><span class="pill create">create</span></td><td>error 基元（"use client"，重试）</td></tr>
+          <tr><td>11</td><td><code>src/components/portal/DisclosureSection.tsx</code></td><td><span class="pill create">create</span></td><td>折叠区（"use client"，button[aria-expanded]）— 两页共用</td></tr>
+          <tr><td>12</td><td><code>src/components/portal/IdentifierChip.tsx</code></td><td><span class="pill create">create</span></td><td>标识符复制+外链（"use client"）— 两页共用</td></tr>
+          <tr><td>13</td><td><code>src/components/portal/journal-detail/JournalDetailView.tsx</code></td><td><span class="pill create">create</span></td><td>整页编排（RSC）</td></tr>
+          <tr><td>14</td><td><code>src/components/portal/journal-detail/JournalMasthead.tsx</code></td><td><span class="pill create">create</span></td><td>封面+刊名+身份+主操作</td></tr>
+          <tr><td>15</td><td><code>src/components/portal/journal-detail/MetricBadge.tsx</code></td><td><span class="pill create">create</span></td><td>影响力速览单卡</td></tr>
+          <tr><td>16</td><td><code>src/components/portal/journal-detail/JournalPositioning.tsx</code></td><td><span class="pill create">create</span></td><td>定位结构化标签</td></tr>
+          <tr><td>17</td><td><code>src/components/portal/journal-detail/RatingTable.tsx</code></td><td><span class="pill create">create</span></td><td>JCR/CAS/Scopus 三套评级</td></tr>
+          <tr><td>18</td><td><code>src/components/portal/journal-detail/TrendChart.tsx</code></td><td><span class="pill create">create</span></td><td>年度双柱图（纯 CSS/SVG，RSC）</td></tr>
+          <tr><td>19</td><td><code>src/components/portal/journal-detail/JournalRail.tsx</code></td><td><span class="pill create">create</span></td><td>侧栏速览卡</td></tr>
+          <tr><td>20</td><td><code>src/components/portal/JournalCoverCard.tsx</code></td><td><span class="pill modify">modify</span></td><td>解除 disabled，button→Link 接 /journals/[id]</td></tr>
+          <tr><td>21</td><td><code>tests/e2e/journal-detail.spec.ts</code></td><td><span class="pill create">create</span></td><td>Playwright smoke：首页点卡→详情渲染 + 不存在 id→not-found</td></tr>
+          <tr><td>—</td><td>各组件 / 派生 <code>tests/**/*.test.ts(x)</code></td><td><span class="pill create">create</span></td><td>Vitest 单测（TDD，<strong>统一放 <code>tests/</code></strong>——vitest 仅扫 tests/）</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">组件拆分粒度以 hi-fi 实际区块为准，实现时可在不偏离本结构的前提下微调；偏离需在 plan 中记 DEVIATION。</p>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li><code>/journals/[id]</code> 渲染期刊真实数据，无文献列表（边界 A）；默认层 + 折叠深数据层分层正确</li>
+        <li>首页期刊卡片可点击跳转详情页（不再 disabled）；"浏览全部期刊"仍 disabled（留 PAP-47）</li>
+        <li>不存在的 id → Next not-found；取数失败 → 全局 error 页</li>
+        <li>字段级降级全部生效（无封面/缺评级/无趋势/无 APC/homepageUrl null/关联学会无数据）</li>
+        <li>375×812 与 1440×900 两视图布局正确</li>
+        <li>Playwright smoke + <code>pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code> 全绿</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       由 ../styles/user-notes.js 驱动，仅本机本浏览器、不进 git；
+       放子目录的 spec 把下方 <script src> 同改成 ../../styles/
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
