@@ -4,13 +4,16 @@ import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPaperRespon
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalPublicationDetailResponse;
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueBrowseResponse;
 import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueDetailResponse;
+import dev.linqibin.patra.catalog.adapter.rest.portal.response.PortalVenueFacetsResponse;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PortalPaperReadModel;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFacets;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueDetailReadModel;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.stereotype.Component;
 
 /// Portal 读模型 → 响应 DTO 转换器。
@@ -67,6 +70,29 @@ public class PortalApiConverter {
         .isInDoaj(model.isInDoaj())
         .issnL(model.issnL())
         .build();
+  }
+
+  /// 将期刊 facet 读模型转为响应 DTO。
+  ///
+  /// @param model 期刊 facet 读模型
+  /// @return 响应 DTO
+  public PortalVenueFacetsResponse toVenueFacetsResponse(VenueBrowseFacets model) {
+    return PortalVenueFacetsResponse.builder()
+        .subjects(toFacetCountResponses(model.subjects()))
+        .jcrQuartiles(toFacetCountResponses(model.jcrQuartiles()))
+        .casQuartiles(toFacetCountResponses(model.casQuartiles()))
+        .countries(toFacetCountResponses(model.countries()))
+        .casTop(model.casTop())
+        .openAccess(model.openAccess())
+        .doaj(model.doaj())
+        .build();
+  }
+
+  private List<PortalVenueFacetsResponse.FacetCountResponse> toFacetCountResponses(
+      List<VenueBrowseFacets.FacetCount> facets) {
+    return facets.stream()
+        .map(f -> PortalVenueFacetsResponse.FacetCountResponse.of(f.value(), f.count()))
+        .toList();
   }
 
   /// 将期刊详情读模型转为响应 DTO。
