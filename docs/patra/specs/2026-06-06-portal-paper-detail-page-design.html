@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文献详情页 /papers/[id] 设计文档 (PAP-45)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#be-model">后端：补齐详情模型</a></li>
+      <li><a href="#fe-data">前端：数据层</a></li>
+      <li><a href="#fe-view">前端：组件与页面</a></li>
+      <li><a href="#placeholders">Mock / 占位策略</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>文献详情页 <code>/papers/[id]</code> 设计文档</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-06</span>
+        <span>🌿 pap-45-fe-paper-detail-page</span>
+        <span>👤 Lin</span>
+        <span>🎫 PAP-45</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>实现文献详情页 <code>/papers/[id]</code>（RSC），忠实复刻 PAP-41 hi-fi 稿，并接通 explore-feed 文献卡片「详情」入口。架构沿用 PAP-44 期刊详情页：零映射 wire type + 纯函数 derive 视图层 + 复用既有基元（NotFoundState / ErrorState / DisclosureSection / IdentifierChip / SectionEyebrow / portal-ui）。这是一个<strong>全栈任务</strong>：先把后端 <code>PortalPublicationDetailResponse</code> 模型补齐（新增 <code>source</code> / <code>fullTextUrl</code> 两个真实字段 + <code>bookmarks</code> / <code>estimatedReadMin</code> 两个诚实占位字段，仿照现有 <code>aiSummary</code> 恒 null 占位先例），再前端落地。无真实用户，缺数据字段一律 null/0 + TODO，以后再填，绝不向用户展示伪造数据。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>v0.5 Portal Detail Pages 里程碑下，PAP-44 已交付期刊详情页 <code>/journals/[id]</code>（已合并 #133），沉淀了一批可复用的详情页基元与「零映射 wire type + derive 视图层」模式。PAP-45 是它的姊妹页——文献详情页 <code>/papers/[id]</code>。</p>
+      <p>前置依赖均已就绪：<strong>PAP-42</strong>（BE portal 读端点，含文献详情 by-id）已合并 #132，提供 <code>GET /patra-catalog/portal/publications/{id}</code>；<strong>PAP-41</strong>（文献详情 hi-fi 稿）已定稿，快照在 <code>docs/patra/design/snapshots/2026-06-06-detail-pages-hifi.zip</code>。当前 explore-feed 的 <code>PaperCard</code>「详情」按钮是 <code>&lt;button disabled&gt;</code> 占位（<code>PaperCard.tsx:69-78</code>），文献流可浏览但点不进详情。</p>
+      <p>调研发现 hi-fi 的右侧「速览」卡需要 5 项数据（证据等级 / 被引数 / 收藏数 / 阅读时间 / 来源），以及 header 的「去全文」按钮需要原文链接，而当前详情 DTO 只给得出证据等级与被引数。经决策：<strong>后端模型要齐全</strong>——能接真实数据的字段接出来，暂无数据的留 null/0 + TODO 占位，与列表端点 <code>PortalPaperResponse</code> 已有的 <code>bookmarks=0</code>、<code>estimatedReadMin=null</code> 及详情 DTO 已有的 <code>aiSummary=null</code> 占位先例保持一致。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>BE：<code>PortalPublicationDetailResponse</code> 补齐 4 字段（<code>source</code>/<code>fullTextUrl</code> 真实，<code>bookmarks</code>/<code>estimatedReadMin</code> 占位）+ 读链路 SQL/ReadModel/Converter 扩展 + IT 扩测</li>
+            <li>FE：<code>PaperDetail</code> wire type + 子类型，<code>fetchPublicationDetail(id)</code>，<code>publication-derive.ts</code> derive 层</li>
+            <li>FE：文献专用组件（EvidenceBadge / AbstractBlock / AuthorList / PaperHeader / PaperRail / BookmarkButton / PublicationDetailView）</li>
+            <li>FE：路由 <code>app/papers/[id]/{page,loading,not-found}.tsx</code></li>
+            <li>FE：<code>PaperCard</code>「详情」解除 disabled，接 <code>Link</code> 到 <code>/papers/[id]</code></li>
+            <li>收藏按钮 + AI 速读区按 mock 占位渲染（边界 B/C）</li>
+            <li>测试：fetch 分支 / derive 纯函数 / 组件 / 卡片 link / Playwright smoke</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>真实收藏系统 / 用户系统（无用户，本版只 mock 交互）</li>
+            <li>真实 AI 速读生成（无 LLM 接入，<code>aiSummary</code> 恒 null）</li>
+            <li>阅读时间真实估算（无全文/字数数据，<code>estimatedReadMin</code> 留 TODO）</li>
+            <li>OA 多位置（<code>cat_publication_oa_location</code>）聚合——本版只用 <code>cat_publication_metadata.full_text_url</code> 单一原文链接字段</li>
+            <li>文献被引趋势图 / 相关文献推荐（BE 无对应读模型）</li>
+            <li>期刊列表页 <code>/journals</code>（留 PAP-47）</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="be-model">
+      <h2>3. 后端：补齐详情模型</h2>
+      <p>详情读链路：<code>PortalPublicationController.getDetail</code> → <code>PortalPublicationDetailQueryService.getById</code> → <code>PublicationDetailReadPort</code> → <code>PublicationDetailReadAdapter</code>（<code>PublicationDetailDao</code> 原生 SQL 投影 <code>PublicationDetailRow</code>）→ <code>PublicationDetailReadModel</code> → <code>PortalApiConverter.toPublicationDetailResponse</code> → DTO。DTO <strong>不经领域聚合</strong>，直接由读模型投影装配。</p>
+      <p><code>PortalPublicationDetailResponse</code> 新增 4 字段，命名对齐列表端点 <code>PortalPaperResponse</code>（API 一致性）：</p>
+      <table>
+        <thead>
+          <tr><th>字段</th><th>类型</th><th>来源 / 处理</th><th>real / 占位</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>source</code></td>
+            <td>String</td>
+            <td><code>cat_publication.provenance_code</code>（主查询已 FROM 该表，SQL 加一列），经 <code>PortalApiConverter.toSource()</code> 转人类可读（如 "PubMed"）</td>
+            <td><span class="pill low">real</span></td>
+          </tr>
+          <tr>
+            <td><code>fullTextUrl</code></td>
+            <td>String</td>
+            <td><code>cat_publication_metadata.full_text_url</code>（1:1），SQL 加 <code>LEFT JOIN cat_publication_metadata</code></td>
+            <td><span class="pill low">real</span></td>
+          </tr>
+          <tr>
+            <td><code>bookmarks</code></td>
+            <td>Integer</td>
+            <td>无收藏系统，Converter 直接置 <code>0</code>（对齐列表 <code>bookmarks=0 // 无用户系统</code>）+ TODO</td>
+            <td><span class="pill mid">占位</span></td>
+          </tr>
+          <tr>
+            <td><code>estimatedReadMin</code></td>
+            <td>Integer</td>
+            <td>无全文/字数数据，Converter 直接置 <code>null</code>（对齐列表同名字段 TODO）+ TODO</td>
+            <td><span class="pill mid">占位</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>改动落点：</p>
+      <ul>
+        <li><code>PublicationDetailDao</code> 原生 SQL：SELECT 加 <code>p.provenance_code</code>；FROM 后加 <code>LEFT JOIN cat_publication_metadata m ON m.publication_id = p.id</code>，SELECT 加 <code>m.full_text_url</code></li>
+        <li><code>PublicationDetailRow</code>（投影接口）：加 <code>provenanceCode</code>、<code>fullTextUrl</code> getter</li>
+        <li><code>PublicationDetailReadModel</code>：加 <code>provenanceCode</code>、<code>fullTextUrl</code> 字段</li>
+        <li><code>PortalApiConverter.toPublicationDetailResponse</code>：builder 加 4 行——<code>.source(toSource(model.provenanceCode()))</code> / <code>.fullTextUrl(model.fullTextUrl())</code> / <code>.bookmarks(0)</code> / <code>.estimatedReadMin(null)</code>，后两者带 <code>// TODO</code> 注释，仿照已有的 <code>.aiSummary(null) // TODO</code></li>
+        <li><code>bookmarks</code>/<code>estimatedReadMin</code> <strong>不入 ReadModel/SQL</strong>，仅在 Converter 层置占位值</li>
+      </ul>
+      <p>测试（TDD，<code>./gradlew check</code> 门控）：</p>
+      <ul>
+        <li><code>PortalPublicationControllerIT</code>（<code>@WebMvcTest</code> + mock QueryService）：在 fixture builder 加字段值，<code>jsonPath</code> 断言 <code>$.source</code> / <code>$.fullTextUrl</code>，<code>$.bookmarks</code> isEqualTo 0，<code>$.estimatedReadMin</code> isEmpty()（仿 <code>$.aiSummary</code>）</li>
+        <li><code>PublicationDetailReadAdapterIT</code>（<code>@DataJpaTest</code> + TestContainers）：加 <code>saveMetadata(pubId, fullTextUrl)</code> helper，断言 <code>model.fullTextUrl()</code>、<code>model.provenanceCode()</code> 从真实 SQL 取出</li>
+      </ul>
+    </section>
+
+    <section id="fe-data">
+      <h2>4. 前端：数据层</h2>
+      <p>沿用 PAP-44 的「零映射 wire type + 纯函数 derive 视图层」。</p>
+      <h3>4.1 wire type（<code>src/types/portal.ts</code>）</h3>
+      <p>新增 <code>PaperDetail</code> 接口，完整镜像补齐后的 BE DTO（字段名直传、零运行时映射、<code>id</code> 为 <code>string</code> 防 JS 精度损失），及子类型：</p>
+      <ul>
+        <li><code>EvidenceLevel { level: string; rank: number; label: string; derived: boolean }</code></li>
+        <li><code>AbstractSection { label: string; text: string }</code></li>
+        <li><code>Author { order: number; first: boolean; corresponding: boolean; name: string; affiliation: string | null }</code></li>
+        <li><code>MeshHeading { descriptorUi: string; term: string; major: boolean }</code></li>
+        <li><code>Funding { funder: string | null; grantId: string | null; country: string | null }</code></li>
+        <li><code>PublicationDate { type: string; date: string }</code></li>
+      </ul>
+      <p><code>PaperDetail</code> 含上述列表字段 + 扁平标量：<code>id</code> / <code>title</code> / <code>originalTitle</code> / <code>venueId</code> / <code>venueName</code> / <code>publicationYear</code> / <code>evidenceLevel</code> / <code>abstractType</code> / <code>abstractSections</code> / <code>abstractPlainText</code> / <code>doi</code> / <code>pmid</code> / <code>pmcid</code> / <code>pii</code> / <code>primaryType</code> / <code>publicationTypes</code> / <code>citationCount</code> / <code>numberOfReferences</code> / <code>conflictOfInterest</code> / <code>isOa</code> / <code>oaStatus</code> / <code>aiSummary</code> / <code>source</code> / <code>fullTextUrl</code> / <code>bookmarks</code> / <code>estimatedReadMin</code>。</p>
+      <h3>4.2 fetch（<code>src/lib/portal-api/publications.ts</code>）</h3>
+      <p>新增 <code>fetchPublicationDetail(id: string): Promise&lt;PaperDetail | null&gt;</code>，<strong>完全镜像</strong> <code>fetchVenueDetail</code>：</p>
+      <ul>
+        <li>非数字 id（<code>!/^\d+$/.test(id)</code>）→ 直接 <code>return null</code>，不发 HTTP</li>
+        <li>读 <code>process.env.PATRA_GATEWAY_BASE_URL</code>，缺失则 throw</li>
+        <li>URL：<code>${baseUrl}/patra-catalog/portal/publications/${id}</code></li>
+        <li><code>fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) })</code></li>
+        <li><code>res.status === 404</code> → <code>return null</code>；其他非 2xx → throw（冒泡到 error boundary）</li>
+        <li>成功 → <code>return (await res.json()) as PaperDetail</code></li>
+        <li>文件已有 <code>import "server-only"</code></li>
+      </ul>
+      <h3>4.3 derive 层（<code>src/lib/portal-api/publication-derive.ts</code>，新建）</h3>
+      <p>纯函数，把扁平 DTO 重组为组件视图对象（无副作用、可单测）：</p>
+      <ul>
+        <li><code>deriveAbstract(p)</code> → <code>{ kind: "structured" | "plain" | "empty"; sections?; text? }</code>，三态判定（有 <code>abstractSections</code> → structured；有 <code>abstractPlainText</code> → plain；都无 → empty）</li>
+        <li><code>deriveEvidence(level)</code> → <code>{ tone: "moss"|"amber"|"slate"|"muted"; lit: number; label; en; derived }</code>，按 <code>rank</code> 映射色温与阶梯点亮数（<code>lit = 6 - rank</code>，clamp）</li>
+        <li><code>deriveFullTextHref(p)</code> → <code>string | null</code>，优先级：<code>fullTextUrl</code> → <code>https://doi.org/{doi}</code> → <code>https://pubmed.ncbi.nlm.nih.gov/{pmid}</code> → null（落地「专门字段优先、其他途径降级」）</li>
+        <li><code>deriveBylineAuthors(authors)</code> → 前 3 位 + 「等 N 位」溢出文案</li>
+      </ul>
+    </section>
+
+    <section id="fe-view">
+      <h2>5. 前端：组件与页面</h2>
+      <h3>5.1 复用既有基元（零改动）</h3>
+      <p><code>NotFoundState kind="paper"</code>（文案已内置）、<code>ErrorState</code>、<code>DisclosureSection</code>、<code>IdentifierChip</code>、<code>SectionEyebrow</code>、<code>portal-ui</code>（btnPrimary/btnSecondary/btnBlock）。</p>
+      <h3>5.2 新建文献专用组件（<code>src/components/portal/paper-detail/</code>）</h3>
+      <table>
+        <thead>
+          <tr><th>组件</th><th>RSC/Client</th><th>职责</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>EvidenceBadge</code></td><td>RSC</td><td>5 档阶梯图标 + moss/amber/slate/muted 色温（按 derive 的 tone）+「衍生」徽记</td></tr>
+          <tr><td><code>AbstractBlock</code></td><td>RSC</td><td>结构化（标签列 + serif 正文）/ 纯文本 / 空 三态渲染</td></tr>
+          <tr><td><code>AuthorList</code></td><td>RSC</td><td>序号 + 姓名 + 机构，通讯/第一作者徽记</td></tr>
+          <tr><td><code>PaperHeader</code></td><td>RSC</td><td>类型 chips + OA pill + serif 标题 + 原文标题 + 作者 byline（期刊名链 <code>/journals/{venueId}</code>）+ EvidenceBadge + 操作按钮组</td></tr>
+          <tr><td><code>PaperRail</code></td><td>RSC</td><td>sticky 三卡：操作（全文链接 + 收藏）/ AI 速读（clay accent，mock）/ 速览（5 行）</td></tr>
+          <tr><td><code>BookmarkButton</code></td><td>Client</td><td><code>useState</code> 本地切换图标填充态，纯 mock 无 API、无 toast 依赖</td></tr>
+          <tr><td><code>PublicationDetailView</code></td><td>RSC</td><td>根编排：面包屑 sticky bar + 两栏布局（左主区 5 段 + 右 rail），镜像 <code>JournalDetailView</code> 骨架（含 <code>&lt;nav aria-label="面包屑"&gt;</code> + section aria-label 等 a11y）</td></tr>
+        </tbody>
+      </table>
+      <h3>5.3 左主区 5 段（从上到下）</h3>
+      <ol>
+        <li><strong>Header</strong>（PaperHeader）：类型 chips + OA pill + 标题 + 原文标题 + 作者 byline + EvidenceBadge + 「去全文」/「收藏」</li>
+        <li><strong>摘要</strong>（SectionEyebrow + AbstractBlock）</li>
+        <li><strong>关键标识</strong>（SectionEyebrow + IdentifierChip：DOI / PMID）</li>
+        <li><strong>深度数据 · 按需展开</strong>（SectionEyebrow + 6 个 DisclosureSection，<strong>全默认收起</strong>）：① 完整作者与机构（AuthorList）② MeSH 主题词/关键词（条件：mesh 非空）③ 资助信息（条件：funding 非空）④ 其他标识符 PMCID+PII（条件：有 pmcid 或 pii）⑤ 各类日期（条件：dates 非空）⑥ 参考文献与声明（始终：numberOfReferences + conflictOfInterest）</li>
+      </ol>
+      <h3>5.4 速览卡 5 行</h3>
+      <p>证据等级 ✓ · 被引数 ✓（citationCount）· 来源 ✓（source，已接真实）· 收藏数（bookmarks=0 占位）· 阅读时间（estimatedReadMin=null → 渲染 "—"）。</p>
+      <h3>5.5 路由 + 卡片接通</h3>
+      <ul>
+        <li><code>app/papers/[id]/page.tsx</code>：async RSC，<code>await params</code> → <code>fetchPublicationDetail(id)</code> → <code>null</code> 则 <code>notFound()</code>、5xx throw 冒泡 → <code>&lt;TopNav /&gt; &lt;main&gt;&lt;PublicationDetailView pub={pub} /&gt;&lt;/main&gt; &lt;Footer /&gt;</code></li>
+        <li><code>app/papers/[id]/loading.tsx</code>：两栏布局骨架屏（<code>animate-pulse</code>），结构对齐 PublicationDetailView</li>
+        <li><code>app/papers/[id]/not-found.tsx</code>：<code>&lt;TopNav /&gt; &lt;main&gt;&lt;NotFoundState kind="paper" /&gt;&lt;/main&gt;</code></li>
+        <li><code>PaperCard.tsx:69-78</code>：<code>&lt;button disabled&gt;</code> → <code>&lt;Link href={`/papers/${paper.id}`}&gt;</code>（对齐 PAP-44 对 JournalCoverCard 的改造）</li>
+      </ul>
+    </section>
+
+    <section id="placeholders">
+      <h2>6. Mock / 占位策略</h2>
+      <p>原则：无真实用户，缺数据字段一律诚实占位（null/0 + TODO），<strong>绝不向用户展示伪造的聚合数据</strong>；BE 模型保持齐全，以后接入只填值不改契约。</p>
+      <table>
+        <thead>
+          <tr><th>区域</th><th>数据现状</th><th>本版渲染</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>AI 速读卡</td><td><code>aiSummary</code> 恒 null</td><td>clay accent 卡 +「mock · 占位」标注；null → 斜体灰「尚未生成 AI 速读」；「生成速读」按钮为静态占位（无 LLM 调用）</td></tr>
+          <tr><td>收藏按钮</td><td>无收藏系统</td><td>Client <code>useState</code> 本地切换填充态（视觉反馈），纯 mock 无 API、无 toast</td></tr>
+          <tr><td>速览·收藏数</td><td><code>bookmarks=0</code></td><td>显示 0（不编造计数）</td></tr>
+          <tr><td>速览·阅读时间</td><td><code>estimatedReadMin=null</code></td><td>渲染 "—"（保留行位，不伪造时长）</td></tr>
+          <tr><td>去全文按钮</td><td><code>fullTextUrl</code> 可能为 null</td><td>降级链 fullTextUrl → DOI → PubMed；全无 → 按钮禁用置灰</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="decisions">
+      <h2>关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：零映射 wire type + 纯函数 derive 视图层</h3>
+        <p>沿用 PAP-44 已验证的模式：TS 接口扁平镜像 BE DTO（零运行时映射），组件消费的视图对象（abstract 三态、evidence 色温阶梯、全文链接降级）由 <code>publication-derive.ts</code> 纯函数派生。</p>
+        <p class="alternatives"><strong>备选 A：</strong>组件内直接消费 BE DTO — 否决：abstract 三态判定、evidence rank→tone 映射等逻辑会散落各组件，难单测。<br>
+        <strong>备选 B：</strong>在 TS 层做完整 DTO→ViewModel 映射 — 否决：双重维护字段，PAP-44 已证明「扁平 wire + 按需 derive」更省。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：后端补齐详情模型（真实 + 诚实占位），而非前端造数据</h3>
+        <p>详情页需要的字段全部在 BE DTO 里齐全：<code>source</code>/<code>fullTextUrl</code> 接真实领域数据，<code>bookmarks</code>/<code>estimatedReadMin</code> 留 0/null + TODO 占位，仿照已有 <code>aiSummary=null</code> 先例。</p>
+        <p class="alternatives"><strong>备选 A：</strong>纯前端造 mock 数据填满速览 — 否决：用户明确要求 BE 模型齐全；前端造聚合数据是欺骗性假数据。<br>
+        <strong>备选 B：</strong>缺字段前端直接不渲染、BE 不动 — 否决：模型不完整，未来接入要改契约 + 改前端，违背绿地「一次设计到最终形态」。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：全文链接 fullTextUrl 优先 + DOI/PubMed 降级</h3>
+        <p>BE 暴露 <code>cat_publication_metadata.full_text_url</code> 专门字段为主，FE 降级链 <code>fullTextUrl → doi.org/{doi} → pubmed/{pmid} → 禁用</code>。</p>
+        <p class="alternatives"><strong>备选 A：</strong>仅 DOI — 否决：无 doi 的老 PubMed 记录拿不到全文入口。<br>
+        <strong>备选 B：</strong>DOI + PMID 并列双按钮 — 否决：与 hi-fi 单「去全文」按钮设计不符，header 操作区更拥挤。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：收藏 / AI 速读纯前端 mock（无 toast 依赖）</h3>
+        <p>收藏按钮用 <code>useState</code> 本地切换图标填充态做视觉反馈；AI 速读区静态占位 +「mock」标注。均无 API、无 toast 库依赖。</p>
+        <p class="alternatives"><strong>备选 A：</strong>接真实收藏/LLM API — 否决：无用户系统、无 LLM 接入，YAGNI。<br>
+        <strong>备选 B：</strong>完全删除这两块 — 否决：PAP-45 明确要求「aiSummary / 收藏按 mock 占位渲染（边界 B/C）」。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>cat_publication_metadata.full_text_url</code> 实际填充率未知（导入流程可能未回填）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>FE 降级链 DOI/PubMed 兜底；全无则按钮禁用，不报错</td>
+          </tr>
+          <tr>
+            <td>详情 SQL 加 <code>LEFT JOIN cat_publication_metadata</code> 影响查询正确性/性能</td>
+            <td><span class="pill low">low</span></td>
+            <td>LEFT JOIN 1:1 不改主行集；<code>PublicationDetailReadAdapterIT</code>（TestContainers）覆盖真实 SQL</td>
+          </tr>
+          <tr>
+            <td>新增 <code>bookmarks</code>/<code>estimatedReadMin</code> 占位语义与列表端点漂移</td>
+            <td><span class="pill low">low</span></td>
+            <td>字段名、占位值（0/null）、TODO 注释全部对齐 <code>PortalPaperResponse</code></td>
+          </tr>
+          <tr>
+            <td>e2e happy-path 依赖后端（portal-ci 的 e2e job 无后端，首页出不来文献卡）</td>
+            <td><span class="pill low">low</span></td>
+            <td>沿用 PAP-44 策略：<code>test.skip</code> 当 explore-feed 无卡时跳过 happy-path；not-found 用例不依赖后端始终执行</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>…/portal/response/PortalPublicationDetailResponse.java</code></td><td><span class="pill modify">modify</span></td><td>加 source / fullTextUrl / bookmarks / estimatedReadMin 字段</td></tr>
+          <tr><td>2</td><td><code>…/domain/model/read/portal/PublicationDetailReadModel.java</code></td><td><span class="pill modify">modify</span></td><td>加 provenanceCode / fullTextUrl 字段</td></tr>
+          <tr><td>3</td><td><code>…/infra/adapter/read/PublicationDetailReadAdapter.java</code>（+ Dao SQL + Row 投影）</td><td><span class="pill modify">modify</span></td><td>SQL 加 provenance_code 列 + LEFT JOIN metadata 取 full_text_url</td></tr>
+          <tr><td>4</td><td><code>…/rest/portal/PortalApiConverter.java</code></td><td><span class="pill modify">modify</span></td><td>toPublicationDetailResponse 加 4 行 builder（仿 aiSummary 占位）</td></tr>
+          <tr><td>5</td><td><code>…/adapter/.../PortalPublicationControllerIT.java</code></td><td><span class="pill modify">modify</span></td><td>fixture + jsonPath 断言 4 新字段</td></tr>
+          <tr><td>6</td><td><code>…/infra/.../PublicationDetailReadAdapterIT.java</code></td><td><span class="pill modify">modify</span></td><td>saveMetadata helper + 断言 fullTextUrl/provenanceCode</td></tr>
+          <tr><td>7</td><td><code>src/types/portal.ts</code></td><td><span class="pill modify">modify</span></td><td>PaperDetail + 6 子类型</td></tr>
+          <tr><td>8</td><td><code>src/lib/portal-api/publications.ts</code></td><td><span class="pill modify">modify</span></td><td>fetchPublicationDetail(id)（镜像 fetchVenueDetail）</td></tr>
+          <tr><td>9</td><td><code>src/lib/portal-api/publication-derive.ts</code></td><td><span class="pill create">create</span></td><td>deriveAbstract / deriveEvidence / deriveFullTextHref / deriveBylineAuthors</td></tr>
+          <tr><td>10</td><td><code>src/components/portal/paper-detail/EvidenceBadge.tsx</code></td><td><span class="pill create">create</span></td><td>证据等级徽章</td></tr>
+          <tr><td>11</td><td><code>src/components/portal/paper-detail/AbstractBlock.tsx</code></td><td><span class="pill create">create</span></td><td>摘要三态</td></tr>
+          <tr><td>12</td><td><code>src/components/portal/paper-detail/AuthorList.tsx</code></td><td><span class="pill create">create</span></td><td>作者列表</td></tr>
+          <tr><td>13</td><td><code>src/components/portal/paper-detail/PaperHeader.tsx</code></td><td><span class="pill create">create</span></td><td>标题/作者/操作头部</td></tr>
+          <tr><td>14</td><td><code>src/components/portal/paper-detail/PaperRail.tsx</code></td><td><span class="pill create">create</span></td><td>右侧 sticky 三卡</td></tr>
+          <tr><td>15</td><td><code>src/components/portal/paper-detail/BookmarkButton.tsx</code></td><td><span class="pill create">create</span></td><td>收藏 mock 按钮（client）</td></tr>
+          <tr><td>16</td><td><code>src/components/portal/paper-detail/PublicationDetailView.tsx</code></td><td><span class="pill create">create</span></td><td>根编排视图</td></tr>
+          <tr><td>17</td><td><code>src/app/papers/[id]/page.tsx</code></td><td><span class="pill create">create</span></td><td>RSC 详情页</td></tr>
+          <tr><td>18</td><td><code>src/app/papers/[id]/loading.tsx</code></td><td><span class="pill create">create</span></td><td>骨架屏</td></tr>
+          <tr><td>19</td><td><code>src/app/papers/[id]/not-found.tsx</code></td><td><span class="pill create">create</span></td><td>NotFoundState kind="paper"</td></tr>
+          <tr><td>20</td><td><code>src/components/portal/PaperCard.tsx</code></td><td><span class="pill modify">modify</span></td><td>button disabled → Link /papers/[id]</td></tr>
+          <tr><td>21</td><td><code>tests/lib/portal-api/publications.test.ts</code></td><td><span class="pill modify">modify</span></td><td>fetchPublicationDetail 分支覆盖</td></tr>
+          <tr><td>22</td><td><code>tests/lib/portal-api/publication-derive.test.ts</code></td><td><span class="pill create">create</span></td><td>derive 纯函数单测</td></tr>
+          <tr><td>23</td><td><code>tests/components/portal/paper-detail/*.test.tsx</code></td><td><span class="pill create">create</span></td><td>EvidenceBadge/AbstractBlock/AuthorList/PaperHeader 渲染测试</td></tr>
+          <tr><td>24</td><td><code>tests/components/portal/PaperCard.test.tsx</code></td><td><span class="pill modify">modify</span></td><td>link href 断言</td></tr>
+          <tr><td>25</td><td><code>tests/e2e/paper-detail.spec.ts</code></td><td><span class="pill create">create</span></td><td>Playwright smoke（点文献→详情+摘要断言；非数字 id→not-found）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li><code>/papers/[id]</code> 渲染文献真实完整元信息（标题/作者/摘要/标识符/MeSH/资助/日期/证据等级/来源/全文链接）</li>
+        <li>BE 详情 DTO 含 source/fullTextUrl（真实）+ bookmarks/estimatedReadMin（占位），<code>./gradlew check</code> 全绿（含扩展的两个 IT）</li>
+        <li>explore-feed 文献卡片「详情」可点击跳转（不再 disabled）</li>
+        <li>不存在 / 非数字 id → Next not-found（NotFoundState kind="paper"）</li>
+        <li>桌面 / 移动两视图布局正确，6 个 DisclosureSection 默认收起可展开</li>
+        <li>收藏 / AI 速读 mock 占位渲染，无伪造聚合数据</li>
+        <li>Playwright smoke + <code>pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code> 全绿</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
