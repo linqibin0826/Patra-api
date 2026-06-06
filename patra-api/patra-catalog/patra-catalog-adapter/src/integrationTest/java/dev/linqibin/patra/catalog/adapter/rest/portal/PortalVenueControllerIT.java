@@ -92,7 +92,7 @@ class PortalVenueControllerIT {
 
     restClient
         .get()
-        .uri("/portal/venues?subject=Medicine,Oncology&jcrQuartile=Q1,Q2&oa=true&page=2")
+        .uri("/portal/venues?subject=Medicine,Oncology&jcr=Q1,Q2&oa=true&page=2")
         .exchange()
         .expectStatus()
         .isOk();
@@ -124,7 +124,7 @@ class PortalVenueControllerIT {
 
     restClient
         .get()
-        .uri("/portal/venues/facets?q=x&jcrQuartile=Q1")
+        .uri("/portal/venues/facets?q=x&jcr=Q1")
         .exchange()
         .expectStatus()
         .isOk()
