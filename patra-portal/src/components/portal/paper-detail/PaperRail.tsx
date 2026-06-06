@@ -1,12 +1,12 @@
 import { ExternalLink, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { BookmarkButton } from "@/components/portal/paper-detail/BookmarkButton";
-import { deriveEvidence, deriveFullTextHref } from "@/lib/portal-api/publication-derive";
+import { deriveEvidence, deriveFullText } from "@/lib/portal-api/publication-derive";
 import { btnBlock, btnPrimary, btnSecondary } from "@/lib/portal-ui";
 import type { PaperDetail } from "@/types/portal";
 
 export function PaperRail({ paper }: { paper: PaperDetail }) {
-  const fullHref = deriveFullTextHref(paper);
+  const fullText = deriveFullText(paper);
   const ev = deriveEvidence(paper.evidenceLevel);
   const stats: { k: string; v: string }[] = [
     { k: "证据等级", v: ev.label },
@@ -23,21 +23,21 @@ export function PaperRail({ paper }: { paper: PaperDetail }) {
           操作
         </div>
         <div className="flex flex-col gap-2">
-          {fullHref ? (
+          {fullText.href ? (
             <a
               className={`${btnPrimary} ${btnBlock}`}
-              href={fullHref}
+              href={fullText.href}
               target="_blank"
               rel="noopener noreferrer"
             >
-              去全文 {paper.isOa ? "· OA" : "· DOI"} <ExternalLink size={14} />
+              {fullText.label} <ExternalLink size={14} />
             </a>
           ) : (
             <button className={`${btnSecondary} ${btnBlock} opacity-55`} type="button" disabled>
-              全文链接不可用
+              {fullText.label}
             </button>
           )}
-          <BookmarkButton block />
+          <BookmarkButton paperId={paper.id} block />
         </div>
       </div>
 

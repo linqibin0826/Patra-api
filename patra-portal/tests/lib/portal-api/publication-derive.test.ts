@@ -3,7 +3,7 @@ import {
   deriveAbstract,
   deriveByline,
   deriveEvidence,
-  deriveFullTextHref,
+  deriveFullText,
 } from "@/lib/portal-api/publication-derive";
 import type { Author, EvidenceLevel, PaperDetail } from "@/types/portal";
 
@@ -85,20 +85,36 @@ describe("deriveAbstract", () => {
   });
 });
 
-describe("deriveFullTextHref", () => {
-  it("fullTextUrl 优先", () => {
-    expect(deriveFullTextHref(paper({ fullTextUrl: "https://x", doi: "10.1/y", pmid: "9" }))).toBe(
-      "https://x",
+describe("deriveFullText", () => {
+  it("fullTextUrl(http/https) 优先，OA 文案", () => {
+    const v = deriveFullText(
+      paper({ fullTextUrl: "https://x", doi: "10.1/y", pmid: "9", isOa: true }),
+    );
+    expect(v).toEqual({ href: "https://x", label: "去全文 · OA" });
+  });
+  it("fullTextUrl 非 OA → 全文 文案", () => {
+    expect(deriveFullText(paper({ fullTextUrl: "https://x", isOa: false })).label).toBe(
+      "去全文 · 全文",
     );
   });
-  it("无 fullTextUrl 降级到 doi.org", () => {
-    expect(deriveFullTextHref(paper({ doi: "10.1/y", pmid: "9" }))).toBe("https://doi.org/10.1/y");
+  it("非法协议的 fullTextUrl 被丢弃，降级到 doi", () => {
+    const v = deriveFullText(paper({ fullTextUrl: "javascript:alert(1)", doi: "10.1/y" }));
+    expect(v).toEqual({ href: "https://doi.org/10.1/y", label: "去全文 · DOI" });
   });
-  it("仅 pmid 降级到 PubMed", () => {
-    expect(deriveFullTextHref(paper({ pmid: "9" }))).toBe("https://pubmed.ncbi.nlm.nih.gov/9");
+  it("无 fullTextUrl → doi.org，DOI 文案", () => {
+    expect(deriveFullText(paper({ doi: "10.1/y", pmid: "9" }))).toEqual({
+      href: "https://doi.org/10.1/y",
+      label: "去全文 · DOI",
+    });
   });
-  it("都无 → null", () => {
-    expect(deriveFullTextHref(paper())).toBeNull();
+  it("仅 pmid → PubMed，PubMed 文案", () => {
+    expect(deriveFullText(paper({ pmid: "9" }))).toEqual({
+      href: "https://pubmed.ncbi.nlm.nih.gov/9",
+      label: "去全文 · PubMed",
+    });
+  });
+  it("都无 → href null，不可用文案", () => {
+    expect(deriveFullText(paper())).toEqual({ href: null, label: "全文链接不可用" });
   });
 });
 

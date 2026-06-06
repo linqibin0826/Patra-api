@@ -60,12 +60,36 @@ export function deriveAbstract(p: PaperDetail): AbstractView {
   return { kind: "empty" };
 }
 
-/** 全文链接降级链：fullTextUrl → doi.org → PubMed → null。 */
-export function deriveFullTextHref(p: PaperDetail): string | null {
-  if (p.fullTextUrl) return p.fullTextUrl;
-  if (p.doi) return `https://doi.org/${p.doi}`;
-  if (p.pmid) return `https://pubmed.ncbi.nlm.nih.gov/${p.pmid}`;
-  return null;
+export interface FullTextView {
+  href: string | null;
+  label: string;
+}
+
+/** 仅放行 http/https，挡掉 javascript:/data: 等脏协议与非法 URL。 */
+function isHttpUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 全文链接 + 按钮文案。优先级：fullTextUrl（校验 http/https）→ doi.org → PubMed → 无。
+ * 文案按实际跳转来源派生，避免「显示 DOI 实际跳 PubMed」的误导。
+ */
+export function deriveFullText(p: PaperDetail): FullTextView {
+  if (p.fullTextUrl && isHttpUrl(p.fullTextUrl)) {
+    return { href: p.fullTextUrl, label: `去全文 · ${p.isOa ? "OA" : "全文"}` };
+  }
+  if (p.doi) {
+    return { href: `https://doi.org/${p.doi}`, label: "去全文 · DOI" };
+  }
+  if (p.pmid) {
+    return { href: `https://pubmed.ncbi.nlm.nih.gov/${p.pmid}`, label: "去全文 · PubMed" };
+  }
+  return { href: null, label: "全文链接不可用" };
 }
 
 /** byline：前 3 位作者 + 溢出数。 */

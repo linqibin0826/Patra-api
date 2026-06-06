@@ -126,9 +126,9 @@ export function PublicationDetailView({ paper }: { paper: PaperDetail }) {
               {funding.length > 0 && (
                 <DisclosureSection title="资助信息" count={`${funding.length} 项`}>
                   <dl className={DL}>
-                    {/* key: 同 funder+grantId 完全重复属 BE 数据异常，前端无更好替代（避免 index key 触发 noArrayIndexKey） */}
-                    {funding.map((f) => (
-                      <Fragment key={`${f.funder ?? "null"}-${f.grantId ?? "null"}`}>
+                    {funding.map((f, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: 静态资助列表（无状态、不重排），funder+grantId 可能完全重复需 index 保唯一
+                      <Fragment key={`${f.funder ?? ""}-${f.grantId ?? ""}-${i}`}>
                         <dt className={DT}>资助方</dt>
                         <dd className={DD}>
                           {f.funder ?? "—"}

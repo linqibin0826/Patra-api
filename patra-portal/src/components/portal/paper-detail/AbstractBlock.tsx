@@ -15,17 +15,21 @@ export function AbstractBlock({ paper }: { paper: PaperDetail }) {
   }
   return (
     <div>
-      {abstract.sections.map((s) => (
-        <div
-          key={s.label}
-          className="grid grid-cols-[92px_1fr] gap-[18px] border-t border-(--border-subtle) py-3.5 first:border-t-0 max-[640px]:grid-cols-1 max-[640px]:gap-[5px]"
-        >
-          <div className="pt-1 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-clay-700">
-            {s.label}
+      {abstract.sections.map((s, i) => {
+        // 静态摘要段落列表（无状态、不重排），label 可能重复，用 index 复合键保唯一
+        const key = `${s.label}-${i}`;
+        return (
+          <div
+            key={key}
+            className="grid grid-cols-[92px_1fr] gap-[18px] border-t border-(--border-subtle) py-3.5 first:border-t-0 max-[640px]:grid-cols-1 max-[640px]:gap-[5px]"
+          >
+            <div className="pt-1 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-clay-700">
+              {s.label}
+            </div>
+            <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">{s.text}</p>
           </div>
-          <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">{s.text}</p>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

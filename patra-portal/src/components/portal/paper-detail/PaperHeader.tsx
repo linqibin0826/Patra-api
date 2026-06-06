@@ -2,13 +2,13 @@ import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { BookmarkButton } from "@/components/portal/paper-detail/BookmarkButton";
 import { EvidenceBadge } from "@/components/portal/paper-detail/EvidenceBadge";
-import { deriveByline, deriveFullTextHref } from "@/lib/portal-api/publication-derive";
+import { deriveByline, deriveFullText } from "@/lib/portal-api/publication-derive";
 import { btnPrimary, btnSecondary } from "@/lib/portal-ui";
 import type { PaperDetail } from "@/types/portal";
 
 export function PaperHeader({ paper }: { paper: PaperDetail }) {
   const { shown, extra } = deriveByline(paper.authors);
-  const fullHref = deriveFullTextHref(paper);
+  const fullText = deriveFullText(paper);
 
   return (
     <header className="flex flex-col">
@@ -72,16 +72,21 @@ export function PaperHeader({ paper }: { paper: PaperDetail }) {
       <div className="flex flex-wrap items-center gap-3">
         <EvidenceBadge level={paper.evidenceLevel} />
         <div className="flex flex-wrap gap-2">
-          {fullHref ? (
-            <a className={btnPrimary} href={fullHref} target="_blank" rel="noopener noreferrer">
-              去全文 {paper.isOa ? "· OA" : "· DOI"} <ExternalLink size={14} />
+          {fullText.href ? (
+            <a
+              className={btnPrimary}
+              href={fullText.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {fullText.label} <ExternalLink size={14} />
             </a>
           ) : (
             <button className={`${btnSecondary} opacity-55`} type="button" disabled>
-              全文链接不可用
+              {fullText.label}
             </button>
           )}
-          <BookmarkButton />
+          <BookmarkButton paperId={paper.id} />
         </div>
       </div>
     </header>
