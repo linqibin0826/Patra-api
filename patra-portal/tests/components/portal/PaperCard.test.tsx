@@ -57,4 +57,12 @@ describe("PaperCard", () => {
     expect(screen.getByText(/Perkovic V\./)).toBeInTheDocument();
     expect(screen.queryByText("·")).not.toBeInTheDocument();
   });
+
+  it("详情链接指向 /papers/[id]", () => {
+    render(<PaperCard paper={makePaper({ id: "319041872872550658" })} />);
+    expect(screen.getByRole("link", { name: /详情/ })).toHaveAttribute(
+      "href",
+      "/papers/319041872872550658",
+    );
+  });
 });
