@@ -167,11 +167,13 @@ export interface EvidenceLevel {
   derived: boolean;
 }
 
+/** 结构化摘要段落；label 为 BACKGROUND / METHODS / RESULTS 等枚举值 */
 export interface AbstractSection {
   label: string;
   text: string;
 }
 
+/** 作者（order 为 1-based 排序，有意义）；affiliation 为首机构 */
 export interface Author {
   order: number;
   first: boolean;
@@ -180,18 +182,21 @@ export interface Author {
   affiliation: string | null;
 }
 
+/** MeSH 主题词；major 标记主要主题概念 */
 export interface MeshHeading {
   descriptorUi: string;
   term: string;
   major: boolean;
 }
 
+/** 资助信息；字段均可能为 null */
 export interface Funding {
   funder: string | null;
   grantId: string | null;
   country: string | null;
 }
 
+/** 出版日期；type 如 received/accepted/epublished/published，date 为 "yyyy-MM-dd" */
 export interface PublicationDate {
   type: string;
   date: string; // LocalDate 序列化为 "yyyy-MM-dd"
@@ -224,6 +229,11 @@ export interface PaperDetail {
   conflictOfInterest: string | null;
   isOa: boolean | null;
   oaStatus: string | null;
+  authors: Author[];
+  meshHeadings: MeshHeading[];
+  keywords: string[];
+  funding: Funding[];
+  dates: PublicationDate[];
   aiSummary: string | null;
   source: string | null;
   fullTextUrl: string | null;
