@@ -20,15 +20,15 @@
       <li><a href="#file-structure">文件结构</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li data-task-status="pending"><a href="#task-1">Task 1 — BE 详情读链路接入 source + fullTextUrl</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — BE DTO + Converter 补 4 字段</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — FE PaperDetail 类型 + fetchPublicationDetail</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — FE publication-derive 视图层</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — FE EvidenceBadge / AbstractBlock / AuthorList</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — FE PaperHeader + BookmarkButton</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — FE PaperRail</a></li>
-          <li data-task-status="pending"><a href="#task-8">Task 8 — FE PublicationDetailView + 路由</a></li>
-          <li data-task-status="pending"><a href="#task-9">Task 9 — FE PaperCard 接通 + e2e smoke</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — BE 详情读链路接入 source + fullTextUrl</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — BE DTO + Converter 补 4 字段</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — FE PaperDetail 类型 + fetchPublicationDetail</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — FE publication-derive 视图层</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — FE EvidenceBadge / AbstractBlock / AuthorList</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — FE PaperHeader + BookmarkButton</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — FE PaperRail</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — FE PublicationDetailView + 路由</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — FE PaperCard 接通 + e2e smoke</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -114,7 +114,7 @@ patra-portal/
       <h2>任务列表</h2>
 
       <!-- ============================ TASK 1 ============================ -->
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：BE — 详情读链路接入 source + fullTextUrl（真实数据）</h2>
           <dl class="files">
@@ -126,7 +126,7 @@ patra-portal/
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：在 IT 加 saveMetadata helper + 失败测试</strong>
             <p>在 <code>PublicationDetailReadAdapterIT</code> 加入 helper（<code>PublicationMetadataEntity</code> 用 setter；NOT NULL 列为 <code>publicationId</code>、<code>hasFullText</code>）和断言读链路新字段的测试。需 import <code>PublicationMetadataEntity</code>。</p>
             <pre><code class="lang-java">  private void saveMetadata(Long publicationId, String fullTextUrl) {
@@ -153,12 +153,12 @@ patra-portal/
     assertThat(model.fullTextUrl()).isEqualTo("https://publisher.example.com/article/oa");
   }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认编译失败（红）</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:compileIntegrationTestJava</code></p>
             <p>预期：编译失败——<code>model.provenanceCode()</code> / <code>model.fullTextUrl()</code> 方法不存在。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：ReadModel 加 2 个标量字段</strong>
             <p>在 <code>PublicationDetailReadModel</code> record 参数列表 <code>String oaStatus,</code> 之后、<code>List&lt;AuthorView&gt; authors,</code> 之前插入两行（紧凑构造器无需改，它只处理集合字段）：</p>
             <pre><code class="lang-java">    Boolean isOa,
@@ -167,14 +167,14 @@ patra-portal/
     String fullTextUrl,
     List&lt;AuthorView&gt; authors,</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Row 投影加 2 个 getter</strong>
             <p>在 <code>PublicationDetailRow</code> 接口的 <code>getOaStatus()</code> 之后、<code>getPublicationTypesAgg()</code> 之前插入：</p>
             <pre><code class="lang-java">  String getProvenanceCode();
 
   String getFullTextUrl();</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Dao 主查询 SQL 加 2 处</strong>
             <p>在 <code>PublicationDetailDao.findDetailById</code> 的 native query 中做两处<strong>外科手术式</strong>修改（其余 SQL 原样不动）：</p>
             <p>① SELECT 列表：在 <code>p.conflict_of_interest AS "conflictOfInterest", p.is_oa AS "isOa", p.oa_status AS "oaStatus",</code> 这一行之后、<code>publicationTypesAgg</code> 子查询之前，新增一行：</p>
@@ -182,18 +182,18 @@ patra-portal/
             <p>② FROM/JOIN：在 <code>LEFT JOIN cat_publication_abstract a ON a.publication_id = p.id</code> 这一行之后新增一行：</p>
             <pre><code class="lang-sql">      LEFT JOIN cat_publication_metadata m ON m.publication_id = p.id</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：ReadAdapter builder 接 2 字段</strong>
             <p>在 <code>PublicationDetailReadAdapter.findById</code> 的 builder 链中，<code>.oaStatus(main.getOaStatus())</code> 之后、<code>.authors(...)</code> 之前插入：</p>
             <pre><code class="lang-java">                  .provenanceCode(main.getProvenanceCode())
                   .fullTextUrl(main.getFullTextUrl())</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：运行测试确认通过（绿）</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationDetailReadAdapterIT"</code></p>
             <p>预期：<code>shouldReturnSourceAndFullTextUrl</code> 与原有测试全绿（TestContainers 起 PG17，真实 SQL 命中 LEFT JOIN）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 8：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain patra-api/patra-catalog/patra-catalog-infra
 git commit -m "feat(catalog): 文献详情读链路接入 source/fullTextUrl (PAP-45)"</code></pre>
@@ -202,7 +202,7 @@ git commit -m "feat(catalog): 文献详情读链路接入 source/fullTextUrl (PA
       </article>
 
       <!-- ============================ TASK 2 ============================ -->
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：BE — DTO + Converter 补 4 字段（含 bookmarks/estimatedReadMin 占位）</h2>
           <dl class="files">
@@ -212,7 +212,7 @@ git commit -m "feat(catalog): 文献详情读链路接入 source/fullTextUrl (PA
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：扩展 ControllerIT 断言 4 新字段</strong>
             <p>在 <code>PortalPublicationControllerIT.shouldReturnPublicationDetail</code> 的 fixture builder 中追加 <code>.provenanceCode("PUBMED")</code> 和 <code>.fullTextUrl("https://x/full")</code>（ReadModel 在 Task 1 已具备这两字段），并在 <code>expectBody()</code> 链末尾（<code>.jsonPath("$.aiSummary").isEmpty()</code> 之后）追加 4 行断言：</p>
             <pre><code class="lang-java">        .jsonPath("$.source")
@@ -227,12 +227,12 @@ git commit -m "feat(catalog): 文献详情读链路接入 source/fullTextUrl (PA
             <pre><code class="lang-java">            .provenanceCode("PUBMED")
             .fullTextUrl("https://x/full")</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（红）</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-adapter:integrationTest --tests "*PortalPublicationControllerIT"</code></p>
             <p>预期：失败——DTO 无 <code>source</code>/<code>fullTextUrl</code>/<code>bookmarks</code>/<code>estimatedReadMin</code> 字段（builder 方法不存在 → 编译失败）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：DTO 加 4 个字段</strong>
             <p>在 <code>PortalPublicationDetailResponse</code> record 的 <code>aiSummary</code> 字段之后追加 4 个字段（保持 JavaDoc <code>///</code> 风格；命名对齐列表端点 <code>PortalPaperResponse</code>）：</p>
             <pre><code class="lang-java">    /// 数据来源（人类可读，如 "PubMed"；来自 provenance_code）
@@ -245,7 +245,7 @@ git commit -m "feat(catalog): 文献详情读链路接入 source/fullTextUrl (PA
     Integer estimatedReadMin,</code></pre>
             <p>注意：record 字段顺序即 builder 参数；放在 <code>aiSummary</code> 之后、record 体右括号 <code>)</code> 之前。若 <code>aiSummary</code> 是末尾字段，需把其行尾的换行与逗号补正确。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Converter 接 4 字段</strong>
             <p>在 <code>PortalApiConverter.toPublicationDetailResponse</code> 的 builder 链中，把末尾的 <code>.aiSummary(null) // 当前无 LLM 摘要生成，恒为 null</code> 改为下面这段（<code>toSource</code> 为同类已有 private 方法）：</p>
             <pre><code class="lang-java">        .aiSummary(null) // 当前无 LLM 摘要生成，恒为 null
@@ -255,12 +255,12 @@ git commit -m "feat(catalog): 文献详情读链路接入 source/fullTextUrl (PA
         .estimatedReadMin(null) // TODO(read-time)：接入原文采集/字数后估算阅读时长
         .build();</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：运行测试确认通过（绿）</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-adapter:integrationTest --tests "*PortalPublicationControllerIT"</code></p>
             <p>预期：全绿。<code>$.source</code>=PubMed、<code>$.fullTextUrl</code>=https://x/full、<code>$.bookmarks</code>=0、<code>$.estimatedReadMin</code> 为空。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-adapter
 git commit -m "feat(catalog): 文献详情 DTO 补 source/fullTextUrl/bookmarks/estimatedReadMin (PAP-45)"</code></pre>
@@ -269,7 +269,7 @@ git commit -m "feat(catalog): 文献详情 DTO 补 source/fullTextUrl/bookmarks/
       </article>
 
       <!-- ============================ TASK 3 ============================ -->
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="done">
         <header>
           <h2>任务 3：FE — PaperDetail 类型 + fetchPublicationDetail</h2>
           <dl class="files">
@@ -279,7 +279,7 @@ git commit -m "feat(catalog): 文献详情 DTO 补 source/fullTextUrl/bookmarks/
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：在 publications.test.ts 加 fetchPublicationDetail 用例</strong>
             <p>把首行 import 改为 <code>import { fetchFeed, fetchPublicationDetail } from "@/lib/portal-api/publications";</code>，并在文件末尾追加 describe 块：</p>
             <pre><code class="lang-ts">describe("fetchPublicationDetail", () =&gt; {
@@ -330,12 +330,12 @@ git commit -m "feat(catalog): 文献详情 DTO 补 source/fullTextUrl/bookmarks/
   });
 });</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（红）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publications</code></p>
             <p>预期：失败——<code>fetchPublicationDetail</code> 未导出。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：portal.ts 加 PaperDetail + 6 子类型</strong>
             <p>在 <code>src/types/portal.ts</code> 的 <code>Paper</code> interface 之后追加（零映射镜像 BE DTO；<code>id</code> 为 string 防精度损失，<code>dates[].date</code> 为 LocalDate 序列化的 "yyyy-MM-dd"）：</p>
             <pre><code class="lang-ts">/** 证据等级（BE EvidenceLevelView：rank 0–5，越大越强；derived = 非 UNKNOWN） */
@@ -410,7 +410,7 @@ export interface PaperDetail {
   estimatedReadMin: number | null;
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：publications.ts 加 fetchPublicationDetail</strong>
             <p>把首行 import 改为 <code>import type { FeedTab, PageResult, Paper, PaperDetail } from "@/types/portal";</code>，并在文件末尾追加（镜像 <code>venues.ts</code> 的 <code>fetchVenueDetail</code>，复用已有 <code>FETCH_TIMEOUT_MS</code>）：</p>
             <pre><code class="lang-ts">/**
@@ -444,12 +444,12 @@ export async function fetchPublicationDetail(id: string): Promise&lt;PaperDetail
   return (await res.json()) as PaperDetail;
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：运行测试 + 类型检查（绿）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publications &amp;&amp; pnpm typecheck</code></p>
             <p>预期：5 个 fetchPublicationDetail 用例 + 原 fetchFeed 用例全绿；typecheck 0 错。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/src/types/portal.ts patra-portal/src/lib/portal-api/publications.ts patra-portal/tests/lib/portal-api/publications.test.ts
 git commit -m "feat(portal): PaperDetail 类型 + fetchPublicationDetail (PAP-45)"</code></pre>
@@ -458,7 +458,7 @@ git commit -m "feat(portal): PaperDetail 类型 + fetchPublicationDetail (PAP-45
       </article>
 
       <!-- ============================ TASK 4 ============================ -->
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：FE — publication-derive 视图层</h2>
           <dl class="files">
@@ -467,7 +467,7 @@ git commit -m "feat(portal): PaperDetail 类型 + fetchPublicationDetail (PAP-45
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：写 derive 纯函数单测</strong>
             <pre><code class="lang-ts">import { describe, expect, it } from "vitest";
 import {
@@ -547,11 +547,11 @@ describe("deriveByline", () =&gt; {
   });
 });</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（红）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publication-derive</code> → 模块不存在，失败。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：实现 publication-derive.ts</strong>
             <pre><code class="lang-ts">import type { AbstractSection, Author, EvidenceLevel, PaperDetail } from "@/types/portal";
 
@@ -628,11 +628,11 @@ export function deriveByline(authors: Author[]): BylineView {
   return { shown, extra: Math.max(0, authors.length - shown.length) };
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：运行测试确认通过（绿）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test publication-derive</code> → 全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/src/lib/portal-api/publication-derive.ts patra-portal/tests/lib/portal-api/publication-derive.test.ts
 git commit -m "feat(portal): publication-derive 视图层（摘要/证据/全文链接/byline）(PAP-45)"</code></pre>
@@ -641,7 +641,7 @@ git commit -m "feat(portal): publication-derive 视图层（摘要/证据/全文
       </article>
 
       <!-- ============================ TASK 5 ============================ -->
-      <article class="task" id="task-5" data-status="pending">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：FE — EvidenceBadge / AbstractBlock / AuthorList</h2>
           <dl class="files">
@@ -652,7 +652,7 @@ git commit -m "feat(portal): publication-derive 视图层（摘要/证据/全文
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：三个组件的渲染测试</strong>
             <p><code>EvidenceBadge.test.tsx</code>：</p>
             <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
@@ -719,11 +719,11 @@ describe("AuthorList", () =&gt; {
   });
 });</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（红）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test paper-detail</code> → 组件不存在，失败。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：实现 EvidenceBadge.tsx（RSC）</strong>
             <p>色温/阶梯由 <code>deriveEvidence</code> 决定；阶梯高度用静态 class 数组避免 inline style。</p>
             <pre><code class="lang-tsx">import { deriveEvidence } from "@/lib/portal-api/publication-derive";
@@ -771,7 +771,7 @@ export function EvidenceBadge({ level }: { level: EvidenceLevel }) {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：实现 AbstractBlock.tsx（RSC）</strong>
             <pre><code class="lang-tsx">import { deriveAbstract } from "@/lib/portal-api/publication-derive";
 import type { PaperDetail } from "@/types/portal";
@@ -805,7 +805,7 @@ export function AbstractBlock({ paper }: { paper: PaperDetail }) {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：实现 AuthorList.tsx（RSC）</strong>
             <pre><code class="lang-tsx">import type { Author } from "@/types/portal";
 
@@ -844,12 +844,12 @@ export function AuthorList({ authors }: { authors: Author[] }) {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：运行测试 + lint（绿）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test paper-detail &amp;&amp; pnpm lint</code></p>
             <p>预期：组件测试全绿；Biome lint 0 错（class 顺序由 Biome 自动排，必要时 <code>pnpm exec biome check --write</code>）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail patra-portal/tests/components/portal/paper-detail
 git commit -m "feat(portal): EvidenceBadge / AbstractBlock / AuthorList (PAP-45)"</code></pre>
@@ -858,7 +858,7 @@ git commit -m "feat(portal): EvidenceBadge / AbstractBlock / AuthorList (PAP-45)
       </article>
 
       <!-- ============================ TASK 6 ============================ -->
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：FE — PaperHeader + BookmarkButton</h2>
           <dl class="files">
@@ -868,7 +868,7 @@ git commit -m "feat(portal): EvidenceBadge / AbstractBlock / AuthorList (PAP-45)
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：PaperHeader 渲染测试</strong>
             <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -903,11 +903,11 @@ describe("PaperHeader", () =&gt; {
   });
 });</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（红）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperHeader</code> → 失败。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：实现 BookmarkButton.tsx（client · mock）</strong>
             <pre><code class="lang-tsx">"use client";
 
@@ -936,7 +936,7 @@ export function BookmarkButton({ block = false }: { block?: boolean }) {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：实现 PaperHeader.tsx（RSC）</strong>
             <pre><code class="lang-tsx">import { ExternalLink } from "lucide-react";
 import Link from "next/link";
@@ -1023,11 +1023,11 @@ export function PaperHeader({ paper }: { paper: PaperDetail }) {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：运行测试 + lint（绿）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperHeader &amp;&amp; pnpm lint</code> → 全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail patra-portal/tests/components/portal/paper-detail/PaperHeader.test.tsx
 git commit -m "feat(portal): PaperHeader + BookmarkButton（收藏 mock）(PAP-45)"</code></pre>
@@ -1036,7 +1036,7 @@ git commit -m "feat(portal): PaperHeader + BookmarkButton（收藏 mock）(PAP-4
       </article>
 
       <!-- ============================ TASK 7 ============================ -->
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：FE — PaperRail（右侧 sticky 三卡）</h2>
           <dl class="files">
@@ -1044,7 +1044,7 @@ git commit -m "feat(portal): PaperHeader + BookmarkButton（收藏 mock）(PAP-4
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：实现 PaperRail.tsx（RSC）</strong>
             <p>三卡：操作（全文链接 + 收藏）/ AI 速读（clay accent，mock·占位，生成按钮静态禁用）/ 速览（5 行）。速览中收藏数/阅读时间为占位（0 / "—"），其余真实。</p>
             <pre><code class="lang-tsx">import { ExternalLink, Sparkles } from "lucide-react";
@@ -1132,11 +1132,11 @@ export function PaperRail({ paper }: { paper: PaperDetail }) {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：类型检查 + lint</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm typecheck &amp;&amp; pnpm lint</code> → 0 错（PaperRail 由 Task 8 的 DetailView 渲染测试与 e2e 覆盖，无独立单测）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail/PaperRail.tsx
 git commit -m "feat(portal): PaperRail 侧栏（操作/AI 速读 mock/速览）(PAP-45)"</code></pre>
@@ -1145,7 +1145,7 @@ git commit -m "feat(portal): PaperRail 侧栏（操作/AI 速读 mock/速览）(
       </article>
 
       <!-- ============================ TASK 8 ============================ -->
-      <article class="task" id="task-8" data-status="pending">
+      <article class="task" id="task-8" data-status="done">
         <header>
           <h2>任务 8：FE — PublicationDetailView + 路由</h2>
           <dl class="files">
@@ -1157,7 +1157,7 @@ git commit -m "feat(portal): PaperRail 侧栏（操作/AI 速读 mock/速览）(
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：PublicationDetailView 渲染测试</strong>
             <pre><code class="lang-tsx">import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -1192,11 +1192,11 @@ describe("PublicationDetailView", () =&gt; {
 });</code></pre>
             <p>注意：<code>paper()</code> 工厂未含 <code>authors/meshHeadings/keywords/funding/dates</code>，测试里需补 <code>authors: []</code> 等空数组（PaperDetail 必填）。为简化，给工厂补默认空数组字段：在工厂 return 对象里加 <code>authors: [], meshHeadings: [], keywords: [], funding: [], dates: [],</code>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（红）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PublicationDetailView</code> → 失败。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：实现 PublicationDetailView.tsx（RSC）</strong>
             <p>镜像 <code>JournalDetailView</code> 骨架：面包屑 sticky bar + 两栏栅格 + 左主区 5 段（Header / 摘要 / 关键标识 / 深度数据 6 折叠）+ 右 sticky rail。</p>
             <pre><code class="lang-tsx">import Link from "next/link";
@@ -1373,7 +1373,7 @@ export function PublicationDetailView({ paper }: { paper: PaperDetail }) {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：实现路由 page.tsx（RSC）</strong>
             <pre><code class="lang-tsx">import { notFound } from "next/navigation";
 import { Footer } from "@/components/portal/Footer";
@@ -1398,7 +1398,7 @@ export default async function PaperDetailPage({ params }: { params: Promise&lt;{
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：实现 not-found.tsx + loading.tsx</strong>
             <p><code>not-found.tsx</code>：</p>
             <pre><code class="lang-tsx">import { NotFoundState } from "@/components/portal/status/NotFoundState";
@@ -1457,11 +1457,11 @@ export default function Loading() {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：运行测试 + 类型 + lint（绿）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PublicationDetailView &amp;&amp; pnpm typecheck &amp;&amp; pnpm lint</code> → 全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/src/components/portal/paper-detail/PublicationDetailView.tsx patra-portal/src/app/papers patra-portal/tests/components/portal/paper-detail/PublicationDetailView.test.tsx
 git commit -m "feat(portal): PublicationDetailView + /papers/[id] 路由 (PAP-45)"</code></pre>
@@ -1470,7 +1470,7 @@ git commit -m "feat(portal): PublicationDetailView + /papers/[id] 路由 (PAP-45
       </article>
 
       <!-- ============================ TASK 9 ============================ -->
-      <article class="task" id="task-9" data-status="pending">
+      <article class="task" id="task-9" data-status="done">
         <header>
           <h2>任务 9：FE — PaperCard 接通 + e2e smoke</h2>
           <dl class="files">
@@ -1480,7 +1480,7 @@ git commit -m "feat(portal): PublicationDetailView + /papers/[id] 路由 (PAP-45
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1（RED）：PaperCard 加 link 断言</strong>
             <p>在 <code>PaperCard.test.tsx</code> 的 describe 末尾追加：</p>
             <pre><code class="lang-tsx">  it("详情链接指向 /papers/[id]", () =&gt; {
@@ -1491,11 +1491,11 @@ git commit -m "feat(portal): PublicationDetailView + /papers/[id] 路由 (PAP-45
     );
   });</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（红）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperCard</code> → 失败（当前是 disabled button，无 link role）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：PaperCard button → Link</strong>
             <p>在 <code>PaperCard.tsx</code> 顶部加 <code>import Link from "next/link";</code>，把第 69–78 行的「详情」<code>&lt;button&gt;</code> 整块替换为：</p>
             <pre><code class="lang-tsx">        &lt;Link
@@ -1507,11 +1507,11 @@ git commit -m "feat(portal): PublicationDetailView + /papers/[id] 路由 (PAP-45
         &lt;/Link&gt;</code></pre>
             <p>其余三个 disabled button（收藏 / 评论 / 分享）保持不动（本次不在范围）。<code>ChevronRight</code> import 已存在。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：运行单测确认通过（绿）</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm test PaperCard</code> → 全绿（含原 6 个用例 + 新 link 用例）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：创建 e2e smoke（paper-detail.spec.ts）</strong>
             <p>镜像 <code>journal-detail.spec.ts</code>：happy-path 依赖后端，无卡时跳过；not-found 不依赖后端始终执行。</p>
             <pre><code class="lang-ts">import { expect, test } from "@playwright/test";
@@ -1539,12 +1539,12 @@ test("非数字 id → not-found 页", async ({ page }) =&gt; {
 });</code></pre>
             <p>若 not-found 文案/标题与实际 <code>NotFoundState kind="paper"</code> 不符，以组件实际渲染文本为准调整断言（运行 <code>pnpm exec playwright test paper-detail</code> 验证）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：全栈门控</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test &amp;&amp; pnpm exec playwright test paper-detail</code></p>
             <p>预期：lint / typecheck / 全部单测 / e2e（not-found 通过；happy-path 本地无后端则 skip）全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/src/components/portal/PaperCard.tsx patra-portal/tests/components/portal/PaperCard.test.tsx patra-portal/tests/e2e/paper-detail.spec.ts
 git commit -m "feat(portal): explore-feed 文献卡接通 /papers/[id] + e2e smoke (PAP-45)"</code></pre>
@@ -1601,16 +1601,78 @@ git commit -m "feat(portal): explore-feed 文献卡接通 /papers/[id] + e2e smo
       data-type 4 类：decision / change / tradeoff / other
       追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
       -->
+      <li class="note" data-type="change" data-time="2026-06-06T22:22">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T22:22">06-06 22:22</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>plan 的 Task 3 commit message 写作 <code>feat(portal): PaperDetail 类型 …</code>（大写 P 开头），commitlint <code>subject-case</code> 规则禁止大写 ASCII 开头，实施时改为小写 <code>paperDetail 类型 …</code>。后续 FE 任务 commit subject 同理需避免大写开头。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-06T22:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T22:40">06-06 22:40</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>plan 的 <code>PaperDetail</code> 接口漏列了 5 个 BE 列表字段 <code>authors / meshHeadings / keywords / funding / dates</code>（子类型已定义但主接口未引用）。代码质量审查（C1）发现后补齐，与后端 <code>PortalPublicationDetailResponse</code> 字段顺序一致。spec §4.1 本就要求「完整镜像 BE DTO」，此为 plan 编写遗漏的修正。修复 commit <code>71472321c</code>。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-06T23:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T23:05">06-06 23:05</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>AbstractBlock 的 <code>map</code> key 从 plan 原稿的 <code>`${s.label}-${i}`</code>（含数组 index）改为仅 <code>s.label</code>，以消除 Biome <code>noArrayIndexKey</code> lint error。语义等价：结构化摘要 label（BACKGROUND/METHODS/RESULTS 等）在同一篇文献内唯一。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-06-06T23:05">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-06-06T23:05">06-06 23:05</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>实现 Task 5 跑 <code>pnpm lint</code> 时发现 Task 4 的 <code>publication-derive.test.ts</code> 有 Biome 格式问题（Task 4 仅跑了 test/typecheck 未跑 lint），顺手格式化修复随本任务提交，避免 lint 门控噪声。纯格式无逻辑变更。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-06T23:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-06T23:55">06-06 23:55</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>PaperRail（及 Task 6 PaperHeader）的「全文链接不可用」禁用按钮，去掉了 plan 代码块里多余的无条件 <code>cursor-not-allowed</code>，仅留 <code>opacity-55</code>——因 <code>btnSecondary</code> 已含 <code>disabled:cursor-not-allowed</code>（代码审查发现，两处统一）。AI「生成速读」是裸 button 故保留 cursor-not-allowed。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T00:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T00:20">06-07 00:20</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>PublicationDetailView 的 funding 列表 map key 从 plan 代码的 <code>`${f.funder}-${i}`</code>（含数组 index）改为 <code>`${f.funder}-${f.grantId}`</code> 复合键，以消除 Biome <code>noArrayIndexKey</code> lint error。语义更准确；同 funder+grantId 完全重复属后端数据异常，前端无更好替代。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T00:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T00:45">06-07 00:45</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>代码审查（I2）发现 <code>SectionEyebrow</code> 已被 journal-detail 与 paper-detail 两个 feature 共用却住在 <code>journal-detail/</code> 下（跨 feature 引用异味）。<code>git mv</code> 提到共享层 <code>portal/SectionEyebrow.tsx</code>，更新 3 处引用（PublicationDetailView + PAP-44 的 JournalDetailView/JournalPositioning）。触及 PAP-44 文件但仅 import 路径变更，138 测试全绿。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T01:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T01:10">06-07 01:10</time>
+          <a href="#task-9">§ Task 9</a>
+        </header>
+        <p>e2e happy-path 的 skip 条件比 plan 多一层：除「首页无文献卡」（CI 无后端）外，点进详情后若 h1 = 错误屏标题「这一页没能加载出来」（catalog 500）也 skip——适配本地部分可达后端（首页有卡但 catalog detail 500）。健康后端下两 skip 均不触发，正常断言。另「摘要」断言由 <code>getByText</code> 改 <code>getByRole("region", { name: "摘要" })</code>（匹配 <code>&lt;section aria-label="摘要"&gt;</code>，更精确）。</p>
+      </li>
     </ol>
-
-    <p class="empty-state">no notes yet</p>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="change">7</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="other">1</span> others
     </footer>
   </aside>
 
