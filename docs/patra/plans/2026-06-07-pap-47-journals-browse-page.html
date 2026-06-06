@@ -21,19 +21,19 @@
       <li><a href="#file-structure">文件结构</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li data-task-status="pending"><a href="#task-1">Task 1 — BE domain：filter 多值化 + facets 读模型</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — BE infra：page 多值 IN + oa 筛选</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — BE infra：facets drill-down 聚合</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — BE app+adapter：/facets 端点 + 多值入参</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — FE 类型</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — FE 纯函数 venue-browse</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — FE 取数 fetchVenuesPage/Facets</a></li>
-          <li data-task-status="pending"><a href="#task-8">Task 8 — FE store：筛选 sheet 开关</a></li>
-          <li data-task-status="pending"><a href="#task-9">Task 9 — FE 叶子组件 + CoverCard 修复</a></li>
-          <li data-task-status="pending"><a href="#task-10">Task 10 — FE 筛选/检索交互组件</a></li>
-          <li data-task-status="pending"><a href="#task-11">Task 11 — FE 页面装配 + Suspense</a></li>
-          <li data-task-status="pending"><a href="#task-12">Task 12 — 首页入口接通</a></li>
-          <li data-task-status="pending"><a href="#task-13">Task 13 — e2e smoke</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — BE domain：filter 多值化 + facets 读模型</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — BE infra：page 多值 IN + oa 筛选</a></li>
+          <li data-task-status="skipped"><a href="#task-3">Task 3 — BE infra：facets drill-down 聚合</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — BE app+adapter：/facets 端点 + 多值入参</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — FE 类型</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — FE 纯函数 venue-browse</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — FE 取数 fetchVenuesPage/Facets</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — FE store：筛选 sheet 开关</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — FE 叶子组件 + CoverCard 修复</a></li>
+          <li data-task-status="done"><a href="#task-10">Task 10 — FE 筛选/检索交互组件</a></li>
+          <li data-task-status="done"><a href="#task-11">Task 11 — FE 页面装配 + Suspense</a></li>
+          <li data-task-status="done"><a href="#task-12">Task 12 — 首页入口接通</a></li>
+          <li data-task-status="done"><a href="#task-13">Task 13 — e2e smoke</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -133,7 +133,7 @@ patra-portal/
       <h2>任务列表</h2>
 
       <!-- ============ TASK 1 ============ -->
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：BE domain — filter 多值化 + facets 读模型</h2>
           <dl class="files">
@@ -144,15 +144,15 @@ patra-portal/
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：加载技能</strong>
             <p>加载 <code>patra-hexagonal</code>（domain 纯净性、读模型规范）+ <code>patra:test-driven-development</code>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：先写测试（RED）</strong>
             <p><code>VenueBrowseFilterTest</code>：断言多值字段默认空 List（紧凑构造器对 null 做 <code>List.copyOf</code> 防御性拷贝 → <code>List.of()</code>）、<code>sort</code> 为 null 时默认 <code>IMPACT_FACTOR</code>（保留现有行为）。运行确认失败。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：改 VenueBrowseFilter（GREEN）</strong>
             <p>把 <code>subject</code>/<code>jcrQuartile</code>/<code>casQuartile</code>/<code>countryCode</code> 由 <code>String</code> 改为 <code>List&lt;String&gt;</code>（语义重命名：<code>subjects</code>/<code>jcrQuartiles</code>/<code>casQuartiles</code>/<code>countryCodes</code>）；保留 <code>keyword</code>/<code>sort</code>/<code>casTop</code>/<code>doaj</code>；新增 <code>Boolean isOpenAccess</code>。紧凑构造器：sort null→IMPACT_FACTOR；各 List null→<code>List.of()</code>，非 null→<code>List.copyOf()</code>（不可变集合规范）。所有方法 <code>///</code> JavaDoc。</p>
             <pre><code class="lang-java">@Builder
@@ -170,7 +170,7 @@ public record VenueBrowseFilter(
   }
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：创建 VenueBrowseFacets 读模型</strong>
             <p>record，5+ 字段用 <code>@Builder</code>。分组维度为 <code>List&lt;FacetCount&gt;</code>，布尔维度为 <code>long</code> 计数。内嵌 <code>FacetCount(String value, long count)</code>（参数 2 个 → 静态 <code>of()</code>）。集合字段紧凑构造器防御性拷贝。</p>
             <pre><code class="lang-java">@Builder
@@ -189,15 +189,15 @@ public record VenueBrowseFacets(
   }
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：扩 VenueBrowseReadPort</strong>
             <p>加方法 <code>VenueBrowseFacets facets(VenueBrowseFilter filter);</code>（带 <code>///</code> JavaDoc，说明 drill-down 语义）。保留现有 <code>search(filter, paging)</code>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：编译 + 测试（注意：会暂时打断 infra/app/adapter 编译）</strong>
             <p>仅编译 domain 模块跑测试：<code>./gradlew :patra-catalog:patra-catalog-domain:test --no-configuration-cache</code>。预期 domain 绿。下游模块（infra/app/adapter）引用旧字段名会编译失败——这是预期的，由 Task 2–4 修复。<strong>本任务只保证 domain 模块自身编译+测试通过。</strong></p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain
 git commit -m "feat(catalog): venue 浏览 filter 多值化 + facets 读模型 (PAP-47)"</code></pre>
@@ -206,7 +206,7 @@ git commit -m "feat(catalog): venue 浏览 filter 多值化 + facets 读模型 (
       </article>
 
       <!-- ============ TASK 2 ============ -->
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：BE infra — page 查询多值 IN + oa 筛选</h2>
           <dl class="files">
@@ -216,11 +216,11 @@ git commit -m "feat(catalog): venue 浏览 filter 多值化 + facets 读模型 (
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：加载技能</strong>
             <p>加载 <code>patra-jpa</code>（原生 SQL / 投影 / TestContainers IT）+ <code>patra:test-driven-development</code>。先用 Serena <code>get_symbols_overview</code> 看 <code>VenueDao</code> 现有 <code>findPortalVenueBrowsePage</code> 原生 SQL。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：先写/扩测试（RED）</strong>
             <p><code>VenueBrowseReadAdapterIT</code>（<code>@DataJpaTest</code> + TestContainers PG17）。新增/扩展用例（沿用现有 fixture builder 保存 venue + jcr + cas + open_access JSONB）：</p>
             <ul>
@@ -231,7 +231,7 @@ git commit -m "feat(catalog): venue 浏览 filter 多值化 + facets 读模型 (
             </ul>
             <p>运行确认失败。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：改 VenueDao page SQL（GREEN）</strong>
             <p>把现有 browse 原生 SQL 重构出一段 <strong>base 子查询/CTE</strong>（venue + 最新年 JCR/CAS LATERAL JOIN + 从 <code>open_access</code> JSONB 提取 <code>is_oa</code>/<code>is_in_doaj</code>，<code>WHERE deleted_at IS NULL</code>），page 查询从 base 过滤。多值用 PostgreSQL 数组绑定：<code>(:subjects IS NULL OR jcr_subject = ANY(:subjects))</code> 形式（Spring Data 传 <code>String[]</code>；空 List 传 null 表示不过滤）。base 片段（实现者按现有列别名对齐）：</p>
             <pre><code class="lang-sql">-- base（page 与 facet 共用；实现者抽成可复用片段或 CTE）
@@ -248,15 +248,15 @@ LEFT JOIN LATERAL (SELECT * FROM cat_venue_cas_rating r WHERE r.venue_id=v.id OR
 WHERE v.deleted_at IS NULL</code></pre>
             <p>page 过滤条件（追加到 base 外层或同层 WHERE）：<code>keyword</code> 前缀 LIKE（保留现有 <code>ESCAPE '!'</code>）、各多值 <code>= ANY</code>、<code>casTop</code>/<code>isOpenAccess</code>/<code>doaj</code> 布尔（<code>(:flag IS NULL OR col = :flag)</code>）。ORDER BY 沿用现有 sort switch。<strong>注意</strong>：<code>foundedYear</code> 字段保持现有取法（如来自 publication_profile JSONB 或某列）——以现有 <code>VenueBrowseRow</code> 投影为准，不要臆造。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：改 VenueBrowseReadAdapter</strong>
             <p><code>search()</code> 传参从单值改多值：List 转 <code>String[]</code>（空 List → null 让 SQL 跳过过滤）；新增 <code>isOpenAccess</code> 传参。<code>escapeLike</code> 保留。<code>toReadModel</code> 不变。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：验证</strong>
             <p><code>./gradlew :patra-catalog:patra-catalog-infra:test --no-configuration-cache</code>。预期新增 IT 全绿。（app/adapter 仍可能编译失败 —— Task 4 修。）</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra
 git commit -m "feat(catalog): venue 浏览 page 查询支持多值筛选 + oa (PAP-47)"</code></pre>
@@ -265,7 +265,7 @@ git commit -m "feat(catalog): venue 浏览 page 查询支持多值筛选 + oa (P
       </article>
 
       <!-- ============ TASK 3 ============ -->
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="skipped">
         <header>
           <h2>任务 3：BE infra — facets drill-down 聚合</h2>
           <dl class="files">
@@ -276,7 +276,7 @@ git commit -m "feat(catalog): venue 浏览 page 查询支持多值筛选 + oa (P
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写测试（RED）—— drill-down 语义是核心</strong>
             <p>IT 用例（关键，验语义而非实现）：</p>
             <ul>
@@ -288,11 +288,11 @@ git commit -m "feat(catalog): venue 浏览 page 查询支持多值筛选 + oa (P
             </ul>
             <p>运行确认失败。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：创建 VenueFacetCountRow 投影</strong>
             <p>接口投影 <code>String getValue()</code> + <code>long getCount()</code>（<code>///</code> JavaDoc）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：VenueDao 加 facet 聚合查询（GREEN）</strong>
             <p>每个分组维度一个原生 <code>@Query</code>，复用 base，drill-down = 应用「keyword + 除本维度外所有过滤」后 <code>GROUP BY</code>。例（jcr 维度，省略本维度自身的 <code>jcr</code> 过滤）：</p>
             <pre><code class="lang-sql">SELECT b.jcr_quartile AS value, count(*) AS count FROM ( &lt;base&gt; ) b
@@ -307,11 +307,11 @@ WHERE (:keyword IS NULL OR b.name ILIKE :keyword ESCAPE '!' OR b.abbr ILIKE :key
 GROUP BY b.jcr_quartile</code></pre>
             <p>subjects/casQuartiles/countries 维度同构（各自省略本维度的过滤、对本维度列 GROUP BY、<code>IS NOT NULL</code>）。3 个布尔维度用 <code>SELECT count(*)</code>（应用「其它所有筛选 + 本布尔=true」）。<strong>实现提示</strong>：base 片段重复，建议抽成 SQL 常量字符串或 DB 视图；7 条查询可接受（记 tradeoff：未来可合并 GROUPING SETS）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：VenueBrowseReadAdapter 实现 facets()</strong>
             <p>调 7 个 DAO 查询，组装 <code>VenueBrowseFacets</code>（<code>FacetCount.of(row.getValue(), row.getCount())</code>，分组维度按 count 降序由 SQL 的 <code>ORDER BY count DESC</code> 或适配器排序）。多值 List→String[]（空→null）逻辑抽成私有 helper 复用。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：验证 + Commit</strong>
             <pre><code class="lang-bash">./gradlew :patra-catalog:patra-catalog-infra:test --no-configuration-cache
 git add patra-api/patra-catalog/patra-catalog-infra
@@ -321,7 +321,7 @@ git commit -m "feat(catalog): venue facets drill-down 聚合读适配器 (PAP-47
       </article>
 
       <!-- ============ TASK 4 ============ -->
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：BE app + adapter — /facets 端点 + 多值入参 + 转换</h2>
           <dl class="files">
@@ -333,7 +333,7 @@ git commit -m "feat(catalog): venue facets drill-down 聚合读适配器 (PAP-47
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写测试（RED）</strong>
             <p>controller IT（<code>@WebMvcTest</code> + mock QueryService，沿用现有范式）：</p>
             <ul>
@@ -342,15 +342,15 @@ git commit -m "feat(catalog): venue facets drill-down 聚合读适配器 (PAP-47
               <li><code>GET /portal/venues</code>（无参，首页用法）→ 仍返回 <code>PageResult</code>，形状不变（回归保护）。</li>
             </ul>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：PortalVenueListRequest 多值（GREEN）</strong>
             <p><code>subject</code>/<code>jcr</code>/<code>cas</code>/<code>country</code> 改 <code>List&lt;String&gt;</code>（Spring MVC 对 <code>?subject=A,B</code> 或 <code>?subject=A&amp;subject=B</code> 自动绑定 List）；新增 <code>Boolean oa</code>。保留 <code>q</code>/<code>sort</code>/<code>casTop</code>/<code>doaj</code>/<code>page</code>/<code>pageSize</code>。映射到 <code>VenueBrowseFilter</code> 时：<code>oa</code>→<code>isOpenAccess</code>，list 直传。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：PortalVenueFacetsResponse DTO</strong>
             <p>record，对齐 <code>VenueBrowseFacets</code>：<code>List&lt;FacetCountResponse&gt; subjects/jcrQuartiles/casQuartiles/countries</code> + <code>long casTop/openAccess/doaj</code>。内嵌 <code>FacetCountResponse(String value, long count)</code>（静态 <code>of()</code>）。字段名对齐前端零映射。<code>@Builder</code>（≥5 字段）+ 集合防御性拷贝。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：QueryService + Converter + Controller</strong>
             <ul>
               <li><code>PortalVenueBrowseQueryService</code>：加 <code>facets(VenueBrowseFilter)</code> 编排 → 调 readPort.facets → Converter 转 DTO。</li>
@@ -358,7 +358,7 @@ git commit -m "feat(catalog): venue facets drill-down 聚合读适配器 (PAP-47
               <li><code>PortalVenueController</code>：现有 <code>GET /portal/venues</code> 入参换 <code>PortalVenueListRequest</code>（多值）；新增 <code>GET /portal/venues/facets</code>（同筛选入参，无 page/sort/pageSize）→ <code>PortalVenueFacetsResponse</code>。</li>
             </ul>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：全 catalog 模块验证 + Commit</strong>
             <pre><code class="lang-bash">./gradlew :patra-catalog:check --no-configuration-cache
 git add patra-api/patra-catalog
@@ -369,7 +369,7 @@ git commit -m "feat(catalog): portal /venues 多值筛选 + 新增 /venues/facet
       </article>
 
       <!-- ============ TASK 5 ============ -->
-      <article class="task" id="task-5" data-status="pending">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：FE 类型</h2>
           <dl class="files">
@@ -377,7 +377,7 @@ git commit -m "feat(catalog): portal /venues 多值筛选 + 新增 /venues/facet
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：新增类型（复用既有 VenueBrowse / PageResult）</strong>
             <pre><code class="lang-typescript">export type VenueSortId = "if" | "cas" | "az" | "cited";
 
@@ -409,7 +409,7 @@ export interface VenueBrowseFacets {
 export type VenueBrowsePage = PageResult&lt;VenueBrowse&gt;;</code></pre>
             <p>注意：BE facets DTO 字段名为 <code>subjects/jcrQuartiles/casQuartiles/countries/openAccess</code>；FE 类型用更短的 <code>subject/jcr/cas/country/oa</code>。这层<strong>不是零映射</strong>——在 Task 7 的 <code>fetchVenuesFacets</code> 里做一次显式键名归一（BE→FE），集中一处。<code>FacetOption{value,count}</code> 与 BE <code>{value,count}</code> 一致。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：typecheck + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm typecheck
 git add patra-portal/src/types/portal.ts
@@ -419,7 +419,7 @@ git commit -m "feat(portal): 期刊浏览查询/facet 类型 (PAP-47)"</code></p
       </article>
 
       <!-- ============ TASK 6 ============ -->
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：FE 纯函数 venue-browse（重点测试）</h2>
           <dl class="files">
@@ -428,7 +428,7 @@ git commit -m "feat(portal): 期刊浏览查询/facet 类型 (PAP-47)"</code></p
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写测试（RED）—— 这是 FE 最值得覆盖的纯逻辑</strong>
             <p>覆盖：</p>
             <ul>
@@ -440,11 +440,11 @@ git commit -m "feat(portal): 期刊浏览查询/facet 类型 (PAP-47)"</code></p
               <li><code>deriveActiveChips</code>：各维度生成 chip（含组名/值/移除后的 query）；空 query→空数组。</li>
             </ul>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现 venue-browse.ts（GREEN）</strong>
             <p>纯函数，无副作用、不 import server-only。常量 <code>SORT_OPTIONS</code>（<code>{id,label,desc?}</code>×4）、<code>JCR_QUARTILE_ORDER=["Q1".."Q4"]</code>、<code>CAS_ZONE_ORDER=["1区".."4区"]</code>、<code>SORT_CODE_MAP</code>（FE→BE）。<code>parse</code> 入参兼容 Next 的 <code>searchParams</code>（<code>Record&lt;string,string|string[]|undefined&gt;</code>）。key 函数返回稳定字符串（字段排序后 join）。chips 返回 <code>{group,label,value,nextQuery}</code> 数组，由组件渲染 Link/按钮。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证 + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm test -- venue-browse &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck
 git add patra-portal/src/lib/portal-api/venue-browse.ts patra-portal/tests/lib/portal-api/venue-browse.test.ts
@@ -454,7 +454,7 @@ git commit -m "feat(portal): venue-browse 查询解析/序列化/facet 纯函数
       </article>
 
       <!-- ============ TASK 7 ============ -->
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：FE 取数 fetchVenuesPage / fetchVenuesFacets</h2>
           <dl class="files">
@@ -463,15 +463,15 @@ git commit -m "feat(portal): venue-browse 查询解析/序列化/facet 纯函数
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写测试（RED）</strong>
             <p>mock fetch（沿用现有 venues.test.ts 范式）：<code>fetchVenuesPage(query)</code> 拼对 URL（含多值 CSV + page + pageSize=12 + sort 码）、200 返回 page、非 2xx throw；<code>fetchVenuesFacets(filters)</code> 命中 <code>/portal/venues/facets</code>、BE→FE 键名归一（<code>jcrQuartiles→jcr</code> 等）、非 2xx throw；缺 <code>PATRA_GATEWAY_BASE_URL</code> throw。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现（GREEN）</strong>
             <p>镜像现有 <code>fetchVenues</code>（<code>venues.ts</code>，<code>server-only</code> 已 import）：读 baseUrl、<code>cache:"no-store"</code>、<code>AbortSignal.timeout(10_000)</code>。<code>fetchVenuesPage</code> 用 <code>buildVenuesPageApiQuery(query)</code> 拼 URL → <code>/patra-catalog/portal/venues?…</code>，返回 <code>VenueBrowsePage</code>。<code>fetchVenuesFacets</code> 用 <code>buildVenuesFacetsApiQuery</code> → <code>/patra-catalog/portal/venues/facets?…</code>，把 BE DTO（<code>subjects/jcrQuartiles/casQuartiles/countries/openAccess</code>）归一为 FE <code>VenueBrowseFacets</code>（<code>subject/jcr/cas/country/oa</code>）。列表恒 200，无 404 分支。错误 throw 冒泡 error.tsx。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证 + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm test -- venues &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck
 git add patra-portal/src/lib/portal-api/venues.ts patra-portal/tests/lib/portal-api/venues.test.ts
@@ -481,7 +481,7 @@ git commit -m "feat(portal): fetchVenuesPage / fetchVenuesFacets 取数 (PAP-47)
       </article>
 
       <!-- ============ TASK 8 ============ -->
-      <article class="task" id="task-8" data-status="pending">
+      <article class="task" id="task-8" data-status="done">
         <header>
           <h2>任务 8：FE store — 筛选 sheet 开关</h2>
           <dl class="files">
@@ -490,11 +490,11 @@ git commit -m "feat(portal): fetchVenuesPage / fetchVenuesFacets 取数 (PAP-47)
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：实现 + 测试</strong>
             <p>镜像 <code>src/store/bookmarks.ts</code> 的 zustand 范式。<code>useJournalFilterUiStore</code>：<code>{ sheetOpen: boolean; open(): void; close(): void; toggle(): void }</code>。测试：初始 false、open/close/toggle 切换。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：验证 + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm test -- journal-filter-ui &amp;&amp; pnpm lint
 git add patra-portal/src/store/journal-filter-ui.ts patra-portal/tests/store/journal-filter-ui.test.ts
@@ -504,7 +504,7 @@ git commit -m "feat(portal): 期刊筛选 sheet 开关 store (PAP-47)"</code></p
       </article>
 
       <!-- ============ TASK 9 ============ -->
-      <article class="task" id="task-9" data-status="pending">
+      <article class="task" id="task-9" data-status="done">
         <header>
           <h2>任务 9：FE 叶子组件 + JournalCoverCard 修复</h2>
           <dl class="files">
@@ -514,23 +514,23 @@ git commit -m "feat(portal): 期刊筛选 sheet 开关 store (PAP-47)"</code></p
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：JournalCoverCard 修 IF null（先写测试 RED）</strong>
             <p>测试：<code>impactFactor=null</code> 时渲染 "—" 不抛错。实现：<code>journal.impactFactor != null ? journal.impactFactor.toFixed(1) : "—"</code>（<code>JournalCoverCard.tsx</code>）。其余不动。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：JournalPagination（RSC，纯渲染）</strong>
             <p><code>pageWindow(cur,total)</code>（移植原型：≤7 全列；否则 1 … cur±1 … total，省略号）。渲染页码 <code>&lt;Link href&gt;</code>（href 由 <code>serializeVenueBrowseQuery({...query,page})</code> 生成）+ ‹/› + 「第 X–Y 本·共 Z 本」。<code>aria-current="page"</code>。测试 pageWindow 各分支 + 边界禁用。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：JournalEmptyResult（RSC）</strong>
             <p>两态：<code>kind="no-results"</code>（有筛选/检索）→ "未找到匹配…的期刊" + 清除全部筛选(Link 到无筛选 URL) + 返回首页；<code>kind="empty-library"</code>（无筛选且 total=0）→ "库中暂无期刊"（不引导清除）。移植原型 <code>EmptyResult</code> 文案。测试两态文案 + 清除链接仅 no-results 出现。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：JournalGrid + 两个 Skeleton</strong>
             <p><code>JournalGrid</code>（RSC）：响应式网格（桌面多列、移动单列），<code>role="list"</code>，map <code>items</code>→<code>&lt;div role="listitem"&gt;&lt;JournalCoverCard/&gt;&lt;/div&gt;</code>（key=id）。<code>JournalGridSkeleton</code>：N 张 <code>animate-pulse</code> 占位卡（aria-hidden）。<code>JournalFilterSkeleton</code>：facet 面板骨架。Tailwind v4 token 规范（语义 token 用 utility 或 <code>(--fg-3)</code> arbitrary）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：验证 + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm test -- journals JournalCoverCard &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck
 git add patra-portal/src/components/portal/JournalCoverCard.tsx patra-portal/src/components/portal/journals patra-portal/tests/components/portal/journals
@@ -540,7 +540,7 @@ git commit -m "feat(portal): 期刊浏览叶子组件（网格/分页/空态/骨
       </article>
 
       <!-- ============ TASK 10 ============ -->
-      <article class="task" id="task-10" data-status="pending">
+      <article class="task" id="task-10" data-status="done">
         <header>
           <h2>任务 10：FE 筛选/检索交互组件（client）</h2>
           <dl class="files">
@@ -549,23 +549,23 @@ git commit -m "feat(portal): 期刊浏览叶子组件（网格/分页/空态/骨
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：JournalSearchSortControls（client）</strong>
             <p><code>"use client"</code>。检索框：受控 local state，初值取自 <code>query.q</code>；防抖 300ms 后 <code>router.replace</code>（<code>usePathname</code> + <code>serializeVenueBrowseQuery({...query,q,page:1})</code>）。排序段控件：4 项，点选 <code>router.push</code>（reset page）。移动端「筛选」按钮：<code>useJournalFilterUiStore().open()</code>，带 active 计数角标。始终挂载（不依赖取数）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：JournalActiveChips（client）</strong>
             <p><code>deriveActiveChips(query)</code> → chips；每个 ✕ 用 <code>router.push(serialize(chip.nextQuery))</code>；「清除全部」→ push 到仅保留 q（或全清）。空则不渲染。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：JournalFilters（client，rail + sheet 共用）</strong>
             <p>props：<code>{ facets: VenueBrowseFacets; query: VenueBrowseQuery }</code>。内部 <code>FilterControls</code> 子组件渲染 5 组 facet（移植原型 <code>FilterControls</code>：学科可搜索 CheckRow 列表 / JCR 分区 / 中科院分区+仅Top / OA+DOAJ / 国家）。勾选 → <code>router.push</code>（toggle 该值进/出 query 对应数组或布尔，reset page）。计数显示 <code>FacetOption.count</code>，count=0 灰显。学科组：本地 search input（<code>useState</code>）过滤显示项 + 可滚动。桌面渲染 <code>&lt;aside class="rail"&gt;</code>（<code>md:block hidden</code>）；移动渲染 shadcn <code>&lt;Sheet open={sheetOpen} onOpenChange&gt;</code>（<code>md:hidden</code>），底部「查看 N 本结果」关闭 sheet。排序/分区固定序用 <code>JCR_QUARTILE_ORDER</code>/<code>CAS_ZONE_ORDER</code> 兜底。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：测试</strong>
             <p>用 Testing Library + mock <code>next/navigation</code>（<code>useRouter</code>/<code>usePathname</code>）。验：勾选 facet 调 <code>router.push</code> 且 URL 含该值 + page 归 1；count 渲染；学科 search 本地过滤；排序点选 push。SearchSortControls 防抖（vi.useFakeTimers）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：验证 + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm test -- journals &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck
 git add patra-portal/src/components/portal/journals patra-portal/tests/components/portal/journals
@@ -575,7 +575,7 @@ git commit -m "feat(portal): 期刊检索/排序/facet 筛选交互组件 (PAP-4
       </article>
 
       <!-- ============ TASK 11 ============ -->
-      <article class="task" id="task-11" data-status="pending">
+      <article class="task" id="task-11" data-status="done">
         <header>
           <h2>任务 11：FE 页面装配 + 双层 Suspense</h2>
           <dl class="files">
@@ -584,15 +584,15 @@ git commit -m "feat(portal): 期刊检索/排序/facet 筛选交互组件 (PAP-4
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：JournalFiltersServer（async RSC）</strong>
             <p><code>async function JournalFiltersServer({ filters, query })</code>：<code>const facets = await fetchVenuesFacets(filters)</code> → <code>&lt;JournalFilters facets={facets} query={query} /&gt;</code>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：JournalResults（async RSC）</strong>
             <p><code>async function JournalResults({ query })</code>：<code>const page = await fetchVenuesPage(query)</code>。命中数 "共 N 本期刊"；<code>page.total===0</code> → <code>&lt;JournalEmptyResult kind={hasAnyFilter(query)||query.q ? "no-results":"empty-library"} query/&gt;</code>；否则 <code>&lt;JournalGrid items/&gt;</code> + <code>&lt;JournalPagination query total={page.total} pageSize/&gt;</code>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：page.tsx（RSC，Suspense 装配）</strong>
             <pre><code class="lang-tsx">export default async function JournalsPage(
   { searchParams }: { searchParams: Promise&lt;Record&lt;string, string | string[] | undefined&gt;&gt; },
@@ -623,11 +623,11 @@ git commit -m "feat(portal): 期刊检索/排序/facet 筛选交互组件 (PAP-4
 }</code></pre>
             <p>关键：filters 区 Suspense <strong>不带 key</strong>（稳定）→ 导航时 React transition 保留旧面板、就地换新计数，不闪 fallback、移动 sheet 打开态保留；results 区 Suspense <strong>带 <code>key={resultsKeyOf(query)}</code></strong>（含 page/sort/筛选）→ 任意变更强制重挂出骨架（补 gap②）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：loading.tsx + JournalsBrowseHead</strong>
             <p><code>loading.tsx</code>：整页骨架（head + bar + filter/grid 骨架），<code>aria-busy="true"</code>（沿用 PAP-45 loading 范式）。<code>JournalsBrowseHead</code>：面包屑 + eyebrow + 标题 + 副文案（静态，移植原型 <code>jb-head</code> 文案）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：验证（含手动 dev 验证 Suspense 行为）+ Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test
 # 本地网关已通：pnpm dev 后访问 /journals 人工确认翻页出骨架、筛选平滑、移动 sheet
@@ -638,7 +638,7 @@ git commit -m "feat(portal): /journals 页面装配 + 双层 Suspense (PAP-47)"<
       </article>
 
       <!-- ============ TASK 12 ============ -->
-      <article class="task" id="task-12" data-status="pending">
+      <article class="task" id="task-12" data-status="done">
         <header>
           <h2>任务 12：首页「浏览全部期刊」入口接通</h2>
           <dl class="files">
@@ -647,15 +647,15 @@ git commit -m "feat(portal): /journals 页面装配 + 双层 Suspense (PAP-47)"<
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写测试（RED）</strong>
             <p>断言「浏览全部期刊」是 <code>&lt;a href="/journals"&gt;</code>（<code>getByRole("link",{name:/浏览全部期刊/})</code>）而非 disabled button。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现（GREEN）</strong>
             <p><code>&lt;button disabled aria-disabled title="功能即将上线"&gt;</code> → <code>&lt;Link href="/journals"&gt;</code>（保留 ArrowRight 图标 + 样式 class，对齐 PAP-45 对 PaperCard 的解禁）。删除随之失效的 disabled 相关属性。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证 + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm test -- Journals &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck
 git add patra-portal/src/components/portal/Journals.tsx patra-portal/tests/components/portal/Journals.test.tsx
@@ -665,7 +665,7 @@ git commit -m "feat(portal): 首页浏览全部期刊接通 /journals (PAP-47)"<
       </article>
 
       <!-- ============ TASK 13 ============ -->
-      <article class="task" id="task-13" data-status="pending">
+      <article class="task" id="task-13" data-status="done">
         <header>
           <h2>任务 13：e2e smoke</h2>
           <dl class="files">
@@ -673,7 +673,7 @@ git commit -m "feat(portal): 首页浏览全部期刊接通 /journals (PAP-47)"<
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写 smoke（沿用 PAP-44/45 后端可达性 skip 范式）</strong>
             <ul>
               <li><strong>not-found 不依赖后端始终跑</strong>：直接访问 <code>/journals</code> 渲染出标题/检索框（页面壳无需后端即渲染骨架/壳；若结果区依赖后端，用 role 断言壳层元素）。</li>
@@ -681,7 +681,7 @@ git commit -m "feat(portal): 首页浏览全部期刊接通 /journals (PAP-47)"<
             </ul>
             <p>断言用 role/aria-label（如网格 <code>role="list"</code>、检索框 <code>aria-label</code>）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：验证 + Commit</strong>
             <pre><code class="lang-bash">cd patra-portal &amp;&amp; pnpm test:e2e -- journals-browse || true   # 本地有后端可真跑；CI 无后端走 skip
 git add patra-portal/tests/e2e/journals-browse.spec.ts
@@ -731,16 +731,50 @@ git commit -m "test(portal): /journals 浏览检索 e2e smoke (PAP-47)"</code></
       </li>
       data-type 4 类：decision / change / tradeoff / other；追加时同步更新下方 counter。
       -->
+      <li class="note" data-type="other" data-time="2026-06-07T01:40">
+        <header><span class="note-type">OTHER</span><time datetime="2026-06-07T01:40">06-07 01:40</time><a href="#tasks">§ 流程</a></header>
+        <p>用户授权全自主执行，跳过 brainstorming 第 8 步「用户审查 spec」门控。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-06-07T01:45">
+        <header><span class="note-type">DECISION</span><time datetime="2026-06-07T01:45">06-07 01:45</time><a href="#tasks">§ 流程</a></header>
+        <p>为夜间可靠跑完，把 spec 审查 + 代码质量审查合并为单个 opus 审查者（先规格后质量）；plan 的 step 级 data-status 与本 notes-panel 偏差统一在收尾批量落库（article 级状态实时切，作断点续跑依据）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T01:50">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-07T01:50">06-07 01:50</time><a href="#task-3">§ Task 3</a></header>
+        <p>任务合并：Task 2+3 合并为一个 infra 任务（多值 page + facets drill-down 一次做完，避免中间出现空 facets 占位桩，违绿地禁占位），Task 3 标 skipped。FE 侧亦合并 5+6 / 8+10 / 11+12（紧耦合且部分极小）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T02:00">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-07T02:00">06-07 02:00</time><a href="#task-1">§ Task 1</a></header>
+        <p>旧字段 <code>oaType</code>(String) 按设计替换为 <code>isOpenAccess</code>(Boolean)，对齐 hi-fi「仅开放获取」开关；无现有调用方依赖 oaType。</p>
+      </li>
+      <li class="note" data-type="tradeoff" data-time="2026-06-07T02:20">
+        <header><span class="note-type">TRADEOFF</span><time datetime="2026-06-07T02:20">06-07 02:20</time><a href="#task-2">§ Task 2</a></header>
+        <p>facets 用 7 条独立 GROUP BY 聚合查询（drill-down 各维度 WHERE 不同，单条 GROUPING SETS 反更难维护）；15k 行 + 现有索引可接受，合并为单查询记为未来可选优化。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-06-07T02:40">
+        <header><span class="note-type">DECISION</span><time datetime="2026-06-07T02:40">06-07 02:40</time><a href="#task-4">§ Task 4</a></header>
+        <p>filter 构建 + 分页归一从 app service 上移到 Controller（六边形：adapter 负责 request→domain 映射，app 只编排）；新增 2 个合理 spotbugs 排除（toArray null=「不过滤」语义 + request 防御性拷贝）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T03:00">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-07T03:00">06-07 03:00</time><a href="#task-6">§ Task 6 / 11</a></header>
+        <p>放弃 plan 原列的 <code>resultsKeyOf</code>/<code>filtersKeyOf</code>：结果区 Suspense key 直接用 <code>serializeVenueBrowseQuery(query)</code>，筛选区不带 key（稳定边界 → transition 保留旧面板平滑换计数、移动 sheet 不重挂）。功能等价。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-06-07T03:05">
+        <header><span class="note-type">OTHER</span><time datetime="2026-06-07T03:05">06-07 03:05</time><a href="#task-5">§ FE 全程</a></header>
+        <p>Serena 只索引 Java、对 TS 返回错误，前端一律回退内置 Read/Edit/Write（符合「Serena 已试且失败」豁免）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T03:45">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-07T03:45">06-07 03:45</time><a href="#task-4">§ 最终审查</a></header>
+        <p>最终整体审查抓到 C1：FE 按 spec 发 <code>jcr</code>/<code>cas</code> 与 BE 旧字段名 <code>jcrQuartile</code>/<code>casQuartile</code> 错配导致分区筛选静默失效；已改 BE 对齐（commit 80590a1），:patra-catalog:check 重跑绿。</p>
+      </li>
     </ol>
-
-    <p class="empty-state">no notes yet</p>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
-      <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="decision">2</span> decisions /
+      <span data-counter="change">4</span> changes /
+      <span data-counter="tradeoff">1</span> tradeoffs /
+      <span data-counter="other">2</span> others
     </footer>
   </aside>
 

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PAP-47 期刊浏览页 · 夜间自主执行汇报</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#tldr">一句话结论</a></li>
+      <li><a href="#verify">验证结果</a></li>
+      <li><a href="#caveat">⚠️ 唯一待你做的事</a></li>
+      <li><a href="#delivered">交付清单（14 commit）</a></li>
+      <li><a href="#decisions">我做的自主决策</a></li>
+      <li><a href="#bug">最终审查抓到的 bug</a></li>
+      <li><a href="#deviations">偏差记录</a></li>
+      <li><a href="#debt">遗留小项</a></li>
+      <li><a href="#notdone">我没做的事 + 你的选项</a></li>
+      <li><a href="#pointers">文件指针</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>PAP-47 期刊浏览/检索页 <code>/journals</code> · 夜间自主执行汇报</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-07（夜间）</span>
+        <span>🌿 pap-47-fe-journals-browse-page</span>
+        <span>🎫 PAP-47</span>
+        <span>📋 overnight report</span>
+        <span class="status-pill">实现完成 · 待你验收</span>
+      </div>
+    </header>
+
+    <aside class="callout summary" id="tldr">
+      <span class="title">一句话结论</span>
+      <p>PAP-47 全栈实现<strong>已完成并验证</strong>：spec → plan → 13 个 TDD 任务（subagent 驱动，每个两阶段审查）→ 最终整体审查 → 全栈门控。<strong>BE <code>./gradlew check</code> 全绿、FE lint/typecheck/test 全绿、<code>pnpm build</code> 成功、<code>/journals</code> 生产构建对真实库（15,434 本）渲染 200。</strong> 全部工作在本地分支 <code>pap-47-fe-journals-browse-page</code>，<strong>未合并、未开 PR</strong>（你没显式授权对外操作，留给你早上决定）。<strong>唯一需要你动手的</strong>：重启一下本地 catalog 服务（IDE 里那个 00:08 启动的旧实例），让它加载新代码——facet 端点和分区筛选要重启后才能在浏览器里看到效果（详见下方 ⚠️ 节，纯部署问题、非代码问题）。</p>
+    </aside>
+
+    <section id="verify">
+      <h2>1. 验证结果</h2>
+      <table>
+        <thead><tr><th>门控</th><th>结果</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>后端全量 <code>./gradlew check</code>（全 services）</td><td><span class="pill low">PASS</span></td><td>exit 0，含六边形架构约束 + 各服务单测/集成测试（TestContainers PG17）</td></tr>
+          <tr><td>catalog <code>:patra-catalog:check</code>（最终 commit）</td><td><span class="pill low">PASS</span></td><td>exit 0，含 <code>VenueBrowseReadAdapterIT</code>（19 facet/筛选 IT，真实 PG）+ <code>PortalVenueControllerIT</code></td></tr>
+          <tr><td>前端 <code>pnpm lint</code></td><td><span class="pill low">PASS</span></td><td>biome：0 error / 0 warning（139 文件）</td></tr>
+          <tr><td>前端 <code>pnpm typecheck</code></td><td><span class="pill low">PASS</span></td><td>tsc --noEmit 0 错误</td></tr>
+          <tr><td>前端 <code>pnpm test</code></td><td><span class="pill low">PASS</span></td><td>40 文件 / 271 测试全绿（纯函数 + 组件 + fetch 归一）</td></tr>
+          <tr><td>前端 <code>pnpm build</code>（生产构建）</td><td><span class="pill low">PASS</span></td><td><code>/journals</code> 编译为 dynamic 路由（8.55 kB）；无 RSC 越界/ server-only 误用</td></tr>
+          <tr><td>运行时 smoke（生产 server 对真实网关）</td><td><span class="pill mid">部分</span></td><td>homepage 200、<code>/journals</code> 200、网格渲染真实期刊、无结果态正常；<strong>facet 端点 400（运行实例陈旧，见 ⚠️）</strong></td></tr>
+          <tr><td>e2e（Playwright）</td><td><span class="pill mid">skip</span></td><td>已写 happy-path smoke（沿用 PAP-44/45 后端可达性 skip 范式）；当前因 dev server 未起而 skip，与单测/构建不冲突</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="caveat">
+      <h2>2. ⚠️ 唯一需要你做的事：重启 catalog 服务</h2>
+      <aside class="callout warning">
+        <span class="title">现象</span>
+        <p>浏览器打开 <code>/journals</code> 时，列表能出来（真实期刊），但<strong>筛选面板（facet）会报错</strong>，且 JCR/中科院分区筛选不生效。</p>
+      </aside>
+      <p><strong>根因（已查实，非代码问题）：</strong>本机在跑的 catalog 服务是 <strong>IntelliJ 于今天 00:08 启动的旧实例</strong>（PID 32208），早于本次 PAP-47 的后端改动。它没有新增的 <code>GET /portal/venues/facets</code> 端点，请求落到 <code>GET /portal/venues/{id}</code>，把 "facets" 当 id 转换失败：</p>
+      <pre><code>$ curl http://localhost:9528/patra-catalog/portal/venues/facets
+{"detail":"Failed to convert 'id' with value: 'facets'","status":400,...}</code></pre>
+      <p>新代码本身正确：控制器映射 <code>@GetMapping("/facets")</code> 在 <code>@GetMapping("/{id}")</code> 之前（Spring 字面路径优先级更高），且已被 <code>PortalVenueControllerIT</code>（Web 层）+ <code>VenueBrowseReadAdapterIT</code>（真实 PG，19 个 facet/drill-down 用例）覆盖验证。</p>
+      <aside class="callout success">
+        <span class="title">怎么做</span>
+        <p>在 IDEA 里<strong>重启 catalog 服务的 Run/Debug</strong>（让它加载新编译的类）。重启后 <code>/portal/venues/facets</code> 返回计数、分区筛选生效。我没有擅自 kill 你的调试进程——那属于侵入你环境的操作，且你在睡觉。</p>
+      </aside>
+      <p class="hint">注：JRebel 热重载通常只换方法体，新增的 <code>@GetMapping</code> 端点 / 请求映射变更需要重启进程才生效。</p>
+    </section>
+
+    <section id="delivered">
+      <h2>3. 交付清单（14 个 commit）</h2>
+      <p>分支 <code>pap-47-fe-journals-browse-page</code>（基于 <code>main@8f165d9cc</code>）。<strong>49 文件改动，+5042 / −210</strong>（BE catalog 15 文件 · FE portal 31 文件 · docs 2 文件）。</p>
+      <table>
+        <thead><tr><th>SHA</th><th>commit</th></tr></thead>
+        <tbody>
+          <tr><td><code>2709d9b</code></td><td>docs(portal): /journals 设计文档 (spec)</td></tr>
+          <tr><td><code>0fba736</code></td><td>docs(portal): /journals 实现计划 (plan)</td></tr>
+          <tr><td><code>a9d3884</code></td><td>feat(catalog): venue 浏览 filter 多值化 + facets 读模型 〔Task 1〕</td></tr>
+          <tr><td><code>5175683</code></td><td>feat(catalog): venue 多值筛选 + facets drill-down 读适配器 〔Task 2+3〕</td></tr>
+          <tr><td><code>5bbe4b3</code></td><td>feat(catalog): portal /venues 多值筛选 + 新增 /venues/facets 端点 〔Task 4〕</td></tr>
+          <tr><td><code>2816d02</code></td><td>feat(portal): 期刊浏览查询类型 + venue-browse 纯函数 〔Task 5+6〕</td></tr>
+          <tr><td><code>7849e5a</code></td><td>feat(portal): fetchVenuesPage / fetchVenuesFacets 取数 〔Task 7〕</td></tr>
+          <tr><td><code>7097cb2</code></td><td>feat(portal): 叶子组件（网格/分页/空态/骨架）+ CoverCard IF null 修复 〔Task 9〕</td></tr>
+          <tr><td><code>eb18241</code></td><td>feat(portal): 检索/排序/facet 筛选交互组件 + sheet store 〔Task 8+10〕</td></tr>
+          <tr><td><code>5a86765</code></td><td>feat(portal): /journals 页面装配 + 双层 Suspense + 首页入口接通 〔Task 11+12〕</td></tr>
+          <tr><td><code>7d23a0c</code></td><td>test(portal): /journals 浏览检索 e2e smoke 〔Task 13〕</td></tr>
+          <tr><td><code>c75d590</code></td><td>style(portal): 测试用可选链替非空断言清 lint warning 〔polish〕</td></tr>
+          <tr><td><code>835573e</code></td><td>docs(catalog): 补 VenueBrowseReadAdapter search/facets JavaDoc 〔polish〕</td></tr>
+          <tr><td><code>80590a1</code></td><td>fix(catalog): 筛选参数名 jcrQuartile/casQuartile → jcr/cas 对齐前端契约 〔最终审查抓到的 bug〕</td></tr>
+        </tbody>
+      </table>
+      <p><strong>功能落地</strong>：① BE 补 faceted-search——<code>/portal/venues</code> 扩多值筛选（subject/jcr/cas/country 的 <code>IN</code>）+ <code>oa</code> 布尔；新增 <code>/portal/venues/facets</code> 返回 drill-down 计数（每维度按「当前 query + 除本维度外其它已选」聚合，组内多选不互相清零）+ present-options。② FE <code>/journals</code>——服务端渲染 + URL-as-state，刊名检索（防抖）/ 4 维排序 / 多选 facet 筛选 / 页码分页全程 URL 同步（可分享/回退）。③ 双层 Suspense——结果区 keyed 出骨架网格（补 hi-fi 缺的翻页骨架），筛选面板稳定-key 平滑换计数（移动端 sheet 勾选不关闭）。④ 学科 facet 用真实 JCR subject（英文细分，组内可搜索）。⑤ 补「首屏空库」态、修 <code>JournalCoverCard</code> 的 IF null 守卫、首页「浏览全部期刊」解禁接 <code>/journals</code>。</p>
+    </section>
+
+    <section id="decisions">
+      <h2>4. 我做的自主决策（你睡觉期间）</h2>
+      <h3>流程决策</h3>
+      <ul>
+        <li>跳过了 brainstorming 第 8 步「用户审查 spec」门控——因你已显式授权全自主执行。</li>
+        <li>把「spec 审查 + 代码质量审查」<strong>合并为单个 opus 审查者</strong>（先验规格、再验质量），以在夜间可靠跑完 13 任务；每个任务仍经独立审查 + 修复闭环。</li>
+        <li>最后追加一道<strong>整体代码审查</strong>（审整个 49 文件 diff）——它抓到了一个 per-task 审查漏掉的真 bug（见 §6），证明这道关值得。</li>
+        <li>plan 的 step 级 data-status 与 notes-panel 偏差<strong>统一在收尾批量落库</strong>（article 级状态实时切，作断点续跑依据）。</li>
+        <li>合并了若干任务执行：Task 2+3（infra 一次做完，避免空 facets 占位桩）、5+6、8+10、11+12（紧耦合且部分很小）。plan 里 Task 3 标 skipped（并入 2）。</li>
+        <li>模型：BE 实现用 opus（复杂 SQL/六边形），FE 实现用 sonnet（多为范式移植），<strong>所有审查者用 opus</strong>。</li>
+        <li>没有 <code>open</code> 浏览器（你不在看）。</li>
+      </ul>
+      <h3>技术决策（设计阶段已与你确认的不再列）</h3>
+      <ul>
+        <li><strong>双层 Suspense key 策略</strong>：结果区 <code>key={serializeVenueBrowseQuery(query)}</code>（变化 → 出骨架）；筛选面板不带 key（稳定 → transition 保留旧面板平滑换计数）。据此<strong>放弃了 plan 里原列的 <code>resultsKeyOf</code>/<code>filtersKeyOf</code> 两个函数</strong>（serializeVenueBrowseQuery 已等价覆盖）。</li>
+        <li><strong>facet 与分页拆两个端点</strong>：facet 计数与「看第几页」无关，独立端点让翻页时不重算 facet、面板不重挂。</li>
+        <li><strong>filter 构建 + 分页归一上移到 Controller</strong>（六边形：adapter 负责 request→domain 映射，app service 只编排）。</li>
+        <li>drill-down 计数用 7 条独立聚合查询（非单条 GROUPING SETS）——清晰度优先，15k 行可接受；合并为单查询记为未来可选优化。</li>
+      </ul>
+    </section>
+
+    <section id="bug">
+      <h2>5. 最终整体审查抓到的 bug（已修）</h2>
+      <div class="decision">
+        <h3>C1：FE↔BE 筛选参数名不一致（jcr/cas vs jcrQuartile/casQuartile）</h3>
+        <p>FE 按 spec 发 <code>?jcr=Q1,Q2&amp;cas=1区</code>，但 BE <code>PortalVenueListRequest</code> 字段名是 <code>jcrQuartile</code>/<code>casQuartile</code>（我在 Task 4 派发时沿用了 PAP-42 旧名，与 FE/spec 的短名错配）→ Spring 按字段名绑定，JCR/中科院分区筛选会<strong>静默失效</strong>。各任务单独审查时两侧分别看都"对"，FE 测试又 mock 了 BE，所以漏到了最终整体审查 + 运行时验证才暴露。</p>
+        <p class="alternatives"><strong>修复</strong>（commit <code>80590a1</code>）：BE <code>PortalVenueListRequest</code> 字段 <code>jcrQuartile→jcr</code>、<code>casQuartile→cas</code>，同步 <code>PortalVenueController.toFilter()</code> 取值与 <code>PortalVenueControllerIT</code> 请求 URL。spec 合规、FE 不动。<code>:patra-catalog:check</code> 重跑 exit 0。</p>
+      </div>
+    </section>
+
+    <section id="deviations">
+      <h2>6. 偏差记录（per-task）</h2>
+      <table>
+        <thead><tr><th>任务</th><th>类型</th><th>偏差</th></tr></thead>
+        <tbody>
+          <tr><td>Task 1</td><td><span class="pill">change</span></td><td>旧 <code>oaType</code>(String) 按设计替换为 <code>isOpenAccess</code>(Boolean)，对齐 hi-fi「仅开放获取」开关；无现有调用方依赖 oaType</td></tr>
+          <tr><td>Task 2</td><td><span class="pill">decision</span></td><td>keyword 同时匹配 <code>abbreviated_title</code>；替换旧 DAO 方法而非保留</td></tr>
+          <tr><td>Task 2</td><td><span class="pill">tradeoff</span></td><td>facets 用 7 条独立聚合查询（drill-down 各维度 WHERE 不同，CTE 反更难维护）</td></tr>
+          <tr><td>Task 4</td><td><span class="pill">decision</span></td><td>filter 构建 + 分页归一从 app service 上移到 Controller（六边形）；加 2 个 spotbugs 排除（toArray null=「不过滤」语义 + request 防御性拷贝）</td></tr>
+          <tr><td>FE-A</td><td><span class="pill">change</span></td><td>放弃 plan 的 <code>resultsKeyOf</code>/<code>filtersKeyOf</code>，结果区 Suspense key 直接用 <code>serializeVenueBrowseQuery</code>、筛选区不带 key（细化后的 Suspense 设计）</td></tr>
+          <tr><td>FE 全程</td><td><span class="pill">other</span></td><td>Serena 只索引 Java、对 TS 返回错误，FE 一律回退内置 Read/Edit/Write（符合规则：Serena 已试且失败）</td></tr>
+          <tr><td>FE-C</td><td><span class="pill">decision</span></td><td>网格用 <code>&lt;ul&gt;/&lt;li&gt;</code> 语义元素（Biome useSemanticElements 要求）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="debt">
+      <h2>7. 遗留小项（Minor，不阻塞，供你定夺）</h2>
+      <ul>
+        <li><strong>page 越界无服务端 clamp</strong>：手动把 URL 的 <code>page</code> 设成超过总页数时，结果区会取到空页（显示空网格），分页条则 clamp 到末页。仅手动改 URL 的边缘场景。可后续在 BE 或 <code>JournalResults</code> 加 clamp。</li>
+        <li><strong>URL 布尔写法</strong>：spec 示例用 <code>casTop=1</code>，实现产出 <code>casTop=true</code>（解析两者都认，BE Spring 也都接受，round-trip 正常）。纯文案不一致。</li>
+        <li><strong>分页禁用态的 a11y</strong>：上/下页禁用用 <code>aria-disabled</code> + <code>pointer-events-none</code> + <code>tabIndex=-1</code>（鼠标/Tab 已挡，个别读屏器对 <code>&lt;a&gt;</code> 的 aria-disabled 处理不一）。</li>
+        <li><strong>facets 端点失败 = 整页错误边界</strong>：按设计「非 2xx → throw → error.tsx」。即上面 ⚠️ 的陈旧服务场景下，重启前筛选区会落到错误屏。若希望 facet 故障时降级（仍显示列表、隐藏筛选），是一个未来加固点（超出本版设计）。</li>
+        <li>plan HTML 里 Task 6/11 仍有 <code>resultsKeyOf</code> 字样（已被 §4 的决策取代，功能等价）。</li>
+      </ul>
+    </section>
+
+    <section id="notdone">
+      <h2>8. 我没做的事 + 你的选项</h2>
+      <aside class="callout info">
+        <span class="title">未做（等你定）</span>
+        <p>没有合并到 main、没有开 PR、没有 push——这些是对外/不可逆操作，你没显式授权。分支 <code>pap-47-fe-journals-browse-page</code> 全绿留在本地。</p>
+      </aside>
+      <p>早上你可以走 <code>patra:finishing-a-development-branch</code> 四选项：① 本地合并回 main ② 推送并开 PR（推荐，留 CodeRabbit/审查记录；记得开 PR 后我会按规矩启 Monitor 跟 review）③ 保持现状 ④ 丢弃。建议顺序：<strong>先重启 catalog 服务，在浏览器里过一遍 <code>/journals</code>（搜索/排序/勾 facet 看计数/翻页/进详情），确认体验无误，再决定开 PR。</strong></p>
+    </section>
+
+    <section id="pointers">
+      <h2>9. 文件指针</h2>
+      <ul>
+        <li>设计 spec：<code>docs/patra/specs/2026-06-07-portal-journals-browse-page-design.html</code></li>
+        <li>实现 plan（含 13 任务进度 + Implementation Notes）：<code>docs/patra/plans/2026-06-07-pap-47-journals-browse-page.html</code></li>
+        <li>本报告：<code>docs/patra/reports/2026-06-07-pap-47-overnight-report.html</code></li>
+        <li>页面路由：<code>patra-portal/src/app/journals/{page,loading}.tsx</code></li>
+        <li>核心组件：<code>patra-portal/src/components/portal/journals/</code></li>
+        <li>取数 + 纯函数：<code>patra-portal/src/lib/portal-api/{venues.ts,venue-browse.ts}</code></li>
+        <li>BE 端点：<code>patra-catalog-adapter/.../rest/portal/PortalVenueController.java</code>（<code>/portal/venues</code> + <code>/portal/venues/facets</code>）</li>
+        <li>BE facets 聚合：<code>patra-catalog-infra/.../adapter/read/VenueBrowseReadAdapter.java</code> + <code>VenueDao.java</code></li>
+      </ul>
+    </section>
+
+    <aside class="callout summary">
+      <span class="title">早安 ☀️</span>
+      <p>实现完成、全栈门控绿、代码已分支沉淀。唯一动作：重启 catalog 服务看 facet 生效，然后决定怎么收尾。有任何想调整的，我在。</p>
+    </aside>
+
+  </main>
+</div>
+</body>
+</html>
