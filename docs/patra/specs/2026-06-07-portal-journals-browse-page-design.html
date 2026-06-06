@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>期刊浏览/检索页 /journals 设计文档 (PAP-47)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#architecture">架构总览</a></li>
+      <li><a href="#be-facets">后端：faceted-search 扩展</a></li>
+      <li><a href="#fe-data">前端：数据层</a></li>
+      <li><a href="#fe-view">前端：组件与页面</a></li>
+      <li><a href="#url">URL 契约</a></li>
+      <li><a href="#states">状态矩阵</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>期刊浏览/检索页 <code>/journals</code> 设计文档</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-07</span>
+        <span>🌿 pap-47-fe-journals-browse-page</span>
+        <span>👤 Lin</span>
+        <span>🎫 PAP-47</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>实现期刊浏览/检索页 <code>/journals</code>，<strong>全栈任务</strong>，忠实复刻 PAP-46 hi-fi 稿（封面网格 + 刊名检索 + 4 维排序 + 多选 facet 筛选 + 页码分页）。核心约束：真实库有 <strong>15,434 本</strong>期刊，原型那套「全量拉到客户端现算 facet」不成立，必须<strong>服务端渲染 + URL-as-state</strong>。为忠实还原 hi-fi 的「每选项实时计数 + 多选 + present-options」，后端补 faceted-search：<code>GET /portal/venues</code> 扩多值筛选，新增 <code>GET /portal/venues/facets</code> 返回 drill-down 计数（按当前 query+其他维度算，排除本维度）。前端用两层 Suspense——<strong>网格 keyed-Suspense 出骨架</strong>（补 hi-fi 缺的翻页骨架），<strong>筛选面板稳定-key Suspense 平滑更新</strong>（保留移动端 sheet 打开态、不随翻页重算 facet）。「学科」facet 用真实 <code>jcr_rating.subject</code>（英文细分 ~250 类，做成组内可搜索）。补两处 hi-fi gap（首屏空库态、翻页骨架网格），修 <code>JournalCoverCard</code> 的 IF null 守卫。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>v0.5 Portal Detail Pages 里程碑下，PAP-44（期刊详情 #133）、PAP-45（文献详情 #135）已交付，沉淀了「零映射 wire type + 纯函数 derive 视图层 + RSC 取数」模式。PAP-47 是本里程碑的浏览页——补齐首页「浏览全部期刊」按钮的落点（当前 <code>&lt;button disabled&gt;</code>，<code>Journals.tsx:37-44</code>）。</p>
+      <p>前置依赖均已就绪：<strong>PAP-42</strong>（BE portal 读端点 #132）已提供 <code>GET /portal/venues</code> 分页/单值筛选/4 维排序读链路（<code>VenueBrowseReadAdapter</code> 单次 LATERAL JOIN 取最新年 JCR/CAS，无 N+1）；<strong>PAP-46</strong>（hi-fi 稿）已定稿，原型在 <code>~/Downloads/patra-portal-v0.5-handoff</code>（<code>journals-browse.jsx</code> / <code>journals-data.jsx</code> / <code>journals.css</code>）。</p>
+      <p><strong>原型与真实数据的根本错位</strong>（本设计的核心动因）：hi-fi 原型对 ~27 本 mock 在浏览器内现算 facet 计数/多选/present-options；真实库 <strong>15,434 本</strong>（实测 <code>total</code>），不可能整包送客户端，且现有端点是单值筛选、不返回计数也不返回可选值清单。经决策：<strong>全忠实 · 扩 BE</strong>——后端补 faceted-search 能力，前端服务端渲染完整还原 hi-fi。原型已替我们定下两件事：分页是<strong>页码分页</strong>（<code>pageWindow</code> + ‹/› + "第 X–Y 本"），facet 计数语义是 <strong>drill-down</strong>（<code>matchAll(except=group)</code>，组内多选不互相清零）。</p>
+      <p>真实数据要点（实测）：<code>jcrQuartile</code>=<code>"Q1".."Q4"</code>，<code>casMajorQuartile</code>=<code>"1区".."4区"</code>（与原型 <code>JCR_QUARTILES</code>/<code>CAS_ZONES</code> 对得上）；<code>jcr_rating.subject</code> 是英文大写细分（<code>ONCOLOGY</code>，约 250 类），<code>cas_rating.major_category</code> 是中文粗类（医学/生物学，约 18 类），hi-fi 想要的中文细分领域在库里<strong>不存在</strong>——「学科」facet 决策为用 <code>jcr_rating.subject</code>（英文细分，组内可搜索）；<code>country_code</code> 数据稀疏（样本为 null）。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>BE：<code>GET /portal/venues</code> 扩多值筛选（<code>subject</code>/<code>jcr</code>/<code>cas</code>/<code>country</code> 改 <code>IN</code>）+ 新增 <code>oa</code>(isOpenAccess) 布尔筛选</li>
+            <li>BE：新增 <code>GET /portal/venues/facets</code>——drill-down 计数 + present-options（4 个分组维度 + 3 个布尔计数）</li>
+            <li>BE：domain filter/facet 读模型、ReadPort、ReadAdapter、Dao 原生 SQL（共享 base CTE）+ 集成测试扩展</li>
+            <li>FE：<code>VenueBrowseQuery</code>/<code>VenueBrowseFacets</code>/<code>FacetOption</code> 类型；<code>fetchVenuesPage</code>/<code>fetchVenuesFacets</code>；<code>venue-browse.ts</code> 纯函数（解析/序列化/chips/排序映射）</li>
+            <li>FE：<code>/journals</code> 页面（RSC + URL-as-state）+ 检索/排序/多选 facet/页码分页交互层</li>
+            <li>FE：双层 Suspense（网格 keyed 出骨架；筛选面板稳定-key 平滑更新）+ 移动端筛选 sheet</li>
+            <li>FE：补两处 gap（首屏空库态、翻页骨架网格）；修 <code>JournalCoverCard</code> IF null；首页「浏览全部期刊」解 disabled 接 <code>Link</code></li>
+            <li>测试：纯函数（解析/序列化/facet/chips）重点覆盖 + 组件单测 + e2e smoke + BE 集成测试</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>「学科」中文细分领域 / facet 取值翻译（真实数据只有英文 JCR subject，本版直显英文）</li>
+            <li>列表/网格视图切换 toggle（hi-fi 复用 <code>JournalCoverCard</code> 封面网格，单一网格形态）</li>
+            <li>出版商（publisher）facet（browse 端点不投影该列，本版不做）</li>
+            <li>检索建议/自动补全、facet 计数缓存层（YAGNI，本版每请求实时算）</li>
+            <li>真实用户/收藏（无用户系统）；期刊封面真实图片 pipeline（沿用 <code>coverObjectKey</code> 现状）</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 架构总览：服务端渲染 + URL-as-state</h2>
+      <p>15k 本 → 必须服务端。<code>/journals</code> 走 <strong>RSC 读 <code>searchParams</code> → 服务端取数 → 渲染</strong>；所有交互控件（client）只改 URL，URL 变触发 RSC 重渲染。天然可分享/可回退、零客户端数据缓存。这是 portal 第一个列表+分页+URL 同步页面。</p>
+      <p><strong>三块 Suspense 策略</strong>（关键，决定交互手感）：</p>
+      <table>
+        <thead><tr><th>区域</th><th>挂载</th><th>导航行为</th><th>理由</th></tr></thead>
+        <tbody>
+          <tr><td>检索/排序控件 <code>JournalSearchSortControls</code></td><td>client，<strong>始终挂载</strong>（在所有 Suspense 之外）</td><td>不重挂，输入框保持焦点</td><td>防抖检索时输入流畅、光标不丢</td></tr>
+          <tr><td>筛选面板 <code>JournalFiltersServer→JournalFilters</code></td><td>async RSC，包<strong>稳定-key</strong> Suspense</td><td>首次显骨架；后续导航 React transition <strong>保留旧面板</strong>就地换新计数（不闪 fallback、不重挂）</td><td>移动端 sheet 打开态保留、组内搜索文本/滚动不丢；facet 仅随筛选变、<strong>不随翻页重算</strong></td></tr>
+          <tr><td>结果区 <code>JournalResults</code>（命中数 + 网格 + 分页）</td><td>async RSC，包<strong>keyed</strong> Suspense（key=完整 query）</td><td>任意 query 变（含翻页）→ key 变 → <strong>强制出骨架网格</strong></td><td>补 hi-fi 缺的翻页骨架（gap②）</td></tr>
+        </tbody>
+      </table>
+      <p>为让「筛选面板不随翻页重算」「结果网格随翻页出骨架」，<strong>facet 与分页拆成两个后端端点 + 两次取数</strong>：facet 取数 key 不含 <code>page</code>（翻页时 key 不变 → 不重取、不重挂）；结果取数含完整 query。</p>
+      <p><strong>交互→URL 约定</strong>：检索输入用 <code>router.replace</code>（防抖 300ms，不污染历史）；离散动作（排序、facet 勾选、翻页、移除 chip）用 <code>router.push</code>（可回退到上一状态）。任意筛选/检索/排序变更都 <strong>reset <code>page=1</code></strong>。</p>
+    </section>
+
+    <section id="be-facets">
+      <h2>4. 后端：faceted-search 扩展（catalog）</h2>
+      <h3>4.1 两个端点</h3>
+      <ul>
+        <li><code>GET /portal/venues</code>（<strong>扩展</strong>）：返回结构<strong>不变</strong>（<code>PageResult&lt;PortalVenueBrowseResponse&gt;</code>，首页 <code>fetchVenues</code> 不受影响），仅把单值筛选扩成多值 <code>IN</code> + 新增 <code>oa</code> 布尔。</li>
+        <li><code>GET /portal/venues/facets</code>（<strong>新增</strong>）：入参为筛选维度（<code>q</code> + 各 facet，<strong>不含</strong> <code>page</code>/<code>pageSize</code>/<code>sort</code>），返回 <code>PortalVenueFacetsResponse</code>（drill-down 计数 + present-options）。</li>
+      </ul>
+      <h3>4.2 筛选维度 → 真实列映射</h3>
+      <table>
+        <thead><tr><th>facet / 参数</th><th>真实列（LATERAL 取最新年）</th><th>语义</th><th>多值</th></tr></thead>
+        <tbody>
+          <tr><td><code>q</code></td><td><code>cat_venue.title</code>（+ <code>abbreviated_title</code>）</td><td>前缀 LIKE（现有 <code>ESCAPE '!'</code> 转义保留）</td><td>—</td></tr>
+          <tr><td><code>subject</code>（学科）</td><td><code>cat_venue_jcr_rating.subject</code></td><td>英文 JCR 学科，<code>IN</code></td><td>✓</td></tr>
+          <tr><td><code>jcr</code>（JCR 分区）</td><td><code>cat_venue_jcr_rating.jif_quartile</code></td><td><code>Q1..Q4</code>，<code>IN</code></td><td>✓</td></tr>
+          <tr><td><code>cas</code>（中科院分区）</td><td><code>cat_venue_cas_rating.major_quartile</code></td><td><code>1区..4区</code>，<code>IN</code></td><td>✓</td></tr>
+          <tr><td><code>casTop</code></td><td><code>cat_venue_cas_rating.is_top_journal</code></td><td>布尔</td><td>—</td></tr>
+          <tr><td><code>oa</code>（仅开放获取，<strong>新增</strong>）</td><td><code>cat_venue.open_access-&gt;&gt;'isOa'</code>（JSONB）</td><td>布尔（"仅开放获取"）</td><td>—</td></tr>
+          <tr><td><code>doaj</code></td><td><code>cat_venue.open_access-&gt;&gt;'isInDoaj'</code>（JSONB，现有）</td><td>布尔</td><td>—</td></tr>
+          <tr><td><code>country</code>（国家/地区）</td><td><code>cat_venue.country_code</code></td><td>两位码，<code>IN</code></td><td>✓</td></tr>
+        </tbody>
+      </table>
+      <h3>4.3 base CTE + drill-down 计数</h3>
+      <p>page 查询与 facet 查询<strong>共用一段 base</strong>（venue + 最新年 JCR/CAS LATERAL JOIN + OA 字段从 JSONB 提取），保证两端口径一致。计数语义 = <strong>drill-down（排除本维度自身）</strong>：对每个 facet 维度 G，计数在「<code>q</code> + 除 G 外所有已选维度」的集合上做 <code>GROUP BY</code>——这样组内多选不会把自己其它选项清零（与原型 <code>matchAll(except=group)</code> 一致）。</p>
+      <ul>
+        <li>4 个分组维度（subject/jcr/cas/country）：各一条 <code>GROUP BY</code> 计数查询，返回 <code>{value, count}[]</code>。</li>
+        <li>3 个布尔维度（casTop/oa/doaj）：各一条 <code>COUNT WHERE</code>（在「<code>q</code> + 其他维度」集合上，该布尔为真的条数）。</li>
+        <li><strong>present-options</strong>：分组维度只返回库中实际存在的取值；显示侧按 count 降序，count=0 灰显但保留（值存在于全集）。</li>
+      </ul>
+      <p>本版按<strong>清晰度优先</strong>用多条查询实现（最多 7 条聚合，15k 行 + 现有索引可接受）；单条 <code>GROUPING SETS</code> 合并是可选的后续优化，记为 tradeoff，不在本版。</p>
+      <h3>4.4 六边形落点</h3>
+      <ul>
+        <li><strong>domain</strong>：<code>VenueBrowseFilter</code> 单值 → <code>List&lt;String&gt;</code>（subject/jcr/cas/country）+ 加 <code>Boolean isOpenAccess</code>；新增 <code>VenueBrowseFacets</code> 读模型（4 列表 + 3 计数）；<code>VenueBrowseReadPort</code> 加 <code>facets(VenueBrowseFilter)</code> 方法（或新建 <code>VenueFacetsReadPort</code>）。</li>
+        <li><strong>app</strong>：<code>PortalVenueBrowseQueryService</code> 编排 page 查询；新增 facets 查询编排（CQRS 读端无接口）。</li>
+        <li><strong>infra</strong>：<code>VenueBrowseReadAdapter</code> 改多值 <code>IN</code> + 实现 facets；<code>VenueDao</code> 加 base CTE 与 facet 聚合原生 SQL；新增 <code>VenueFacetCountRow</code> 投影。</li>
+        <li><strong>adapter</strong>：<code>PortalVenueListRequest</code> 改多值参数（<code>List&lt;String&gt;</code> / CSV）+ 加 <code>oa</code>；新增 <code>PortalVenueFacetsResponse</code> + facets 端点方法；<code>PortalApiConverter</code> 加 facets 映射。</li>
+      </ul>
+      <h3>4.5 测试（TDD，<code>./gradlew check</code> 门控）</h3>
+      <ul>
+        <li><code>VenueBrowseReadAdapterIT</code>（<code>@DataJpaTest</code> + TestContainers）：多值 <code>IN</code> 筛选、<code>oa</code>/<code>doaj</code> 布尔、facet drill-down 计数（验「选 Q1 后 JCR 组其它分区计数不归零」）、present-options、空库（facets 全空 + page total=0）。</li>
+        <li>controller/query 层测试：多值参数解析、facets 端点 JSON 形状。</li>
+      </ul>
+    </section>
+
+    <section id="fe-data">
+      <h2>5. 前端：数据层</h2>
+      <h3>5.1 类型（<code>src/types/portal.ts</code>，扩展）</h3>
+      <p>复用已有 <code>VenueBrowse</code>（16 字段，镜像 <code>PortalVenueBrowseResponse</code>）与 <code>PageResult&lt;T&gt;</code>。新增：</p>
+      <ul>
+        <li><code>VenueBrowseQuery { q: string; sort: VenueSortId; page: number; subject: string[]; jcr: string[]; cas: string[]; casTop: boolean; oa: boolean; doaj: boolean; country: string[] }</code></li>
+        <li><code>type VenueSortId = "if" | "cas" | "az" | "cited"</code>（URL 短码，映射 BE <code>impact_factor</code>/<code>cas_quartile</code>/<code>title</code>/<code>cited_by</code>）</li>
+        <li><code>FacetOption { value: string; count: number }</code></li>
+        <li><code>VenueBrowseFacets { subject: FacetOption[]; jcr: FacetOption[]; cas: FacetOption[]; country: FacetOption[]; casTop: number; oa: number; doaj: number }</code></li>
+        <li><code>VenueBrowsePage = PageResult&lt;VenueBrowse&gt;</code>（别名，语义清晰）</li>
+      </ul>
+      <h3>5.2 取数（<code>src/lib/portal-api/venues.ts</code>，扩展；均 <code>server-only</code>）</h3>
+      <ul>
+        <li><code>fetchVenuesPage(query: VenueBrowseQuery): Promise&lt;VenueBrowsePage&gt;</code> → <code>GET /portal/venues?...</code>（含 page/sort/pageSize=12 + 多值 CSV 筛选）。非 2xx → throw（冒泡 <code>error.tsx</code>）；列表恒 200（空集也是 200，无 404 分支）。</li>
+        <li><code>fetchVenuesFacets(filters): Promise&lt;VenueBrowseFacets&gt;</code> → <code>GET /portal/venues/facets?...</code>（只传筛选维度，不传 page/sort/pageSize）。错误同上。</li>
+        <li>两者 <code>cache: "no-store"</code> + <code>AbortSignal.timeout(10_000)</code>，沿用现有 <code>fetchVenues</code> 约定。</li>
+      </ul>
+      <h3>5.3 纯函数（<code>src/lib/portal-api/venue-browse.ts</code>，新建；可单测、无副作用）</h3>
+      <ul>
+        <li><code>parseVenueBrowseQuery(searchParams): VenueBrowseQuery</code>——从 Next <code>searchParams</code> 解析（多值 CSV split、布尔 "1"、page 下限 1、sort 白名单兜底 "if"）。</li>
+        <li><code>serializeVenueBrowseQuery(query): URLSearchParams</code>——回写 URL（默认值省略：<code>sort=if</code>、<code>page=1</code>、空数组/false 不写）。</li>
+        <li><code>buildVenuesPageApiQuery(query)</code> / <code>buildVenuesFacetsApiQuery(filters)</code>——拼 BE query（sort 短码→BE 码、多值→CSV、加 <code>pageSize</code>；facets 版剔除 page/sort/pageSize）。</li>
+        <li><code>resultsKeyOf(query)</code> / <code>filtersKeyOf(query)</code>——给两层 Suspense 用的 key（前者含 page/sort，后者不含）。</li>
+        <li><code>deriveActiveChips(query): Chip[]</code>——已选筛选 chips（含分组名 + 值 + 移除目标）。</li>
+        <li>常量：<code>SORT_OPTIONS</code>（4 项 + 中文标签 + 降序标记）、<code>JCR_QUARTILE_ORDER</code>、<code>CAS_ZONE_ORDER</code>（facet 固定排序兜底）。</li>
+      </ul>
+    </section>
+
+    <section id="fe-view">
+      <h2>6. 前端：组件与页面</h2>
+      <h3>6.1 页面编排（<code>src/app/journals/page.tsx</code>，RSC）</h3>
+      <p>解析 <code>searchParams</code>→<code>query</code>；渲染（伪结构）：</p>
+      <ul>
+        <li><code>&lt;TopNav/&gt;</code> + <code>&lt;JournalsBrowseHead/&gt;</code>（静态 eyebrow/标题/副文案）</li>
+        <li><code>&lt;JournalSearchSortControls query/&gt;</code>（client，始终挂载）+ <code>&lt;JournalActiveChips query/&gt;</code>（client，始终挂载）</li>
+        <li>布局两栏：
+          <ul>
+            <li><code>&lt;Suspense fallback={&lt;JournalFilterSkeleton/&gt;}&gt;&lt;JournalFiltersServer filters/&gt;&lt;/Suspense&gt;</code>（<strong>稳定 key</strong>，平滑更新）</li>
+            <li><code>&lt;Suspense key={resultsKeyOf(query)} fallback={&lt;JournalGridSkeleton/&gt;}&gt;&lt;JournalResults query/&gt;&lt;/Suspense&gt;</code>（<strong>变化 key</strong>，翻页/筛选出骨架）</li>
+          </ul>
+        </li>
+        <li><code>&lt;Footer/&gt;</code></li>
+      </ul>
+      <h3>6.2 组件清单（<code>src/components/portal/journals/</code>）</h3>
+      <table>
+        <thead><tr><th>组件</th><th>RSC/Client</th><th>职责</th></tr></thead>
+        <tbody>
+          <tr><td><code>JournalsBrowseHead</code></td><td>RSC</td><td>面包屑 + eyebrow + 标题 + 副文案（静态）</td></tr>
+          <tr><td><code>JournalSearchSortControls</code></td><td>Client</td><td>检索框（防抖 <code>replace</code>）+ 排序段控件（<code>push</code>）+ 移动端「筛选」按钮（开 sheet）；始终挂载</td></tr>
+          <tr><td><code>JournalActiveChips</code></td><td>Client</td><td>已选筛选 chips，点 ✕ 改 URL（<code>push</code>）+「清除全部」</td></tr>
+          <tr><td><code>JournalFiltersServer</code></td><td>async RSC</td><td><code>fetchVenuesFacets(filters)</code> → 渲染 client <code>&lt;JournalFilters facets query/&gt;</code></td></tr>
+          <tr><td><code>JournalFilters</code></td><td>Client</td><td>桌面 rail + 移动 sheet 共用一套 <code>FilterControls</code>（facet 复选+计数、布尔开关、学科组内可搜索）；sheet 开关态由 <code>useJournalFilterUiStore</code>（zustand）；勾选改 URL（<code>push</code>）</td></tr>
+          <tr><td><code>JournalResults</code></td><td>async RSC</td><td><code>fetchVenuesPage(query)</code> → 命中数 +（空→<code>JournalEmptyResult</code> / 非空→<code>JournalGrid</code> + <code>JournalPagination</code>）</td></tr>
+          <tr><td><code>JournalGrid</code></td><td>RSC</td><td>响应式网格，<code>items</code> → <code>JournalCoverCard</code>，<code>role="list"</code></td></tr>
+          <tr><td><code>JournalPagination</code></td><td>RSC</td><td>页码 <code>&lt;Link href=?page=N&gt;</code>（<code>pageWindow</code> 省略号窗口 + ‹/›）+「第 X–Y 本·共 Z 本」</td></tr>
+          <tr><td><code>JournalEmptyResult</code></td><td>RSC</td><td>无结果（有筛选/检索 → "未找到…" + 清除）/ 首屏空库（无筛选且 total=0 → "库中暂无期刊"）两态</td></tr>
+          <tr><td><code>JournalFilterSkeleton</code> / <code>JournalGridSkeleton</code></td><td>RSC</td><td>两层 Suspense 的骨架 fallback</td></tr>
+        </tbody>
+      </table>
+      <h3>6.3 学科 facet（组内可搜索）</h3>
+      <p>「学科领域」取值为英文 JCR subject（~250 类），过长。该组做成：组内一个小搜索框（client local state，本地过滤显示项，不进 URL）+ 可滚动列表，选项按 count 降序、只列 present 值。其余 facet 组（JCR 分区/中科院分区+仅Top/OA+DOAJ/国家）为普通复选。（已知小代价：勾选触发导航、面板 transition 更新时组内搜索文本会重置——可接受，记录在册。）</p>
+      <h3>6.4 复用/改造既有</h3>
+      <ul>
+        <li><code>JournalCoverCard.tsx</code>（modify）：<strong>修 IF null 守卫</strong>——按刊名/被引排序会带出无 IF 的刊，<code>impactFactor != null ? impactFactor.toFixed(1) : "—"</code>（符合简报「指标缺失→不显」）；其余沿用（封面/刊名/缩写/JCR+CAS 分区）。</li>
+        <li><code>Journals.tsx:37-44</code>（modify）：「浏览全部期刊」<code>&lt;button disabled&gt;</code> → <code>&lt;Link href="/journals"&gt;</code>（对齐 PAP-45 对 PaperCard 的解禁改造）。</li>
+        <li>错误态复用全局 <code>error.tsx</code>；<code>src/store/</code> 新增 <code>journal-filter-ui.ts</code>（zustand，仅 sheet 开关布尔）。</li>
+      </ul>
+    </section>
+
+    <section id="url">
+      <h2>7. URL 契约</h2>
+      <p>示例：<code>/journals?q=lancet&amp;sort=cited&amp;page=2&amp;subject=ONCOLOGY,CARDIAC%20%26%20CARDIOVASCULAR%20SYSTEMS&amp;jcr=Q1,Q2&amp;cas=1区&amp;casTop=1&amp;oa=1&amp;doaj=1&amp;country=US,GB</code></p>
+      <ul>
+        <li>多值用逗号分隔；布尔用 <code>1</code>；默认值省略（<code>sort=if</code> / <code>page=1</code> / 空 / false 不写入）。</li>
+        <li>任意筛选/检索/排序变更 reset <code>page=1</code>；分页只改 <code>page</code>。</li>
+        <li><code>page</code> 越界（&gt; 总页数）由服务端 clamp 到末页（与原型 <code>Math.min(f.page, pageCount)</code> 一致）。</li>
+      </ul>
+    </section>
+
+    <section id="states">
+      <h2>8. 状态矩阵</h2>
+      <table>
+        <thead><tr><th>状态</th><th>触发</th><th>渲染</th></tr></thead>
+        <tbody>
+          <tr><td>默认列表</td><td>有结果</td><td>命中数 + 封面网格 + 分页 + 筛选面板（带计数）</td></tr>
+          <tr><td>首次进入加载</td><td>路由首入</td><td><code>app/journals/loading.tsx</code> 整页骨架</td></tr>
+          <tr><td><strong>翻页/筛选骨架</strong>（补 gap②）</td><td>query 变（含翻页）</td><td>结果区 keyed-Suspense → <code>JournalGridSkeleton</code>；筛选面板 transition 平滑更新不闪</td></tr>
+          <tr><td>无结果</td><td>有筛选/检索且 total=0</td><td>"未找到匹配…的期刊" + 清除全部筛选 + 返回首页</td></tr>
+          <tr><td><strong>首屏空库</strong>（补 gap①）</td><td>无任何筛选/检索且 total=0</td><td>"库中暂无期刊"（区别于搜索无结果，不引导清除筛选）</td></tr>
+          <tr><td>错误</td><td>取数 throw（5xx/超时/网关缺失）</td><td>复用全局 <code>error.tsx</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="decisions">
+      <h2>关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：全忠实 · 扩 BE 做 faceted-search（而非简化 facet）</h3>
+        <p>真实 15k 本 + hi-fi 的 drill-down 计数/多选/present-options，只能靠后端补 faceted-search 来忠实还原。<code>GET /portal/venues</code> 扩多值筛选 + 新增 <code>/facets</code> 端点返回 drill-down 计数。</p>
+        <p class="alternatives"><strong>备选 A：</strong>前端全量拉到客户端现算（照搬原型）— 否决：15k×16 字段约 6MB/次，不可行。<br>
+        <strong>备选 B：</strong>简化 facet（单值、无计数、硬编码枚举）— 否决：明显弱于已批准 hi-fi，用户明确选「全忠实」。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：facet 与分页拆两端点 + 两层 Suspense</h3>
+        <p>facet 计数与「看第几页」无关，拆 <code>/portal/venues</code>（分页）+ <code>/portal/venues/facets</code>（计数）。前端 facet 取数 key 不含 page → 翻页不重算 facet、面板不重挂；结果区 keyed-Suspense → 翻页/筛选出骨架（补 gap②）。</p>
+        <p class="alternatives"><strong>备选 A：</strong>单端点 <code>facets=true</code> 内嵌响应 — 否决：facet 会随翻页一起重算，且难让「面板平滑、网格出骨架」分别成立。<br>
+        <strong>备选 B：</strong>全用 keyed-Suspense（含面板）— 否决：移动端 sheet 一勾选就重挂关闭、组内搜索/滚动丢失。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：「学科」facet 用 jcr_rating.subject（英文细分）</h3>
+        <p>hi-fi 想要中文细分领域，真实数据没有。两套真实字段：JCR subject（英文细分 ~250）vs CAS major_category（中文粗类 ~18）。选 JCR subject——粒度贴近 hi-fi，组内做可搜索消化长列表。</p>
+        <p class="alternatives"><strong>备选 A：</strong>CAS 大类（中文 ~18）— 否决：太粗（多数医学期刊都=医学，不具区分度）。<br>
+        <strong>备选 B：</strong>两个都做 — 否决：facet 面板变长、两套口径，超出本版必要。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：drill-down 计数语义（排除本维度自身）</h3>
+        <p>每维度计数在「q + 除本维度外其它已选维度」集合上算。这样组内多选不会把自己其它选项清零（选 Q1 后仍看得到 Q2/Q3/Q4 还有多少）。与原型 <code>matchAll(except=group)</code> 一致。</p>
+        <p class="alternatives"><strong>备选：</strong>在「含本维度」的全过滤集合上算 — 否决：选一个值后同组其它值计数全归零，多选体验崩坏。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：页码分页 + 服务端渲染（沿用原型 + RSC）</h3>
+        <p>原型用 <code>pageWindow</code> 页码分页；与 RSC「每页一次服务端渲染、可分享/回退」最契合。分页用 <code>&lt;Link&gt;</code>（纯服务端导航，无需客户端 JS）。</p>
+        <p class="alternatives"><strong>备选：</strong>load-more 累加 — 否决：客户端累积状态与服务端渲染/回退还原打架。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>风险与缓解</h2>
+      <table>
+        <thead><tr><th>风险</th><th>等级</th><th>缓解</th></tr></thead>
+        <tbody>
+          <tr><td>facet 聚合（最多 7 条 <code>GROUP BY</code>）在 15k 行的延迟</td><td><span class="pill mid">mid</span></td><td>复用 base CTE + 现有索引（jif_quartile/major_quartile/cited_by 等已建）；facet 与分页拆端口，facet 不随翻页重算；IT 验证；必要时记 tradeoff 后续合并为 GROUPING SETS</td></tr>
+          <tr><td>OA 筛选走 JSONB（<code>open_access-&gt;&gt;'isOa'</code>）无索引、全表扫</td><td><span class="pill mid">mid</span></td><td>本版先功能正确（与现有 <code>doaj</code> 同款 JSONB 提取一致）；若慢，后续加表达式索引（记 tradeoff，不在本版）</td></tr>
+          <tr><td>稳定-key Suspense 的 transition 行为依赖 Next 15/React 并发语义</td><td><span class="pill mid">mid</span></td><td>实现后人工验证「翻页面板不闪、筛选面板平滑换计数、移动端 sheet 勾选不关闭」；若不达预期，降级为面板也出骨架（功能不受损）并记录</td></tr>
+          <tr><td>「学科」英文 ~250 项 facet 列表过长</td><td><span class="pill low">low</span></td><td>组内可搜索 + 可滚动 + 按 count 降序 + present-only</td></tr>
+          <tr><td>e2e happy-path 依赖后端（CI 无后端）</td><td><span class="pill low">low</span></td><td>沿用 PAP-44/45 策略：无后端时 <code>test.skip</code>；本地网关已通（15,434 本）可真跑</td></tr>
+          <tr><td><code>country_code</code> 数据稀疏，国家 facet 可能选项很少</td><td><span class="pill low">low</span></td><td>present-options 只列存在值；为空则该 facet 组不渲染</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>改造文件清单</h2>
+      <table>
+        <thead><tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><code>…/domain/model/read/portal/VenueBrowseFilter.java</code></td><td><span class="pill modify">modify</span></td><td>单值 → List（subject/jcr/cas/country）+ 加 isOpenAccess</td></tr>
+          <tr><td>2</td><td><code>…/domain/model/read/portal/VenueBrowseFacets.java</code></td><td><span class="pill create">create</span></td><td>facet 读模型（4 列表 + 3 计数）</td></tr>
+          <tr><td>3</td><td><code>…/domain/port/read/VenueBrowseReadPort.java</code></td><td><span class="pill modify">modify</span></td><td>加 facets(filter) 方法</td></tr>
+          <tr><td>4</td><td><code>…/infra/adapter/read/VenueBrowseReadAdapter.java</code></td><td><span class="pill modify">modify</span></td><td>多值 IN + 实现 facets（drill-down）</td></tr>
+          <tr><td>5</td><td><code>…/infra/persistence/dao/VenueDao.java</code></td><td><span class="pill modify">modify</span></td><td>base CTE + page 多值 SQL + facet 聚合 SQL</td></tr>
+          <tr><td>6</td><td><code>…/infra/adapter/read/VenueFacetCountRow.java</code></td><td><span class="pill create">create</span></td><td>facet 计数投影</td></tr>
+          <tr><td>7</td><td><code>…/app/usecase/portal/query/PortalVenueBrowseQueryService.java</code></td><td><span class="pill modify">modify</span></td><td>编排 page + facets 查询</td></tr>
+          <tr><td>8</td><td><code>…/adapter/rest/portal/request/PortalVenueListRequest.java</code></td><td><span class="pill modify">modify</span></td><td>多值参数 + oa</td></tr>
+          <tr><td>9</td><td><code>…/adapter/rest/portal/response/PortalVenueFacetsResponse.java</code></td><td><span class="pill create">create</span></td><td>facets 响应 DTO</td></tr>
+          <tr><td>10</td><td><code>…/adapter/rest/portal/PortalVenueController.java</code></td><td><span class="pill modify">modify</span></td><td>扩 browse 入参 + 新增 GET /facets</td></tr>
+          <tr><td>11</td><td><code>…/adapter/rest/portal/PortalApiConverter.java</code></td><td><span class="pill modify">modify</span></td><td>facets 读模型 → DTO</td></tr>
+          <tr><td>12</td><td><code>…/infra/.../VenueBrowseReadAdapterIT.java</code></td><td><span class="pill modify">modify</span></td><td>多值/oa/facet drill-down/空库 IT</td></tr>
+          <tr><td>13</td><td><code>…/adapter/.../PortalVenueControllerIT.java</code>（如有）</td><td><span class="pill modify">modify</span></td><td>多值参数 + facets 端点断言</td></tr>
+          <tr><td>14</td><td><code>src/types/portal.ts</code></td><td><span class="pill modify">modify</span></td><td>VenueBrowseQuery / FacetOption / VenueBrowseFacets / VenueBrowsePage</td></tr>
+          <tr><td>15</td><td><code>src/lib/portal-api/venues.ts</code></td><td><span class="pill modify">modify</span></td><td>fetchVenuesPage / fetchVenuesFacets</td></tr>
+          <tr><td>16</td><td><code>src/lib/portal-api/venue-browse.ts</code></td><td><span class="pill create">create</span></td><td>解析/序列化/api-query/keys/chips/常量 纯函数</td></tr>
+          <tr><td>17</td><td><code>src/store/journal-filter-ui.ts</code></td><td><span class="pill create">create</span></td><td>zustand：移动端 sheet 开关</td></tr>
+          <tr><td>18</td><td><code>src/app/journals/page.tsx</code></td><td><span class="pill create">create</span></td><td>RSC：解析 searchParams + 两层 Suspense 编排</td></tr>
+          <tr><td>19</td><td><code>src/app/journals/loading.tsx</code></td><td><span class="pill create">create</span></td><td>整页骨架（首入）</td></tr>
+          <tr><td>20</td><td><code>src/components/portal/journals/JournalsBrowseHead.tsx</code></td><td><span class="pill create">create</span></td><td>面包屑/标题/副文案</td></tr>
+          <tr><td>21</td><td><code>…/journals/JournalSearchSortControls.tsx</code></td><td><span class="pill create">create</span></td><td>检索(防抖)+排序段+移动筛选按钮（client）</td></tr>
+          <tr><td>22</td><td><code>…/journals/JournalActiveChips.tsx</code></td><td><span class="pill create">create</span></td><td>已选 chips（client）</td></tr>
+          <tr><td>23</td><td><code>…/journals/JournalFiltersServer.tsx</code></td><td><span class="pill create">create</span></td><td>async RSC：fetchVenuesFacets</td></tr>
+          <tr><td>24</td><td><code>…/journals/JournalFilters.tsx</code></td><td><span class="pill create">create</span></td><td>rail+sheet 共用 facet 控件（client）</td></tr>
+          <tr><td>25</td><td><code>…/journals/JournalResults.tsx</code></td><td><span class="pill create">create</span></td><td>async RSC：fetchVenuesPage → 命中数+网格+分页+空态</td></tr>
+          <tr><td>26</td><td><code>…/journals/JournalGrid.tsx</code></td><td><span class="pill create">create</span></td><td>响应式网格</td></tr>
+          <tr><td>27</td><td><code>…/journals/JournalPagination.tsx</code></td><td><span class="pill create">create</span></td><td>页码 Link（pageWindow）</td></tr>
+          <tr><td>28</td><td><code>…/journals/JournalEmptyResult.tsx</code></td><td><span class="pill create">create</span></td><td>无结果 / 首屏空库 两态</td></tr>
+          <tr><td>29</td><td><code>…/journals/JournalFilterSkeleton.tsx</code> + <code>JournalGridSkeleton.tsx</code></td><td><span class="pill create">create</span></td><td>两层 Suspense fallback</td></tr>
+          <tr><td>30</td><td><code>src/components/portal/JournalCoverCard.tsx</code></td><td><span class="pill modify">modify</span></td><td>修 IF null 守卫</td></tr>
+          <tr><td>31</td><td><code>src/components/portal/Journals.tsx</code></td><td><span class="pill modify">modify</span></td><td>浏览全部期刊 disabled → Link /journals</td></tr>
+          <tr><td>32</td><td><code>tests/lib/portal-api/venue-browse.test.ts</code></td><td><span class="pill create">create</span></td><td>解析/序列化/api-query/keys/chips 纯函数（重点覆盖）</td></tr>
+          <tr><td>33</td><td><code>tests/lib/portal-api/venues.test.ts</code></td><td><span class="pill modify">modify</span></td><td>fetchVenuesPage / fetchVenuesFacets 分支</td></tr>
+          <tr><td>34</td><td><code>tests/components/portal/journals/*.test.tsx</code></td><td><span class="pill create">create</span></td><td>FilterPanel/SearchSort/Pagination/EmptyResult/CoverCard</td></tr>
+          <tr><td>35</td><td><code>tests/e2e/journals-browse.spec.ts</code></td><td><span class="pill create">create</span></td><td>首页→/journals→搜索/筛选/翻页→进详情 smoke</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li><code>/journals</code> 渲染真实期刊数据；刊名检索 / 4 维排序 / 多选 facet 筛选 / 页码分页可用，全程 URL 同步（可分享/回退）</li>
+        <li>facet 每选项实时 drill-down 计数 + present-options + 学科组内可搜索（忠实 hi-fi）</li>
+        <li>BE <code>GET /portal/venues</code>（多值筛选）+ <code>GET /portal/venues/facets</code> 可用，<code>./gradlew check</code> 全绿（含扩展 IT）</li>
+        <li>首页「浏览全部期刊」可点击跳转（不再 disabled）</li>
+        <li>无结果 / 首屏空库两态正确；翻页/筛选出骨架网格；筛选面板平滑更新（移动端 sheet 勾选不关闭）</li>
+        <li>375×812 与 1440×900 两视图布局正确（移动端筛选进抽屉）</li>
+        <li>Playwright smoke + <code>pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code> 全绿</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
