@@ -49,8 +49,14 @@ function paper(overrides: Partial<PaperDetail> = {}): PaperDetail {
 
 describe("deriveEvidence", () => {
   it("rank 决定色温与阶梯：5→moss/5，3→amber/3，1→slate/1，0→muted/0", () => {
-    expect(deriveEvidence(ev("SYSTEMATIC_REVIEW", 5, true))).toMatchObject({ tone: "moss", lit: 5 });
-    expect(deriveEvidence(ev("COHORT_OR_CASE_CONTROL", 3, true))).toMatchObject({ tone: "amber", lit: 3 });
+    expect(deriveEvidence(ev("SYSTEMATIC_REVIEW", 5, true))).toMatchObject({
+      tone: "moss",
+      lit: 5,
+    });
+    expect(deriveEvidence(ev("COHORT_OR_CASE_CONTROL", 3, true))).toMatchObject({
+      tone: "amber",
+      lit: 3,
+    });
     expect(deriveEvidence(ev("CASE_REPORT", 1, true))).toMatchObject({ tone: "slate", lit: 1 });
     expect(deriveEvidence(ev("UNKNOWN", 0, false))).toMatchObject({ tone: "muted", lit: 0 });
   });
@@ -81,7 +87,9 @@ describe("deriveAbstract", () => {
 
 describe("deriveFullTextHref", () => {
   it("fullTextUrl 优先", () => {
-    expect(deriveFullTextHref(paper({ fullTextUrl: "https://x", doi: "10.1/y", pmid: "9" }))).toBe("https://x");
+    expect(deriveFullTextHref(paper({ fullTextUrl: "https://x", doi: "10.1/y", pmid: "9" }))).toBe(
+      "https://x",
+    );
   });
   it("无 fullTextUrl 降级到 doi.org", () => {
     expect(deriveFullTextHref(paper({ doi: "10.1/y", pmid: "9" }))).toBe("https://doi.org/10.1/y");
@@ -109,7 +117,11 @@ describe("deriveByline", () => {
   });
   it("≤3 位作者时 extra 为 0", () => {
     const authors: Author[] = [1, 2].map((n) => ({
-      order: n, first: n === 1, corresponding: false, name: `A${n}`, affiliation: null,
+      order: n,
+      first: n === 1,
+      corresponding: false,
+      name: `A${n}`,
+      affiliation: null,
     }));
     expect(deriveByline(authors).extra).toBe(0);
     expect(deriveByline([]).extra).toBe(0);
