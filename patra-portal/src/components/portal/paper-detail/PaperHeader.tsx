@@ -22,7 +22,7 @@ export function PaperHeader({ paper }: { paper: PaperDetail }) {
           </span>
         ))}
         {paper.isOa && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-moss-500 bg-(--moss-50) px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-moss-500">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-moss-500 bg-moss-50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.04em] text-moss-500">
             开放获取
           </span>
         )}
@@ -77,11 +77,7 @@ export function PaperHeader({ paper }: { paper: PaperDetail }) {
               去全文 {paper.isOa ? "· OA" : "· DOI"} <ExternalLink size={14} />
             </a>
           ) : (
-            <button
-              className={`${btnSecondary} cursor-not-allowed opacity-55`}
-              type="button"
-              disabled
-            >
+            <button className={`${btnSecondary} opacity-55`} type="button" disabled>
               全文链接不可用
             </button>
           )}

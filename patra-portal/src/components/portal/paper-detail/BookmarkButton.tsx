@@ -3,6 +3,7 @@
 import { Bookmark } from "lucide-react";
 import { useState } from "react";
 import { btnBlock, btnSecondary } from "@/lib/portal-ui";
+import { cn } from "@/lib/utils";
 
 /// 收藏按钮 —— 本版为 mock：无用户系统、无后端，仅本地切换视觉态（图标填充 + 文案）。
 export function BookmarkButton({ block = false }: { block?: boolean }) {
@@ -12,7 +13,7 @@ export function BookmarkButton({ block = false }: { block?: boolean }) {
       type="button"
       aria-pressed={bookmarked}
       onClick={() => setBookmarked((b) => !b)}
-      className={`${btnSecondary} ${block ? btnBlock : ""}`}
+      className={cn(btnSecondary, block && btnBlock)}
     >
       <Bookmark
         size={14}
