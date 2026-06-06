@@ -235,6 +235,10 @@ public class PortalApiConverter {
                 .map(d -> PortalPublicationDetailResponse.PublicationDate.of(d.type(), d.date()))
                 .toList())
         .aiSummary(null) // 当前无 LLM 摘要生成，恒为 null
+        .source(toSource(model.provenanceCode()))
+        .fullTextUrl(model.fullTextUrl())
+        .bookmarks(0) // 无用户系统，恒为 0
+        .estimatedReadMin(null) // TODO(read-time)：接入原文采集/字数后估算阅读时长
         .build();
   }
 

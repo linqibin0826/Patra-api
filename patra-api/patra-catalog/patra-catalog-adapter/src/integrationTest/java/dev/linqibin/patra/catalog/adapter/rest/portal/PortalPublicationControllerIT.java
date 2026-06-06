@@ -144,6 +144,8 @@ class PortalPublicationControllerIT {
             .doi("10.1056/NEJMoa2401234")
             .pmid("38012044")
             .isOa(true)
+            .provenanceCode("PUBMED")
+            .fullTextUrl("https://x/full")
             .abstractSections(
                 List.of(
                     PublicationDetailReadModel.AbstractSectionView.of(
@@ -173,6 +175,14 @@ class PortalPublicationControllerIT {
         .jsonPath("$.isOa")
         .isEqualTo(true)
         .jsonPath("$.aiSummary")
+        .isEmpty()
+        .jsonPath("$.source")
+        .isEqualTo("PubMed")
+        .jsonPath("$.fullTextUrl")
+        .isEqualTo("https://x/full")
+        .jsonPath("$.bookmarks")
+        .isEqualTo(0)
+        .jsonPath("$.estimatedReadMin")
         .isEmpty();
   }
 

@@ -35,6 +35,10 @@ import lombok.Builder;
 /// @param funding 资助信息列表
 /// @param dates 出版日期列表
 /// @param aiSummary AI 摘要（当前恒为 null）
+/// @param source 数据来源（人类可读，如 "PubMed"；来自 provenance_code）
+/// @param fullTextUrl 原文链接（cat_publication_metadata.full_text_url，可为 null）
+/// @param bookmarks 收藏数（无用户系统，恒为 0）
+/// @param estimatedReadMin 预估阅读分钟数（无全文/字数数据，当前恒为 null）
 /// @author linqibin
 /// @since 0.1.0
 @Builder
@@ -65,7 +69,15 @@ public record PortalPublicationDetailResponse(
     List<String> keywords,
     List<Funding> funding,
     List<PublicationDate> dates,
-    String aiSummary) {
+    String aiSummary,
+    /// 数据来源（人类可读，如 "PubMed"；来自 provenance_code）
+    String source,
+    /// 原文链接（cat_publication_metadata.full_text_url，可为 null）
+    String fullTextUrl,
+    /// 收藏数（无用户系统，恒为 0）
+    Integer bookmarks,
+    /// 预估阅读分钟数（无全文/字数数据，当前恒为 null）
+    Integer estimatedReadMin) {
 
   public PortalPublicationDetailResponse {
     abstractSections = abstractSections != null ? List.copyOf(abstractSections) : List.of();
