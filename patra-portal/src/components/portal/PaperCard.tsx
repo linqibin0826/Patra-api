@@ -1,4 +1,5 @@
 import { ArrowLeftRight, Bookmark, ChevronRight, MessageSquare, Share2 } from "lucide-react";
+import Link from "next/link";
 import { AISummaryBadge } from "@/components/portal/AISummaryBadge";
 import type { Paper } from "@/types/portal";
 
@@ -66,16 +67,13 @@ export function PaperCard({ paper }: PaperCardProps) {
       )}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-fg-2">
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          title="功能即将上线"
-          className="inline-flex items-center gap-1 text-fg-2 hover:text-ink-900 disabled:cursor-not-allowed disabled:opacity-60"
+        <Link
+          href={`/papers/${paper.id}`}
+          className="inline-flex items-center gap-1 text-fg-2 hover:text-ink-900"
         >
           详情
           <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
-        </button>
+        </Link>
         <button
           type="button"
           disabled

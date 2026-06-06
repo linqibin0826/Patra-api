@@ -1,4 +1,4 @@
-import { SectionEyebrow } from "@/components/portal/journal-detail/SectionEyebrow";
+import { SectionEyebrow } from "@/components/portal/SectionEyebrow";
 import type { VenueDetail } from "@/types/portal";
 
 export function JournalPositioning({

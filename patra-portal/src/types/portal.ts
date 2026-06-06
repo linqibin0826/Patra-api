@@ -159,6 +159,88 @@ export interface Paper {
   minutesAgo: number | null; // 后端提供，UI 暂未展示（留作"X 分钟前"标签）
 }
 
+/** 证据等级（BE EvidenceLevelView：rank 0–5，越大越强；derived = 非 UNKNOWN） */
+export interface EvidenceLevel {
+  level: string;
+  rank: number;
+  label: string;
+  derived: boolean;
+}
+
+/** 结构化摘要段落；label 为 BACKGROUND / METHODS / RESULTS 等枚举值 */
+export interface AbstractSection {
+  label: string;
+  text: string;
+}
+
+/** 作者（order 为 1-based 排序，有意义）；affiliation 为首机构 */
+export interface Author {
+  order: number;
+  first: boolean;
+  corresponding: boolean;
+  name: string;
+  affiliation: string | null;
+}
+
+/** MeSH 主题词；major 标记主要主题概念 */
+export interface MeshHeading {
+  descriptorUi: string;
+  term: string;
+  major: boolean;
+}
+
+/** 资助信息；字段均可能为 null */
+export interface Funding {
+  funder: string | null;
+  grantId: string | null;
+  country: string | null;
+}
+
+/** 出版日期；type 如 received/accepted/epublished/published，date 为 "yyyy-MM-dd" */
+export interface PublicationDate {
+  type: string;
+  date: string; // LocalDate 序列化为 "yyyy-MM-dd"
+}
+
+/**
+ * 文献详情端点 `GET /portal/publications/{id}` 响应（PaperDetail）。
+ * 对应后端 `PortalPublicationDetailResponse`——扁平 + 列表，零运行时映射。
+ * source/fullTextUrl 为真实数据；bookmarks 恒 0、estimatedReadMin 恒 null（占位，无数据源）。
+ */
+export interface PaperDetail {
+  id: string;
+  title: string;
+  originalTitle: string | null;
+  venueId: string | null;
+  venueName: string | null;
+  publicationYear: number | null;
+  evidenceLevel: EvidenceLevel;
+  abstractType: string | null;
+  abstractSections: AbstractSection[];
+  abstractPlainText: string | null;
+  doi: string | null;
+  pmid: string | null;
+  pmcid: string | null;
+  pii: string | null;
+  primaryType: string | null;
+  publicationTypes: string[];
+  citationCount: number | null;
+  numberOfReferences: number | null;
+  conflictOfInterest: string | null;
+  isOa: boolean | null;
+  oaStatus: string | null;
+  authors: Author[];
+  meshHeadings: MeshHeading[];
+  keywords: string[];
+  funding: Funding[];
+  dates: PublicationDate[];
+  aiSummary: string | null;
+  source: string | null;
+  fullTextUrl: string | null;
+  bookmarks: number | null;
+  estimatedReadMin: number | null;
+}
+
 /**
  * 后端 `dev.linqibin.commons.query.PageResult` 的序列化形态。
  * 字段：page / pageSize / total / totalPages / items（非 content/totalElements）。

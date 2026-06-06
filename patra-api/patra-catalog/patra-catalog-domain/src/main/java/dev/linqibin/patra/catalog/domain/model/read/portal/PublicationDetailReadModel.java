@@ -32,6 +32,8 @@ public record PublicationDetailReadModel(
     String conflictOfInterest,
     Boolean isOa,
     String oaStatus,
+    String provenanceCode,
+    String fullTextUrl,
     List<AuthorView> authors,
     List<MeshHeadingView> meshHeadings,
     List<String> keywords,
