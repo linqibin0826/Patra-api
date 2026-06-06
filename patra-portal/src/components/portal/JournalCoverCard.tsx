@@ -29,7 +29,7 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
       <div
         data-cover
         style={coverVars}
-        className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-[var(--cover-bg)] p-4 text-center text-[var(--cover-ink)] before:absolute before:inset-2 before:border before:border-current before:opacity-20 before:content-['']"
+        className="relative flex aspect-[3/4] items-center justify-center overflow-hidden bg-(--cover-bg) p-4 text-center text-(--cover-ink) before:absolute before:inset-2 before:border before:border-current before:opacity-20 before:content-['']"
       >
         {journal.foundedYear !== null && (
           <div className="absolute left-2 right-2 top-3 text-center font-mono text-[9.5px] uppercase tracking-[0.18em] opacity-70">
