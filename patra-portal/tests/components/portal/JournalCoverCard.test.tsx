@@ -54,4 +54,12 @@ describe("JournalCoverCard", () => {
     render(<JournalCoverCard journal={{ ...journal, foundedYear: null }} />);
     expect(screen.queryByText(/est\./)).not.toBeInTheDocument();
   });
+
+  it("链接到对应期刊详情页", () => {
+    render(<JournalCoverCard journal={journal} />);
+    expect(screen.getByRole("link", { name: /Annals of oncology/ })).toHaveAttribute(
+      "href",
+      "/journals/319041872872550658",
+    );
+  });
 });

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { CSSProperties } from "react";
 import { pickCover } from "@/lib/portal-api/cover-palette";
 import type { VenueBrowse } from "@/types/portal";
@@ -17,13 +18,11 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
   } as CSSProperties;
 
   return (
-    <button
-      type="button"
-      disabled
-      aria-disabled="true"
-      title={`${journal.name} · 功能即将上线`}
+    <Link
+      href={`/journals/${journal.id}`}
+      title={journal.name}
       className={
-        "flex flex-col overflow-hidden rounded-lg border border-border-default bg-paper-50 text-inherit no-underline transition hover:-translate-y-px hover:border-ink-300 hover:shadow-[0_6px_16px_-10px_rgba(28,25,23,0.18)] disabled:cursor-not-allowed " +
+        "flex flex-col overflow-hidden rounded-lg border border-border-default bg-paper-50 text-inherit no-underline transition hover:-translate-y-px hover:border-ink-300 hover:shadow-[0_6px_16px_-10px_rgba(28,25,23,0.18)] " +
         (className ?? "")
       }
     >
@@ -70,6 +69,6 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
           </div>
         </div>
       </div>
-    </button>
+    </Link>
   );
 }
