@@ -70,13 +70,9 @@ public record PortalPublicationDetailResponse(
     List<Funding> funding,
     List<PublicationDate> dates,
     String aiSummary,
-    /// 数据来源（人类可读，如 "PubMed"；来自 provenance_code）
     String source,
-    /// 原文链接（cat_publication_metadata.full_text_url，可为 null）
     String fullTextUrl,
-    /// 收藏数（无用户系统，恒为 0）
     Integer bookmarks,
-    /// 预估阅读分钟数（无全文/字数数据，当前恒为 null）
     Integer estimatedReadMin) {
 
   public PortalPublicationDetailResponse {
