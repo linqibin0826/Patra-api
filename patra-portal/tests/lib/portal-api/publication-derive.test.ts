@@ -59,6 +59,11 @@ describe("deriveEvidence", () => {
     expect(v.en).toBe("RCT");
     expect(v.derived).toBe(true);
   });
+  it("rank 越界（>5）clamp 后 tone 与 lit 一致", () => {
+    const v = deriveEvidence(ev("SYSTEMATIC_REVIEW", 6, true));
+    expect(v.lit).toBe(5);
+    expect(v.tone).toBe("moss");
+  });
 });
 
 describe("deriveAbstract", () => {
@@ -101,5 +106,12 @@ describe("deriveByline", () => {
     const { shown, extra } = deriveByline(authors);
     expect(shown).toHaveLength(3);
     expect(extra).toBe(2);
+  });
+  it("≤3 位作者时 extra 为 0", () => {
+    const authors: Author[] = [1, 2].map((n) => ({
+      order: n, first: n === 1, corresponding: false, name: `A${n}`, affiliation: null,
+    }));
+    expect(deriveByline(authors).extra).toBe(0);
+    expect(deriveByline([]).extra).toBe(0);
   });
 });

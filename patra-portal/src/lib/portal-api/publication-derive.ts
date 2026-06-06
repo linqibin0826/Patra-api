@@ -29,6 +29,7 @@ const EN_LABEL: Record<string, string> = {
   UNKNOWN: "Undetermined",
 };
 
+/** rank 分档色温：≥4 moss（高强度）/ ≥2 amber（中）/ ≥1 slate（低）/ 0 muted（未分级）。 */
 function toneOf(rank: number): EvidenceTone {
   if (rank >= 4) return "moss";
   if (rank >= 2) return "amber";
@@ -36,12 +37,12 @@ function toneOf(rank: number): EvidenceTone {
   return "muted";
 }
 
-/** 证据等级 → 徽章视图：色温 + 阶梯点亮数（= rank，0–5）+ 英文标签。 */
+/** 证据等级 → 徽章视图：色温 + 阶梯点亮数（clamp 到 [0,5]）+ 英文标签。 */
 export function deriveEvidence(ev: EvidenceLevel): EvidenceView {
-  const lit = ev.rank >= 0 && ev.rank <= 5 ? ev.rank : 0;
+  const rank = Math.min(Math.max(ev.rank, 0), 5);
   return {
-    tone: toneOf(ev.rank),
-    lit,
+    tone: toneOf(rank),
+    lit: rank,
     label: ev.label,
     en: EN_LABEL[ev.level] ?? "Undetermined",
     derived: ev.derived,
