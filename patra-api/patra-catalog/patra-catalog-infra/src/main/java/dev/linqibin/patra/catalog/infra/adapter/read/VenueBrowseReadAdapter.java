@@ -27,6 +27,16 @@ public class VenueBrowseReadAdapter implements VenueBrowseReadPort {
 
   private final VenueDao venueDao;
 
+  /// 分页检索期刊浏览列表。
+  ///
+  /// 支持关键词全文搜索与多值筛选（学科、JCR 分区、CAS 分区、国家等），
+  /// 多值条件在同一维度内为 OR 语义，跨维度之间为 AND 语义。
+  /// 结果按 `filter.sort()` 排序，页码从 1 开始。
+  ///
+  /// @param filter 筛选条件，包含关键词、分区、布尔标志等
+  /// @param paging 分页参数（1-based page + pageSize）
+  /// @return 当前页数据及总条数
+
   @Override
   public PageResult<VenueBrowseReadModel> search(VenueBrowseFilter filter, PagingParams paging) {
     Page<VenueBrowseRow> page =
@@ -45,6 +55,18 @@ public class VenueBrowseReadAdapter implements VenueBrowseReadPort {
     List<VenueBrowseReadModel> items = page.getContent().stream().map(this::toReadModel).toList();
     return PageResult.of(items, paging.page(), paging.pageSize(), page.getTotalElements());
   }
+
+  /// 计算各筛选维度的 drill-down 计数。
+  ///
+  /// 每个维度的计数采用「当前 query + 除本维度外其它已选维度」的聚合策略：
+  /// 即计算某维度候选值的命中数时，暂时忽略该维度自身已选值，
+  /// 从而保证组内多选（同一维度勾选多个值）不会使其余候选项计数归零。
+  ///
+  /// 示例：用户已选 JCR=Q1，计算 JCR 各值计数时不带入 Q1 约束，
+  /// 使 Q2/Q3/Q4 仍然显示真实命中数，支持继续追加选择。
+  ///
+  /// @param filter 当前筛选条件（含已选维度值）
+  /// @return 各维度候选值及其 drill-down 命中计数
 
   @Override
   public VenueBrowseFacets facets(VenueBrowseFilter filter) {
