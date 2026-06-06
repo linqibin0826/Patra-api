@@ -43,8 +43,10 @@ public interface PublicationDetailRow {
 
   String getOaStatus();
 
+  /// 数据来源代码（PUBMED / EPMC / CROSSREF 等），来自 cat_publication.provenance_code。
   String getProvenanceCode();
 
+  /// 全文链接，来自 cat_publication_metadata.full_text_url（LEFT JOIN，无记录时为 null）。
   String getFullTextUrl();
 
   /// 出版类型列表，以 U+001F（\x1f）分隔，按 type_order ASC、id ASC 排序。

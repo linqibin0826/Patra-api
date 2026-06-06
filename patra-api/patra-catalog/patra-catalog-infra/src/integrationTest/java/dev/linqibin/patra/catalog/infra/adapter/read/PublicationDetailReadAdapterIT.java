@@ -61,6 +61,7 @@ class PublicationDetailReadAdapterIT {
     assertThat(model.venueName()).isEqualTo("Nature");
     assertThat(model.publicationYear()).isEqualTo(2024);
     assertThat(model.abstractPlainText()).isEqualTo("This is a plain text abstract.");
+    assertThat(model.fullTextUrl()).isNull();
   }
 
   @Test
