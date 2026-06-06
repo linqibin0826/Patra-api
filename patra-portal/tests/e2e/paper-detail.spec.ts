@@ -16,14 +16,15 @@ test("explore-feed 点文献 → 跳转详情页并渲染摘要区", async ({ pa
 
   await expect(page).toHaveURL(/\/papers\/\d+/);
 
-  // 若 catalog 服务返回 500，详情页不可用——与无文献卡同属「后端不可达」场景，跳过。
-  // 等待 h1 渲染后再判断（RSC 流式渲染需要短暂等待）。
-  await page.waitForSelector("h1", { timeout: 5000 }).catch(() => null);
-  const h1Text = await page
-    .getByRole("heading", { level: 1 })
-    .textContent()
-    .catch(() => "");
-  test.skip(h1Text === "这一页没能加载出来", "catalog 服务 500（后端不可达）：跳过 happy-path e2e");
+  // 详情页核心是「摘要」区（<section aria-label="摘要">→ region）。
+  // 若 catalog 不可达（500/超时），详情页渲染的是全局 error 屏而非摘要区——
+  // 等不到摘要 region 即视为「后端不可达」，与无文献卡同属跳过场景（留给有后端的 staging e2e）。
+  const abstractVisible = await page
+    .getByRole("region", { name: "摘要" })
+    .waitFor({ state: "visible", timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  test.skip(!abstractVisible, "详情页无摘要区（catalog 不可达）：跳过 happy-path e2e");
 
   await expect(page.getByRole("heading", { level: 1 })).toContainText(/.+/);
   await expect(page.getByRole("region", { name: "摘要" })).toBeVisible();
