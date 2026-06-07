@@ -16,6 +16,7 @@ ARCH="osx-arm64"           # Apple Silicon Mac mini
 # 运行时查 GitHub API 取最新 runner 版本（避免硬编码版本失效导致下载 404）
 RUNNER_VERSION="$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest \
   | sed -nE 's/.*"tag_name": *"v([^"]+)".*/\1/p' | head -1)"
+: "${RUNNER_VERSION:?无法从 GitHub API 解析 runner 版本（API 结构变更或限流），请稍后重试}"
 echo "==> 最新 runner 版本: ${RUNNER_VERSION}"
 TARBALL="actions-runner-${ARCH}-${RUNNER_VERSION}.tar.gz"
 

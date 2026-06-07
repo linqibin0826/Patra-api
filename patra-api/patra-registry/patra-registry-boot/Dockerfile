@@ -9,8 +9,16 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# 非 root 运行（纵深防御）。应用 logback 写 /app/logs/，故预建该目录并交给 appuser，
+# 否则非 root 无权创建日志目录会导致启动失败（Exited 1）。
+RUN useradd -r -u 10001 appuser \
+    && mkdir -p /app/logs \
+    && chown -R appuser:appuser /app
+
 # bootJar 产物：archiveClassifier="" 且禁用 plain jar，build/libs 下只有一个 fat jar
-COPY build/libs/*.jar app.jar
+COPY --chown=appuser:appuser build/libs/*.jar app.jar
+
+USER appuser
 
 EXPOSE 6000
 

@@ -685,7 +685,7 @@ curl -fs http://linqibins-mac-mini:6000/actuator/health</code></pre>
 git commit -m "docs(cd): patra-infra 记录 self-hosted runner 与 CD 运维约定 (PAP-CD)"</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="in-progress">
             <strong>步骤 5：合并到 main，启用自动部署</strong>
             <p>开 PR 并合并（CI 会跑；合并后 cd.yml 的 push:main 触发生效）：</p>
             <pre><code class="lang-bash">gh pr create --fill --base main --head worktree-setup-cd
@@ -801,13 +801,21 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
         </header>
         <p>偏离 spec 决策 6（GHCR public）：deploy job 改加 <code>permissions: packages:read</code> + <code>docker login ghcr</code>（GITHUB_TOKEN），镜像保持 <strong>private</strong>。原因：build-push 与 deploy 同 workflow 连续自动跑，首次部署时包仍是 private、没有手动设 public 的窗口、会 pull 失败；用 GITHUB_TOKEN 自动登录更优——更安全、无首次时序摩擦。代价：手动 <code>compose-all up apps</code> 时 Mac mini 需预先 <code>docker login ghcr</code> 一次。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-07T21:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T21:35">06-07 21:35</time>
+          <a href="#task-7">§ Task 7 (review)</a>
+        </header>
+        <p>处理 PR #137 CodeRabbit review。<strong>采纳 4 项</strong>：Dockerfile 非 root（appuser）、deploy <code>if</code> 改 <code>success||skipped</code> 排除 cancelled、两处 checkout <code>persist-credentials:false</code>、install-github-runner.sh 加 <code>RUNNER_VERSION</code> 非空校验。非 root 化经冒烟测出<strong>回归</strong>：logback 写 <code>/app/logs</code> 需在 Dockerfile 预建该目录并 chown appuser，否则非 root 启动 Exited 1，已修并复验通过。<strong>驳回 4 项</strong>（技术理由）：Action pin SHA 应全仓统一非本 PR 范围 / health check 的 docker logs 是失败路径 best-effort 诊断 / <code>.path</code> 是 runner 专用确定值有意固定 / runner 版本有 auto-update+兼容（YAGNI）。</p>
+      </li>
     </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">4</span> changes /
+      <span data-counter="change">5</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>

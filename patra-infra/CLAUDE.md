@@ -58,7 +58,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **触发**：push main 命中 registry/apps 相关 paths 自动跑；`workflow_dispatch` 可手动触发，填 `image_tag` 即回滚到指定 sha（跳过构建直接部署 GHCR 已有镜像）。安全：cd.yml 不监听 `pull_request`，self-hosted runner 绝不跑 fork PR 代码。
 - **容器内 Nacos 无需 ssh tunnel**：与 MacBook 跑应用（非显性约束 #1）不同，应用容器和 nacos 容器同在 Mac mini 的 `patra-net`，gRPC 走 Docker bridge 不经 tailscale，无 MTU 丢帧问题，直接用 `NACOS_HOST=nacos`。
 - **runner 的 docker PATH**：非交互运行缺 OrbStack docker 路径，靠 runner 目录 `~/actions-runner/.path` 补 `/usr/local/bin`（对应非显性约束 #2，runner 不依赖 `~/.zshenv`）。
-- **密钥二分**：`.env.apps` 进仓库只放非敏感 dev 默认值；真敏感密钥走 `.env.apps.secret`（被 `.gitignore` 的 `.env.*.secret` 通配挡住，绝不进仓库），compose 用 `env_file` 叠加加载。新增服务的真 key 一律照此归位。
+- **密钥二分**：`.env.apps` 进仓库只放非敏感 dev 默认值；真敏感密钥走 `.env.apps.secret`（被 `.gitignore` 的 `.env.*.secret` 通配挡住，绝不进仓库），compose 用 `env_file` 顺序加载（`.env.apps` → `.env.apps.secret`，后者覆盖同名）。新增服务的真 key 一律照此归位。
 
 ## scripts 一览
 

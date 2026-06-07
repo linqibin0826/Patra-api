@@ -39,6 +39,8 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: ☕ Setup JDK 25 (Temurin)
         uses: actions/setup-java@v4
@@ -69,7 +71,8 @@ jobs:
     name: deploy
     needs: build-and-push
     # 回滚（build 被跳过）时仍部署；仅当 build 失败才不部署
-    if: always() && needs.build-and-push.result != 'failure'
+    # 正常部署 build 成功（success）；回滚跳过 build（skipped）。failure/cancelled 都不部署。
+    if: always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
     runs-on: [self-hosted, macmini]
     timeout-minutes: 10
     permissions:
@@ -78,6 +81,8 @@ jobs:
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: 🔑 Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
