@@ -1,0 +1,31 @@
+version: "3.9"
+
+name: patra-apps
+
+# Patra 应用容器栈（与基础设施容器同在外部网络 patra-net）。
+# 镜像由 CD（.github/workflows/cd.yml）构建推送到 GHCR，本文件只负责在 Mac mini 上编排运行。
+# 镜像 tag 由 deploy job 通过 REGISTRY_IMAGE_TAG 注入；手动 compose-all.sh up apps 时回退 latest。
+
+services:
+  registry:
+    image: ghcr.io/linqibin0826/patra-registry:${REGISTRY_IMAGE_TAG:-latest}
+    container_name: patra-registry
+    restart: unless-stopped
+    ports: [ "6000:6000" ]
+    env_file:
+      - .env.apps
+      # 真敏感密钥（gitignore，绝不进仓库）；registry 当前不需要，文件缺失时跳过
+      - path: .env.apps.secret
+        required: false
+    healthcheck:
+      test: [ "CMD", "curl", "-fs", "http://localhost:6000/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+networks:
+  default:
+    # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）
+    name: patra-net
+    external: true

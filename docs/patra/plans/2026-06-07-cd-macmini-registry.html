@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>实现计划：patra-registry 容器化 + Mac mini 自托管 CD</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li data-task-status="done"><a href="#task-1">Task 1 — registry Dockerfile（本地构建验证）</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — compose.apps + .env.apps</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
+          <li data-task-status="in-progress"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>实现计划：patra-registry 容器化 + Mac mini 自托管 CD</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-07</span>
+        <span>🌿 worktree-setup-cd</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。Task 4–7 涉及 GitHub Actions 触发与 Mac mini 实操，
+        验证依赖外部环境，步骤里已标注「谁执行 / 在哪执行」。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>把 <code>patra-registry</code> 容器化，并搭建一条到 Mac mini 的全自动 CD：merge main → 构建镜像推 GHCR → 常驻 Mac mini 的 self-hosted runner 拉取并用 OrbStack 部署。</dd>
+        <dt>架构</dt> <dd>CI 用 Gradle 构建 bootJar 与 Docker 镜像、推送到公网 GHCR 作中转；Mac mini 上常驻的 self-hosted runner 接 deploy job，在 <code>patra-net</code> 内拉取并运行容器（容器内 <code>nacos:8848</code> 同网络直连、不经 tailscale，绕开 MacBook 跑应用时的 gRPC MTU/tunnel 痛点）；密钥按敏感度二分防公开仓库泄露。</dd>
+        <dt>技术栈</dt> <dd>GitHub Actions · Docker / OrbStack · GHCR · eclipse-temurin:25-jre · Spring Boot prod profile · self-hosted runner (launchd)</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-06-07-cd-macmini-design.html">Patra CD 流水线设计 — Mac mini 自托管持续部署（MVP: registry）</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>本计划聚焦 MVP：把 <strong>registry 一个服务</strong>的端到端 CD 链路（Dockerfile → 镜像 → GHCR → self-hosted runner → 部署 → 健康检查 → 回滚）打通，可独立产出可工作、可验证的软件。其余 4 个 Java 微服务与 portal 在 spec 的 Out of Scope，链路验证通过后复制同一模式，属后续独立计划。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>patra-api/patra-registry/patra-registry-boot/
+├── Dockerfile                    [create] registry 运行镜像（temurin:25-jre + COPY bootJar + curl）
+└── .dockerignore                 [create] 缩小 docker build context
+
+patra-infra/docker/
+├── docker-compose.apps.yaml      [create] patra-apps 栈：registry 容器编排（加入 patra-net）
+├── .env.apps                     [create] 应用容器非敏感 dev 默认值（随仓库提交）
+├── .env.apps.example             [create] .env.apps 模板
+├── .env.apps.secret.example      [create] 真敏感密钥模板（真值文件 .env.apps.secret 走 gitignore）
+└── .gitignore                    [modify] 追加 .env.*.secret 通配，杜绝真 key 进仓库
+
+patra-infra/scripts/
+├── install-github-runner.sh      [create] 在 Mac mini 安装 self-hosted runner 为 launchd 常驻服务
+└── compose-all.sh                [modify] ORDER 数组追加 apps
+
+.github/workflows/
+└── cd.yml                        [create] CD：build-and-push（云端）+ deploy（self-hosted runner）
+
+patra-infra/
+└── CLAUDE.md                     [modify] 记录 runner 安装 / CD 流程 / 密钥二分约定</pre>
+      </div>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- ============================== TASK 1 ============================== -->
+      <article class="task" id="task-1" data-status="done">
+        <header>
+          <h2>任务 1：registry Dockerfile（本地构建验证）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-api/patra-registry/patra-registry-boot/Dockerfile</code></dd>
+            <dt>创建</dt><dd><code>patra-api/patra-registry/patra-registry-boot/.dockerignore</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 Dockerfile</strong>
+            <p>采用「CI 先 build jar → 镜像只 COPY」策略。registry 的 convention plugin 已设 <code>bootJar.archiveClassifier=""</code> 且禁用 plain jar，故 <code>build/libs/</code> 下只有一个 fat jar，可用单文件通配 COPY。健康检查需要 curl，temurin jre 镜像默认不含，故 apt 安装。</p>
+            <pre><code class="lang-dockerfile"># patra-registry 运行镜像
+# CI 已用 Gradle 构建好 bootJar（复用 Actions Gradle 缓存），这里只把 jar 装进精简运行镜像。
+FROM eclipse-temurin:25-jre
+
+# compose healthcheck 需要 curl（temurin jre 镜像默认不含）
+RUN apt-get update \
+    &amp;&amp; apt-get install -y --no-install-recommends curl \
+    &amp;&amp; rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# bootJar 产物：archiveClassifier="" 且禁用 plain jar，build/libs 下只有一个 fat jar
+COPY build/libs/*.jar app.jar
+
+EXPOSE 6000
+
+# 容器感知内存（temurin 25 默认开启 container support；显式给上限更稳）
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：写 .dockerignore</strong>
+            <p>docker build context = registry-boot 目录，含庞大的 <code>src/</code> 与 <code>build/</code> 其他产物。只保留 <code>build/libs</code> 下的 jar，排除其余以加速。</p>
+            <pre><code class="lang-text"># 缩小 docker build context：只需要 build/libs 下的 fat jar
+src/
+.gradle/
+build/classes/
+build/generated/
+build/resources/
+build/tmp/
+build/reports/
+build/test-results/</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：本地构建 bootJar</strong>
+            <p>运行（仓库根）：<code>./gradlew :patra-api:patra-registry:patra-registry-boot:bootJar</code></p>
+            <p>预期：BUILD SUCCESSFUL；产物出现在 <code>patra-api/patra-registry/patra-registry-boot/build/libs/patra-registry-boot-0.1.0-SNAPSHOT.jar</code>（用 <code>ls</code> 确认只有一个 jar）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：本地构建镜像</strong>
+            <p>运行（仓库根）：</p>
+            <pre><code class="lang-bash">docker build \
+  -t patra-registry:local \
+  patra-api/patra-registry/patra-registry-boot</code></pre>
+            <p>预期：镜像构建成功，最后输出 <code>naming to docker.io/library/patra-registry:local</code>。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：冒烟验证镜像可启动</strong>
+            <p>无 DB/Nacos 时容器会启动到加载 prod 配置后失败退出——这是预期的；本步只验证「镜像本身可运行、能进入 Spring Boot 启动流程」。运行：</p>
+            <pre><code class="lang-bash">docker run --rm -e SPRING_PROFILES_ACTIVE=prod \
+  -e REGISTRY_DB_URL=jdbc:postgresql://localhost:5432/x \
+  -e REGISTRY_DB_USERNAME=x -e REGISTRY_DB_PASSWORD=x \
+  -e REGISTRY_REDIS_URL=redis://localhost:6379 \
+  patra-registry:local 2&gt;&amp;1 | head -n 30</code></pre>
+            <p>预期：能看到 Spring Boot 启动横幅 / <code>The following 1 profile is active: "prod"</code> 之类日志，随后因连不上 DB 报错退出。看到启动横幅即通过。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-registry/patra-registry-boot/Dockerfile \
+        patra-api/patra-registry/patra-registry-boot/.dockerignore
+git commit -m "feat(cd): 新增 patra-registry 运行镜像 Dockerfile (PAP-CD)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 2 ============================== -->
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：docker-compose.apps.yaml + .env.apps</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-infra/docker/docker-compose.apps.yaml</code></dd>
+            <dt>创建</dt><dd><code>patra-infra/docker/.env.apps</code></dd>
+            <dt>创建</dt><dd><code>patra-infra/docker/.env.apps.example</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 docker-compose.apps.yaml</strong>
+            <p>独立 Docker project <code>name: patra-apps</code>（与现有子栈一致，便于 OrbStack 分组）。镜像 tag 由 deploy job 经 <code>REGISTRY_IMAGE_TAG</code> 注入（默认 latest）。<code>env_file</code> 叠加加载 <code>.env.apps</code> 与 <code>.env.apps.secret</code>（后者 gitignore、缺失时 <code>required: false</code> 跳过）。</p>
+            <pre><code class="lang-yaml">version: "3.9"
+
+name: patra-apps
+
+# Patra 应用容器栈（与基础设施容器同在外部网络 patra-net）。
+# 镜像由 CD（.github/workflows/cd.yml）构建推送到 GHCR，本文件只负责在 Mac mini 上编排运行。
+# 镜像 tag 由 deploy job 通过 REGISTRY_IMAGE_TAG 注入；手动 compose-all.sh up apps 时回退 latest。
+
+services:
+  registry:
+    image: ghcr.io/linqibin0826/patra-registry:${REGISTRY_IMAGE_TAG:-latest}
+    container_name: patra-registry
+    restart: unless-stopped
+    ports: [ "6000:6000" ]
+    env_file:
+      - .env.apps
+      # 真敏感密钥（gitignore，绝不进仓库）；registry 当前不需要，文件缺失时跳过
+      - path: .env.apps.secret
+        required: false
+    healthcheck:
+      test: [ "CMD", "curl", "-fs", "http://localhost:6000/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+networks:
+  default:
+    # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）
+    name: patra-net
+    external: true</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：写 .env.apps（非敏感 dev 默认值，随仓库提交）</strong>
+            <p>容器内走 patra-net 服务名 + 容器内端口（注意是 <code>postgres:5432</code> / <code>redis:6379</code> / <code>nacos:8848</code>，不是宿主映射的 15432/16379）。提供 <code>REGISTRY_REDIS_URL</code> 以避免 prod profile 解析无默认值占位符时报错。</p>
+            <pre><code class="lang-ini"># Patra 应用容器 - 非敏感 dev 默认值（随仓库提交）
+# ============================================================
+# 安全：这里只放内网 dev 默认值（人尽皆知、服务仅在 tailscale 内网暴露，公网打不到）。
+# 真敏感密钥（OpenAI / PubMed / Crossref API key、PAT 等）一律写进 .env.apps.secret
+# （已 gitignore，绝不进仓库），compose 的 env_file 会自动叠加加载。
+
+# Spring profile：容器统一用 prod（专为环境变量注入设计）
+SPRING_PROFILES_ACTIVE=prod
+
+# --- registry: 数据库（容器内 patra-net 服务名 postgres + 容器内端口 5432）---
+REGISTRY_DB_URL=jdbc:postgresql://postgres:5432/patra_registry
+REGISTRY_DB_USERNAME=postgres
+REGISTRY_DB_PASSWORD=123456
+
+# --- registry: Redis（容器内 redis:6379）---
+REGISTRY_REDIS_URL=redis://redis:6379
+
+# --- Nacos 服务发现（容器内 nacos:8848，同 patra-net，gRPC 不经 tailscale）---
+NACOS_HOST=nacos
+NACOS_PORT=8848
+NACOS_USERNAME=nacos
+NACOS_PASSWORD=nacos</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：写 .env.apps.example（模板，沿用现有 .env.example 习惯）</strong>
+            <pre><code class="lang-ini"># Patra 应用容器环境变量模板 —— 复制为 .env.apps 使用
+# 仅放非敏感 dev 默认值；真敏感密钥见 .env.apps.secret.example
+SPRING_PROFILES_ACTIVE=prod
+
+REGISTRY_DB_URL=jdbc:postgresql://postgres:5432/patra_registry
+REGISTRY_DB_USERNAME=postgres
+REGISTRY_DB_PASSWORD=changeme
+
+REGISTRY_REDIS_URL=redis://redis:6379
+
+NACOS_HOST=nacos
+NACOS_PORT=8848
+NACOS_USERNAME=nacos
+NACOS_PASSWORD=changeme</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：校验 compose 语法</strong>
+            <p>运行：</p>
+            <pre><code class="lang-bash">cd patra-infra/docker
+docker compose -f docker-compose.apps.yaml config &gt;/dev/null &amp;&amp; echo OK
+cd -</code></pre>
+            <p>预期：打印 <code>OK</code>（compose 文件可解析；<code>image</code> 的 tag 插值为 latest，<code>.env.apps.secret</code> 缺失因 <code>required:false</code> 不报错）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra/docker/docker-compose.apps.yaml \
+        patra-infra/docker/.env.apps \
+        patra-infra/docker/.env.apps.example
+git commit -m "feat(cd): 新增 patra-apps compose 栈与 registry 环境变量 (PAP-CD)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 3 ============================== -->
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：密钥二分护栏（gitignore + secret 模板）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-infra/docker/.gitignore</code></dd>
+            <dt>创建</dt><dd><code>patra-infra/docker/.env.apps.secret.example</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：修改 patra-infra/docker/.gitignore</strong>
+            <p>现有内容只精确忽略 <code>.env.secret</code>，不覆盖 <code>.env.apps.secret</code>。追加 <code>.env.*.secret</code> 通配，覆盖未来所有应用的 secret 文件（不误伤 <code>*.example</code>）。最终文件内容：</p>
+            <pre><code class="lang-text"># 真实敏感密钥：只存在于运行容器的机器上，绝不提交到公开仓库
+# 模板见 .env.secret.example
+.env.secret
+
+# 应用容器的真敏感密钥（模板见 .env.apps.secret.example）
+# 用通配覆盖未来所有 .env.&lt;app&gt;.secret，从源头杜绝真 key 进公开仓库
+.env.*.secret</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：写 .env.apps.secret.example（secret 模板）</strong>
+            <pre><code class="lang-ini"># 应用容器真敏感密钥模板
+# ============================================================
+# 复制为 .env.apps.secret（已 gitignore，绝不提交到公开仓库），按需填入真实值。
+# compose 的 env_file 会在文件存在时自动叠加加载。
+#
+# 用途：凡是泄露即事故的密钥都放这里 —— 绝不要写进随仓库提交的 .env.apps。
+#
+# registry 当前不需要任何真敏感密钥（只连内网 PG + Nacos）；本文件为将来
+# ingest 等需要外部数据源 API key 的服务预留示例：
+#
+# OPENAI_API_KEY=sk-xxxxxxxxxxxx
+# PUBMED_API_KEY=xxxxxxxxxxxx
+# CROSSREF_API_TOKEN=xxxxxxxxxxxx</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：验证护栏生效</strong>
+            <p>制造一个临时真 key 文件，确认它被 gitignore、而模板不被忽略：</p>
+            <pre><code class="lang-bash">cd patra-infra/docker
+printf 'OPENAI_API_KEY=sk-THIS_IS_A_TEST\n' &gt; .env.apps.secret
+git check-ignore .env.apps.secret           # 预期：打印 .env.apps.secret（被忽略）
+git check-ignore .env.apps.secret.example   # 预期：无输出、退出码 1（未被忽略，会进仓库）
+git status --porcelain | grep -E '\.env\.apps'  # 预期：只见 .env.apps.secret.example，绝无 .env.apps.secret
+rm .env.apps.secret
+cd -</code></pre>
+            <p>预期：<code>.env.apps.secret</code> 被忽略、不出现在 <code>git status</code>；<code>.env.apps.secret.example</code> 是待提交新文件。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra/docker/.gitignore \
+        patra-infra/docker/.env.apps.secret.example
+git commit -m "feat(cd): 密钥二分护栏 — .env.*.secret gitignore + secret 模板 (PAP-CD)"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 4 ============================== -->
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：cd.yml — build-and-push job</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>.github/workflows/cd.yml</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 cd.yml（先只含 build-and-push job）</strong>
+            <p>触发只监听 <code>push:main</code> 与 <code>workflow_dispatch</code>（不监听 pull_request，保证 self-hosted runner 不跑 fork 代码）。回滚（workflow_dispatch 指定 <code>image_tag</code>）时跳过 build，直接部署 GHCR 已有镜像。<code>permissions.packages: write</code> 让 <code>GITHUB_TOKEN</code> 能推 GHCR。Gradle 缓存沿用 CI 的 <code>GRADLE_ENCRYPTION_KEY</code> secret。</p>
+            <pre><code class="lang-yaml">name: CD
+
+# 持续部署：merge 到 main（或手动触发）→ 构建 registry 镜像推 GHCR
+#          → self-hosted runner 部署到 Mac mini。
+# 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
+#       保证 self-hosted runner 永不执行未经审查的 fork PR 代码。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'patra-api/patra-registry/**'
+      - 'patra-infra/docker/docker-compose.apps.yaml'
+      - 'patra-infra/docker/.env.apps'
+      - '.github/workflows/cd.yml'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: '要部署的镜像 tag（留空=构建并部署本次 commit；回滚时填旧 sha）'
+        required: false
+        default: ''
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/linqibin0826/patra-registry
+
+jobs:
+  build-and-push:
+    name: build-and-push
+    # 回滚（指定了 image_tag）时跳过构建，直接部署 GHCR 已有镜像
+    if: github.event_name == 'push' || github.event.inputs.image_tag == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup JDK 25 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: 🔨 Build bootJar
+        run: ./gradlew :patra-api:patra-registry:patra-registry-boot:bootJar
+
+      - name: 🔑 Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: 🐳 Build &amp; push image
+        run: |
+          TAG="${{ github.sha }}"
+          CTX="patra-api/patra-registry/patra-registry-boot"
+          docker build -t "$IMAGE_NAME:$TAG" -t "$IMAGE_NAME:latest" "$CTX"
+          docker push "$IMAGE_NAME:$TAG"
+          docker push "$IMAGE_NAME:latest"</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：Commit</strong>
+            <pre><code class="lang-bash">git add .github/workflows/cd.yml
+git commit -m "feat(cd): cd.yml build-and-push — 构建 registry 镜像推 GHCR (PAP-CD)"</code></pre>
+          </li>
+
+          <li class="step" data-status="skipped">
+            <strong>步骤 3：推分支并用 workflow_dispatch 验证构建推送</strong>
+            <p>merge 到 main 前先在本分支验证（workflow_dispatch 可在任意含该 workflow 文件的分支触发）。推分支后运行：</p>
+            <pre><code class="lang-bash">git push -u origin worktree-setup-cd
+gh workflow run cd.yml --ref worktree-setup-cd
+gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[0].databaseId')"</code></pre>
+            <p>预期：<code>build-and-push</code> job 绿；<code>deploy</code> 因 runner 未装而排队/跳过（Task 5/6 处理）。本步只关注 build-and-push 成功。</p>
+          </li>
+
+          <li class="step" data-status="skipped">
+            <strong>步骤 4：确认镜像进入 GHCR</strong>
+            <p>到 GitHub → 仓库 → Packages，确认出现 <code>patra-registry</code> 包，含 <code>latest</code> 与本次 sha 两个 tag。首次推送后到 Package settings 把可见性设为 <strong>public</strong>（镜像不含密钥，Mac mini pull 免认证）。</p>
+            <p>预期：GHCR 有 <code>ghcr.io/linqibin0826/patra-registry:latest</code> 与 <code>:&lt;sha&gt;</code>。</p>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 5 ============================== -->
+      <article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：Mac mini self-hosted runner 安装</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-infra/scripts/install-github-runner.sh</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 install-github-runner.sh</strong>
+            <p>在 Mac mini 上下载 runner、注册到仓库、装成 launchd 常驻服务。registration token 由用户运行时传入（绝不写死/提交）。关键：runner 以非交互方式跑时 PATH 不含 OrbStack 的 docker（见 patra-infra/CLAUDE.md 非显性约束 #2），用 runner 的 <code>.path</code> 文件显式补 <code>/usr/local/bin</code>。</p>
+            <pre><code class="lang-bash">#!/usr/bin/env bash
+# 在 Mac mini 上安装 GitHub Actions self-hosted runner 为常驻服务（launchd）。
+# ============================================================
+# 用法（在 Mac mini 上运行）：
+#   1. GitHub 仓库 → Settings → Actions → Runners → New self-hosted runner，
+#      复制其中的 registration token（约 1 小时有效）。
+#   2. bash patra-infra/scripts/install-github-runner.sh &lt;REGISTRATION_TOKEN&gt;
+# runner labels 固定 self-hosted,macmini（cd.yml 的 deploy job 据此选中）。
+set -euo pipefail
+
+TOKEN="${1:?用法: install-github-runner.sh &lt;REGISTRATION_TOKEN&gt;}"
+REPO_URL="https://github.com/linqibin0826/patra"
+RUNNER_VERSION="2.328.0"   # 如失效查 https://github.com/actions/runner/releases 用最新版
+RUNNER_DIR="$HOME/actions-runner"
+ARCH="osx-arm64"           # Apple Silicon Mac mini
+TARBALL="actions-runner-${ARCH}-${RUNNER_VERSION}.tar.gz"
+
+mkdir -p "$RUNNER_DIR"
+cd "$RUNNER_DIR"
+
+if [ ! -f "./config.sh" ]; then
+  echo "==&gt; 下载 runner ${RUNNER_VERSION} (${ARCH})"
+  curl -fSL -o "$TARBALL" \
+    "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${TARBALL}"
+  tar xzf "$TARBALL"
+  rm -f "$TARBALL"
+fi
+
+# 关键：非交互运行时 PATH 缺 OrbStack docker；runner 会读工作目录 .path 覆盖 PATH
+echo "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" &gt; .path
+
+echo "==&gt; 注册 runner 到 $REPO_URL"
+./config.sh --url "$REPO_URL" --token "$TOKEN" \
+  --name "macmini" --labels "macmini" --unattended --replace
+
+echo "==&gt; 安装为 launchd 服务并启动"
+./svc.sh install
+./svc.sh start
+./svc.sh status</code></pre>
+            <p>说明：<code>--labels "macmini"</code> 即可，runner 会自动附带内置 <code>self-hosted</code> 标签，故 cd.yml 的 <code>runs-on: [self-hosted, macmini]</code> 能命中。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：Commit 脚本</strong>
+            <pre><code class="lang-bash">git add patra-infra/scripts/install-github-runner.sh
+git commit -m "feat(cd): 新增 Mac mini self-hosted runner 安装脚本 (PAP-CD)"</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：在 Mac mini 上安装 runner（用户实操）</strong>
+            <p>把脚本同步到 Mac mini（如 Mac mini 的仓库副本 <code>git pull</code>），并在 Mac mini 上执行（<code>&lt;TOKEN&gt;</code> 替换为 GitHub 页面给出的 registration token）：</p>
+            <pre><code class="lang-bash"># 在 Mac mini 上（ssh linqibin@linqibins-mac-mini 后）
+bash ~/Projects/patra/patra-infra/scripts/install-github-runner.sh &lt;TOKEN&gt;</code></pre>
+            <p>预期：<code>svc.sh status</code> 显示服务 <code>started</code>。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：验证 runner 在线且能访问 docker</strong>
+            <p>① GitHub → Settings → Actions → Runners，确认 <code>macmini</code> 状态为 <strong>Idle / online</strong>，labels 含 <code>self-hosted, macmini</code>。</p>
+            <p>② 在 Mac mini 上确认 runner 环境能找到 docker：</p>
+            <pre><code class="lang-bash"># 在 Mac mini 上
+cat ~/actions-runner/.path   # 预期含 /usr/local/bin
+/usr/local/bin/docker version --format '{{.Server.Version}}'  # 预期打印 OrbStack 引擎版本</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 6 ============================== -->
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：cd.yml deploy job + compose-all.sh 集成</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.github/workflows/cd.yml</code></dd>
+            <dt>修改</dt><dd><code>patra-infra/scripts/compose-all.sh</code>（ORDER 数组）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：给 cd.yml 追加 deploy job</strong>
+            <p>在 <code>build-and-push</code> job 之后（<code>jobs:</code> 内同级）追加。<code>runs-on: [self-hosted, macmini]</code> 让它在 Mac mini 本地执行；<code>if: always() &amp;&amp; needs.build-and-push.result != 'failure'</code> 让回滚（build 被跳过）时仍能部署。在 runner 的 checkout workspace 里直接跑 compose，<code>name: patra-apps</code> 保证操作的是 OrbStack 里同一组容器（compose 用 project 名识别，与目录无关）。</p>
+            <pre><code class="lang-yaml">  deploy:
+    name: deploy
+    needs: build-and-push
+    if: always() &amp;&amp; needs.build-and-push.result != 'failure'
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🚀 Deploy to Mac mini (OrbStack)
+        run: |
+          export REGISTRY_IMAGE_TAG="${{ github.event.inputs.image_tag || github.sha }}"
+          echo "部署镜像 tag: $REGISTRY_IMAGE_TAG"
+          cd patra-infra/docker
+          docker compose -f docker-compose.apps.yaml pull registry
+          docker compose -f docker-compose.apps.yaml up -d registry
+
+      - name: 🩺 Health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:6000/actuator/health | grep -q '"status":"UP"'; then
+              echo "✓ registry 健康 (UP)"
+              exit 0
+            fi
+            echo "等待 registry 健康... ($i/30)"
+            sleep 5
+          done
+          echo "✗ registry 健康检查超时，最近日志："
+          docker logs patra-registry --tail 100
+          exit 1</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：把 apps 纳入 compose-all.sh 编排</strong>
+            <p>修改 <code>patra-infra/scripts/compose-all.sh</code> 第 21 行的 ORDER 数组，末尾追加 <code>apps</code>（应用在基础设施之后启动）。改后：</p>
+            <pre><code class="lang-bash"># 启动顺序：core 基础设施先行；tailnet 网关先于 jobs；apps 应用最后
+ORDER=(core storage search observability tailnet jobs apps)</code></pre>
+            <p>说明：手动 <code>compose-all.sh up apps</code> 时镜像 tag 回退 <code>latest</code>（GHCR public 免登录直接 pull）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add .github/workflows/cd.yml patra-infra/scripts/compose-all.sh
+git commit -m "feat(cd): cd.yml deploy job + compose-all 纳入 apps 栈 (PAP-CD)"</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：前置确认 — Mac mini 基础设施在跑</strong>
+            <p>registry 容器依赖 patra-net 内的 postgres/nacos/redis。在 Mac mini 上确认 core 栈在运行：</p>
+            <pre><code class="lang-bash"># 在 Mac mini 上
+bash ~/Projects/patra/patra-infra/scripts/compose-all.sh up core
+bash ~/Projects/patra/patra-infra/scripts/compose-all.sh ps   # 预期见 patra-postgres / patra-nacos / patra-redis Up</code></pre>
+          </li>
+
+          <li class="step" data-status="skipped">
+            <strong>步骤 5：推分支并用 workflow_dispatch 跑通整链</strong>
+            <pre><code class="lang-bash">git push
+gh workflow run cd.yml --ref worktree-setup-cd
+gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[0].databaseId')"</code></pre>
+            <p>预期：<code>build-and-push</code> 与 <code>deploy</code> 两 job 全绿。</p>
+          </li>
+
+          <li class="step" data-status="skipped">
+            <strong>步骤 6：在 Mac mini 与 tailscale 上验证容器健康</strong>
+            <pre><code class="lang-bash"># 在 Mac mini 上：容器 running 且 healthy
+docker ps --filter name=patra-registry --format '{{.Names}}\t{{.Status}}'
+# 任意 tailnet 机器上：健康端点 UP
+curl -fs http://linqibins-mac-mini:6000/actuator/health</code></pre>
+            <p>预期：<code>patra-registry ... (healthy)</code>；health 返回含 <code>"status":"UP"</code>。</p>
+          </li>
+        </ol>
+      </article>
+
+      <!-- ============================== TASK 7 ============================== -->
+      <article class="task" id="task-7" data-status="in-progress">
+        <header>
+          <h2>任务 7：文档 + 端到端自动部署 & 回滚验证</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-infra/CLAUDE.md</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：Compose 分栈表追加 patra-apps 行</strong>
+            <p>在 <code>patra-infra/CLAUDE.md</code> 的「Compose 分栈结构」表格（<code>| patra-jobs | ... |</code> 行之后）追加一行：</p>
+            <pre><code class="lang-text">| `patra-apps` | registry（应用容器，镜像来自 GHCR，由 CD 自动部署） |</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：新增「Self-hosted Runner 与 CD」章节</strong>
+            <p>在「## scripts 一览」之前插入新章节，固化关键约束：</p>
+            <pre><code class="lang-text">## Self-hosted Runner 与 CD
+
+应用容器（先行 registry）由 GitHub Actions CD 自动部署，链路见
+`.github/workflows/cd.yml`，设计见 `docs/patra/specs/2026-06-07-cd-macmini-design.html`。
+
+- **runner**：Mac mini 上 `install-github-runner.sh` 装的 self-hosted runner（labels
+  `self-hosted,macmini`，launchd 常驻）。它对 GitHub 出向长轮询、无需开入站端口，
+  deploy job 在其本地跑 `docker compose pull + up`，零网络打洞。
+- **触发**：push main 命中 registry/apps 相关 paths 自动跑；workflow_dispatch 可手动
+  触发，填 `image_tag` 即回滚到指定 sha（跳过构建直接部署 GHCR 已有镜像）。
+- **容器内 Nacos 无需 ssh tunnel**：与 MacBook 跑应用不同，应用容器和 nacos 容器同在
+  Mac mini 的 patra-net，gRPC 走 Docker bridge 不经 tailscale，无 MTU 丢帧问题，
+  直接 `NACOS_HOST=nacos`。
+- **runner 的 docker PATH**：非交互运行缺 OrbStack docker 路径，靠 runner 目录
+  `~/actions-runner/.path` 补 `/usr/local/bin`（对应非显性约束 #2）。
+- **密钥二分**：`.env.apps` 进仓库只放非敏感 dev 默认值；真敏感密钥走
+  `.env.apps.secret`（被 `.gitignore` 的 `.env.*.secret` 通配挡住，绝不进仓库），
+  compose 用 env_file 叠加加载。新增服务的真 key 一律照此归位。</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：scripts 一览表追加 runner 安装脚本</strong>
+            <p>在「## scripts 一览」表格追加一行：</p>
+            <pre><code class="lang-text">| `install-github-runner.sh &lt;token&gt;` | Mac mini | 安装 GitHub self-hosted runner 为 launchd 常驻服务 |</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit 文档</strong>
+            <pre><code class="lang-bash">git add patra-infra/CLAUDE.md
+git commit -m "docs(cd): patra-infra 记录 self-hosted runner 与 CD 运维约定 (PAP-CD)"</code></pre>
+          </li>
+
+          <li class="step" data-status="in-progress">
+            <strong>步骤 5：合并到 main，启用自动部署</strong>
+            <p>开 PR 并合并（CI 会跑；合并后 cd.yml 的 push:main 触发生效）：</p>
+            <pre><code class="lang-bash">gh pr create --fill --base main --head worktree-setup-cd
+# CI 通过后合并
+gh pr merge --squash --delete-branch</code></pre>
+            <p>预期：合并触发 cd.yml，build-and-push + deploy 自动跑，Mac mini 上 registry 更新为 main 最新 sha 的镜像。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 6：端到端验证自动部署</strong>
+            <p>改一处无关代码（如 registry 的注释）走完整流程，确认自动部署：</p>
+            <pre><code class="lang-bash"># merge 后观察最新一次 cd run 全绿
+gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[0].databaseId')"
+# Mac mini 上确认镜像 sha 更新
+docker inspect --format '{{index .Config.Image}}' patra-registry</code></pre>
+            <p>预期：cd run 绿；容器 Image tag = 最新 main 的 sha。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 7：回滚验证</strong>
+            <p>用 workflow_dispatch 部署上一个 sha，确认回退（跳过构建、直接部署 GHCR 已有镜像）：</p>
+            <pre><code class="lang-bash">PREV_SHA=&lt;上一个已部署的完整 sha&gt;
+gh workflow run cd.yml --ref main -f image_tag="$PREV_SHA"
+gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[0].databaseId')"
+# Mac mini 上确认回退
+docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag = $PREV_SHA</code></pre>
+            <p>预期：deploy job 绿、build-and-push 被跳过；容器镜像回退到 <code>$PREV_SHA</code>，health 仍 UP。</p>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec 8 项改造文件全部有任务承载：Dockerfile→T1；compose.apps + .env.apps + .env.apps.example→T2；.env.apps.secret.example + .gitignore→T3；cd.yml build-push→T4、deploy→T6；install-github-runner.sh→T5；compose-all.sh→T6；CLAUDE.md→T7。spec 的 Done 判定分别对应：runner online→T5；workflow_dispatch 全绿→T6；docker ps healthy→T6；tailscale health UP→T6；merge 自动部署→T7；回滚→T7；护栏验证→T3。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无 TODO/待补/“类似任务”。所有代码块为完整可执行内容。两处尖括号占位是<strong>有意的运行时输入</strong>而非计划缺陷：<code>&lt;REGISTRATION_TOKEN&gt;</code>（GitHub 一次性 token，禁止写死）、<code>&lt;上一个已部署的完整 sha&gt;</code>（回滚目标，运行时才知）。runner 版本号给了具体值 2.328.0 并注明失效查最新。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>跨任务标识一致：镜像名 <code>ghcr.io/linqibin0826/patra-registry</code>、compose project <code>patra-apps</code>、容器名 <code>patra-registry</code>、端口 6000、tag 变量 <code>REGISTRY_IMAGE_TAG</code>、runner labels <code>self-hosted,macmini</code> 全程统一。env 变量名（REGISTRY_DB_URL/NACOS_HOST 等）与 registry prod profile 实际占位符一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>7 个 <code>&lt;article class="task"&gt;</code> 均有唯一 <code>id="task-1..7"</code> 与初始 <code>data-status="pending"</code>；每个 <code>&lt;li class="step"&gt;</code> 均 <code>data-status="pending"</code>；TOC <code>toc-tasks</code> 7 条与中栏 article 一一对应；头部 <code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec 四项；<code>&lt;head&gt;</code> 2 个 link 指向 spec-theme.css + plan-extras.css，无 inline style。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：Implementation Notes（实施期由 Claude Code 维护）
+       ============================================================ -->
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+      <li class="note" data-type="change" data-time="2026-06-07T20:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T20:35">06-07 20:35</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>plan Task 4/6 设想在 feature 分支用 <code>gh workflow run --ref</code> 验证 cd.yml，但 GitHub 要求 workflow_dispatch 的 workflow 先存在于默认分支 main 才能手动触发。调整：Task 4–6 仅写好并 commit，首次完整 CD 验证推迟到 Task 7 merge main 后由 push:main 自动触发；回滚的 workflow_dispatch 验证在 merge 后可用。本地以 Task 1 镜像冒烟 + actionlint 兜底 cd.yml 正确性。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T20:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T20:40">06-07 20:40</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>plan 的 install-github-runner.sh 硬编码 RUNNER_VERSION=2.328.0；改为脚本运行时从 GitHub API 查 actions/runner 最新 release，避免硬编码版本失效导致下载 404。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T21:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T21:05">06-07 21:05</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>install-github-runner.sh 原把 <code>.path</code> 写在 <code>config.sh</code> 之前，但 config 会按当前 PATH 重新生成 <code>.path</code> 覆盖之 —— 修复为在 config 之后覆写。本次已装的 runner 其 <code>.path</code> 由 config 生成（<code>/usr/local/bin:/usr/bin:...</code>），恰含 OrbStack docker 所在的 /usr/local/bin、docker 可达、runner online，故未重装（功能正常，修复仅保证脚本将来复用正确）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T21:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T21:20">06-07 21:20</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>偏离 spec 决策 6（GHCR public）：deploy job 改加 <code>permissions: packages:read</code> + <code>docker login ghcr</code>（GITHUB_TOKEN），镜像保持 <strong>private</strong>。原因：build-push 与 deploy 同 workflow 连续自动跑，首次部署时包仍是 private、没有手动设 public 的窗口、会 pull 失败；用 GITHUB_TOKEN 自动登录更优——更安全、无首次时序摩擦。代价：手动 <code>compose-all up apps</code> 时 Mac mini 需预先 <code>docker login ghcr</code> 一次。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T21:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T21:35">06-07 21:35</time>
+          <a href="#task-7">§ Task 7 (review)</a>
+        </header>
+        <p>处理 PR #137 CodeRabbit review。<strong>采纳 4 项</strong>：Dockerfile 非 root（appuser）、deploy <code>if</code> 改 <code>success||skipped</code> 排除 cancelled、两处 checkout <code>persist-credentials:false</code>、install-github-runner.sh 加 <code>RUNNER_VERSION</code> 非空校验。非 root 化经冒烟测出<strong>回归</strong>：logback 写 <code>/app/logs</code> 需在 Dockerfile 预建该目录并 chown appuser，否则非 root 启动 Exited 1，已修并复验通过。<strong>驳回 4 项</strong>（技术理由）：Action pin SHA 应全仓统一非本 PR 范围 / health check 的 docker logs 是失败路径 best-effort 诊断 / <code>.path</code> 是 runner 专用确定值有意固定 / runner 版本有 auto-update+兼容（YAGNI）。</p>
+      </li>
+    </ol>
+
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">5</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>

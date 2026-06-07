@@ -1,0 +1,9 @@
+# 缩小 docker build context：只需要 build/libs 下的 fat jar
+src/
+.gradle/
+build/classes/
+build/generated/
+build/resources/
+build/tmp/
+build/reports/
+build/test-results/

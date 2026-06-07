@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patra CD 流水线设计 — Mac mini 自托管持续部署（MVP: registry）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#architecture">整体架构与数据流</a></li>
+      <li><a href="#config">配置注入与网络拓扑</a></li>
+      <li><a href="#pipeline">CD 流水线详解</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>Patra CD 流水线设计 — Mac mini 自托管持续部署（MVP: registry）</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-07</span>
+        <span>🌿 worktree-setup-cd</span>
+        <span>👤 Lin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>为 Patra 搭建第一条持续部署（CD）链路：<strong>merge 到 main</strong> 后 GitHub Actions 自动构建 registry 服务的 <strong>Docker 镜像</strong>并推送到 <strong>GHCR</strong>，由常驻 Mac mini 的 <strong>self-hosted runner</strong> 拉取并用 OrbStack 部署，应用容器与现有基础设施容器（PostgreSQL / Nacos 等）并排运行。本版作为 <strong>MVP 只打通 registry 一个服务</strong>的端到端链路（容器化 → 构建 → 推送 → 部署 → 健康检查），验证通过后再把同一模式复制到其余服务与 portal。触发节奏为<strong>全自动 Continuous Deployment</strong>，并保留 <code>workflow_dispatch</code> 手动按钮用于重部署与回滚。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>Patra 已有<strong>完整的 CI</strong>（5 个 GitHub Actions workflow：<code>ci.yml</code> / <code>portal-ci.yml</code> / <code>ci-docs.yml</code> / <code>claude.yml</code> / <code>claude-code-review.yml</code>），覆盖后端单元 / Testcontainers 集成 / E2E 测试、JaCoCo 覆盖率，以及前端 Biome lint / tsc 类型检查 / Vitest / Playwright。但<strong>没有任何 CD</strong>——没有 workflow 会构建并部署「能跑的应用」。</p>
+      <p>当前运行布局存在落差：</p>
+      <ul>
+        <li><strong>基础设施容器</strong>（PostgreSQL / Redis / Nacos / RocketMQ / MinIO / 可观测性栈）已在 <strong>Mac mini 的 OrbStack</strong> 里运行，靠 <code>git pull + docker compose</code> 同步，服务仅在 tailscale 内网暴露。</li>
+        <li><strong>5 个 Java 微服务 + Next.js portal</strong> 目前以 fat JAR / <code>next dev</code> 进程跑在开发者的 <strong>MacBook 本机</strong>，<strong>尚未容器化</strong>。</li>
+      </ul>
+      <p><strong>本次目标</strong>：把应用也部署到 Mac mini，使其成为一套<strong>一直在线、与 main 同步、可经 tailscale 访问</strong>的 dev 运行环境——MacBook 只负责写代码与调试。</p>
+      <aside class="callout warning">
+        <span class="title">核心约束：云端够不到内网</span>
+        <p>GitHub Actions 的云端 runner 跑在公网（微软机房），<strong>够不到 tailscale 内网的 Mac mini</strong>。如何打通这「最后一公里」是整个 CD 设计的核心，也是本次最值得学的一课。本设计的答案是：镜像走公网 GHCR 中转 + 部署交给常驻 Mac mini 的 self-hosted runner 本地执行（详见第 3 节）。</p>
+      </aside>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>registry 服务的 <code>Dockerfile</code>（运行镜像）</li>
+            <li><code>cd.yml</code> workflow：<code>build-and-push</code>（云端）+ <code>deploy</code>（self-hosted）两个 job</li>
+            <li><code>docker-compose.apps.yaml</code>：新 compose project <code>patra-apps</code>，定义 registry 容器并加入 <code>patra-net</code></li>
+            <li><code>.env.apps</code>：应用容器<strong>非敏感</strong> dev 默认值（随仓库提交）</li>
+            <li>密钥二分护栏：真密钥走 gitignore 的 <code>.env.apps.secret</code> + <code>.gitignore</code> 扩展 + <code>.env.apps.secret.example</code> 模板</li>
+            <li>Mac mini 上安装 self-hosted runner 为 launchd 常驻服务（安装脚本 + 文档）</li>
+            <li><code>compose-all.sh</code> 扩展，纳入 apps stack</li>
+            <li>registry 端到端链路验证（含自动触发与手动回滚）</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope（本版不做）</span>
+          <ul>
+            <li>其余 4 个 Java 微服务（ingest / catalog / object-storage / gateway）——链路验证后复制同一模式</li>
+            <li>portal 容器化（技术栈不同，Next standalone，单独处理）</li>
+            <li>自动回滚（本版用手动 <code>workflow_dispatch</code> 回滚指定 tag）</li>
+            <li>零停机 / 滚动更新 / 蓝绿部署</li>
+            <li>多环境分离（staging / prod）——只有 Mac mini 这一套 dev</li>
+            <li>改动现有 <code>ci.yml</code> 等 CI workflow</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 整体架构与数据流</h2>
+      <p>整条链路由「merge 到 main」这一事件精确驱动，分两段：<strong>云端构建推送</strong> → <strong>Mac mini 本地部署</strong>。两段之间靠公网的 GHCR 镜像仓库解耦——这是绕开「公网够不到内网」的关键。</p>
+      <pre>
+ 开发者 MacBook
+   └─ git push / merge PR ──▶ main 分支
+                                  │ (push 事件触发 cd.yml)
+                                  ▼
+ ┌─────────────── GitHub Actions ───────────────┐
+ │  job: build-and-push   (runs-on: ubuntu-latest，云端)
+ │    1. checkout
+ │    2. setup JDK 25
+ │    3. ./gradlew :patra-registry-boot:bootJar   (复用 Gradle 缓存)
+ │    4. docker login ghcr.io  (GITHUB_TOKEN)
+ │    5. docker build  → 镜像
+ │    6. docker push   → ghcr.io/linqibin0826/patra-registry:&lt;sha&gt; + :latest
+ └───────────────────────┬───────────────────────┘
+                         │ needs: build-and-push
+                         ▼
+ ┌──────────── GitHub Actions ────────────┐
+ │  job: deploy   (runs-on: [self-hosted, macmini])
+ │  ⇩ 实际在 Mac mini 本地执行：
+ └───────────────────────┬─────────────────┘
+                         ▼
+ ┌──────────────── Mac mini ─────────────────┐
+ │  self-hosted runner 进程 (launchd 常驻)
+ │    1. docker compose -f docker-compose.apps.yaml pull registry
+ │       └─ 从 GHCR 拉取 :&lt;sha&gt; 镜像
+ │    2. docker compose ... up -d registry
+ │    3. 轮询 healthcheck → /actuator/health = UP
+ │
+ │  OrbStack 网络 patra-net：
+ │    [registry 容器:6000] ──▶ [postgres:5432] [nacos:8848]
+ │                              （现有基础设施容器，容器服务名互访）
+ └────────────────────────────────────────────┘
+                         ▲
+        tailscale 内网    │  curl http://linqibins-mac-mini:6000/actuator/health
+   开发者随时可访问 ──────┘
+      </pre>
+
+      <h3>self-hosted runner 的角色（关键认知）</h3>
+      <p>self-hosted runner <strong>不是「一直拉镜像」的进程</strong>，而是一个<strong>「等 GitHub 派活」的通用执行器</strong>：</p>
+      <ul>
+        <li><strong>平时</strong>：runner 进程对 GitHub 发起<strong>出向</strong>长轮询「有没有标了 <code>macmini</code> 的 job 给我」，静静待命，几乎不耗资源。</li>
+        <li><strong>被派活时</strong>：当 <code>deploy</code> job 触发，GitHub 把它派给 Mac mini 的 runner，runner 把步骤拉下来<strong>在 Mac mini 本地执行</strong>——「拉镜像 + 重启容器」只是这次活儿里的命令，merge 一次才执行一次。</li>
+        <li><strong>为何装在 Mac mini</strong>：① 部署动作（<code>docker compose up</code>）必须在 Mac mini 本地发生；② 连接方向是出向，Mac mini <strong>无需开任何入站端口、无需公网 IP</strong>，天然适配 tailscale 内网——这就是「零网络打洞」。</li>
+        <li><strong>常驻方式</strong>：装成 launchd 服务，开机自启、后台待命，确保任何时候 merge main 都立刻有机器接 deploy 活儿。</li>
+      </ul>
+      <aside class="callout info">
+        <span class="title">与「Watchtower 轮询」方案的本质区别</span>
+        <p>被否决的 Watchtower 方案是「Mac mini 一直盯着 GHCR 镜像看更新没」（轮询<strong>镜像</strong>）；本设计是「Mac mini 等 GitHub 派 job」（等<strong>事件</strong>）。后者由 merge 事件精确驱动，无轮询延迟，多服务编排与回滚都好控制。</p>
+      </aside>
+    </section>
+
+    <section id="config">
+      <h2>4. 配置注入与网络拓扑</h2>
+      <p>调查确认：registry <strong>只用 Nacos 做服务发现、不用配置中心</strong>，所有配置散在本地 yml，且 <code>prod</code> profile 本就是为环境变量注入设计的（DB 连接等无默认值，必须 env 注入）。因此容器化策略非常干净：<strong>容器跑 <code>prod</code> profile + 环境变量覆盖占位符</strong>，无需引入 Nacos 配置中心。</p>
+      <p>应用容器加入现有外部网络 <code>patra-net</code>，用<strong>容器服务名</strong>访问基础设施（注意是<strong>容器内端口</strong>，不是宿主映射端口）：</p>
+      <table>
+        <thead>
+          <tr><th>配置项</th><th>环境变量</th><th>容器内取值</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>active profile</td><td><code>SPRING_PROFILES_ACTIVE</code></td><td><code>prod</code></td></tr>
+          <tr><td>数据库 URL</td><td><code>REGISTRY_DB_URL</code></td><td><code>jdbc:postgresql://postgres:5432/patra_registry</code></td></tr>
+          <tr><td>数据库用户</td><td><code>REGISTRY_DB_USERNAME</code></td><td><code>postgres</code></td></tr>
+          <tr><td>数据库密码</td><td><code>REGISTRY_DB_PASSWORD</code></td><td>dev 默认凭据（见 <code>.env.apps</code>）</td></tr>
+          <tr><td>Nacos 主机</td><td><code>NACOS_HOST</code></td><td><code>nacos</code></td></tr>
+          <tr><td>Nacos 端口</td><td><code>NACOS_PORT</code></td><td><code>8848</code>（容器内端口）</td></tr>
+          <tr><td>Nacos 账号 / 密码</td><td><code>NACOS_USERNAME</code> / <code>NACOS_PASSWORD</code></td><td><code>nacos</code> / <code>nacos</code></td></tr>
+          <tr><td>Redis URL（待定）</td><td><code>REGISTRY_REDIS_URL</code></td><td>首次部署看启动日志决定是否必填</td></tr>
+        </tbody>
+      </table>
+      <aside class="callout success">
+        <span class="title">安全（公开仓库红线）：密钥二分 + 护栏</span>
+        <p>本仓库是公开仓库，配置按敏感度<strong>物理二分</strong>，从机制上杜绝真密钥泄露：</p>
+        <ul>
+          <li><strong><code>.env.apps</code>（进仓库）</strong>：只放<strong>非敏感 dev 默认值</strong>——DB 默认密码 <code>123456</code>、<code>NACOS_HOST=nacos</code>、端口等内网默认值。这些是人尽皆知的测试默认值，且服务仅在 tailscale 内网暴露、公网连不上，进公开仓库无害。</li>
+          <li><strong><code>.env.apps.secret</code>（gitignore，绝不进仓库）</strong>：装<strong>真敏感密钥</strong>——OpenAI / PubMed / Crossref / EPMC API key、PAT、私钥等。compose 用 <code>env_file</code> 同时加载它与 <code>.env.apps</code>。</li>
+        </ul>
+        <p><strong>三道防线</strong>：① 真 key 文件物理 <code>gitignore</code>，从源头不可能被 commit；② pre-commit 的 <code>detect-secrets</code> / <code>detect private key</code> 钩子兜底拦截 <code>sk-</code> 等密钥模式；③ <code>.env.apps.secret.example</code> 模板明确告知哪些 key 该放进 secret 文件，避免误写进 <code>.env.apps</code>。密钥另外<strong>绝不烤进镜像</strong>，一律运行时 env 注入；镜像不含凭据，故 GHCR 设 public 也不泄密。</p>
+        <p><strong>本次 MVP 的 registry 只连内网 PG + Nacos，不需要任何真敏感密钥</strong>——二分机制是为将来 ingest 等需要外部 API key 的服务<strong>提前建好护栏</strong>。</p>
+      </aside>
+    </section>
+
+    <section id="pipeline">
+      <h2>5. CD 流水线详解</h2>
+
+      <h3>触发</h3>
+      <p><code>cd.yml</code> 触发条件：</p>
+      <ul>
+        <li><code>on.push.branches: [main]</code>，并用 <code>paths</code> 过滤只在 registry 相关路径变更时触发（避免无关改动也部署）。</li>
+        <li><code>on.workflow_dispatch</code>，带一个可选 <code>image_tag</code> 输入，用于手动重部署或<strong>回滚到指定 git sha</strong>。</li>
+        <li><strong>不</strong>监听 <code>pull_request</code>——保证 self-hosted runner 永不执行未经审查的 fork 代码（见风险表）。</li>
+      </ul>
+
+      <h3>两个 job</h3>
+      <ol>
+        <li><strong><code>build-and-push</code></strong>（<code>runs-on: ubuntu-latest</code>，云端）：checkout → setup JDK 25 → <code>gradle :patra-registry-boot:bootJar</code>（复用 Actions 的 Gradle 缓存）→ <code>docker login ghcr.io</code>（用 Actions 自带的 <code>GITHUB_TOKEN</code>，有 <code>packages:write</code> 权限）→ <code>docker build</code> → push 双 tag。</li>
+        <li><strong><code>deploy</code></strong>（<code>runs-on: [self-hosted, macmini]</code>，<code>needs: build-and-push</code>）：在 Mac mini 本地 <code>docker compose pull</code> + <code>up -d</code> → 轮询健康检查，超时则 job 标红。</li>
+      </ol>
+
+      <h3>镜像 tag 与回滚</h3>
+      <ul>
+        <li>双 tag：<code>:&lt;git-sha&gt;</code>（不可变，用于精确部署与回滚）+ <code>:latest</code>（指向最新 main）。</li>
+        <li>部署默认用 <code>:&lt;git-sha&gt;</code>（本次 commit）。</li>
+        <li>回滚 = <code>workflow_dispatch</code> 手动输入旧 sha，<code>deploy</code> job 部署该 tag。</li>
+      </ul>
+
+      <h3>健康检查与「测试」CD 本身</h3>
+      <p>compose <code>healthcheck</code> 打 <code>localhost:6000/actuator/health</code>；deploy job <code>up</code> 之后轮询健康，超时标红。CD 流水线无法写单测，验证靠真跑一遍（详见文末 Done 判定）。现有 <code>ci.yml</code> 继续保证代码测试，CD 不重复跑。</p>
+    </section>
+
+    <section id="decisions">
+      <h2>6. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：应用容器化为 Docker 镜像（而非 fat JAR 进程）</h3>
+        <p>5 个微服务 + portal 打成 Docker 镜像推 GHCR，Mac mini 用 OrbStack 运行，与现有基础设施容器统一管理，可按镜像 tag 一键回滚。</p>
+        <p class="alternatives"><strong>备选 A：fat JAR + launchd 进程</strong> — 否决：进程管理土法、回滚靠手动备份、与已全容器化的基础设施割裂、无隔离。<br>
+        <strong>结论</strong>：容器化是业界标准与最优最终形态，也最契合学习目标；代价（写 Dockerfile）可接受。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：self-hosted runner 在 Mac mini 本地部署（打通最后一公里）</h3>
+        <p>在 Mac mini 装 GitHub self-hosted runner，<code>deploy</code> job 直接在本地执行 <code>compose pull + up</code>。runner 对 GitHub 出向连接，无需入站端口，天然适配 tailscale 内网。</p>
+        <p class="alternatives"><strong>备选 A：云端 runner + tailscale + SSH</strong> — 否决：需管理 TS auth key + SSH key 两份 secret，复杂度更高。<br>
+        <strong>备选 B：Mac mini 轮询 / Watchtower</strong> — 否决：轮询延迟、多服务编排与回滚控制弱、可观测性差。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：全自动 Continuous Deployment（merge 即部署）</h3>
+        <p>merge 到 main 自动触发完整链路，Mac mini 永远跟 main 同步；同时保留 <code>workflow_dispatch</code> 手动按钮用于重部署 / 回滚。</p>
+        <p class="alternatives"><strong>备选 A：半自动 Continuous Delivery（部署需人工点一下）</strong> — 否决：dev 环境目标就是「省心同步」，人工闸门反而是负担；手动按钮已覆盖「需要时人工介入」的场景。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：MVP 先打通 registry 一个服务</h3>
+        <p>先用 registry（SSOT 注册中心，相对独立、又能验证容器连 PostgreSQL + Nacos）把整条链路跑通，再把同一模式复制到其余服务与 portal。</p>
+        <p class="alternatives"><strong>备选 A：一次做全 6 个应用</strong> — 否决：首次搭建就同时调试 6 份 Dockerfile + 编排 + 链路，出问题排查面过大，违背小步快跑。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：CI 先 build jar → Dockerfile 只 COPY（而非多阶段内部构建）</h3>
+        <p>CI 步骤用 Gradle 构建 bootJar（复用 Actions Gradle 缓存），Dockerfile 只 <code>COPY</code> jar 到 <code>eclipse-temurin:25-jre</code> 运行镜像。镜像构建快、Dockerfile 极简。</p>
+        <p class="alternatives"><strong>备选 A：多阶段 Dockerfile 内部 gradle build</strong> — 否决：任何地方都能 <code>docker build</code> 但慢、不复用 CI 缓存；在「CI 已有 Gradle 缓存」的前提下属次优。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 6：GHCR 包可见性设为 public</h3>
+        <p>镜像不含任何密钥，public 让 Mac mini <code>pull</code> 免认证，最省事。</p>
+        <p class="alternatives"><strong>备选 A：private + Mac mini 配只读 PAT 登录</strong> — 暂不采用：增加 secret 管理成本而无实际收益（镜像不泄密）；若日后介意可随时切换。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 7：密钥按敏感度二分 + 护栏（公开仓库防泄露）</h3>
+        <p>进仓库的 <code>.env.apps</code> 只放非敏感 dev 默认值；真敏感密钥走 gitignore 的 <code>.env.apps.secret</code>，compose 用 <code>env_file</code> 同时加载二者。三道防线：真 key 文件物理 gitignore + pre-commit <code>detect-secrets</code> 兜底 + <code>.env.apps.secret.example</code> 模板引导。沿用现有 <code>.env</code> / <code>.env.secret</code> 约定，保留 git pull 同步便利。</p>
+        <p class="alternatives"><strong>备选 A：<code>.env.apps</code> 整个 gitignore + 只留 example 模板</strong> — 否决：仓库零环境值确实最安全，但失去 git pull 自动同步、每改一次变量都要手动登 Mac mini，与现有「基础设施靠 git pull 同步」习惯不一致；而非敏感默认值进公开仓库本就无害，收益不抵成本。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>7. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>公开仓库 + self-hosted runner 可能执行未经审查的 fork PR 代码（GitHub 官方明确警告）</td>
+            <td><span class="pill high">high</span></td>
+            <td><code>cd.yml</code> 只监听 <code>push: main</code> 与 <code>workflow_dispatch</code>，<strong>不监听 <code>pull_request</code></strong>；main 受分支保护，只有维护者能合入。fork PR 的 CI 仍走云端 runner，绝不触达 self-hosted runner。</td>
+          </tr>
+          <tr>
+            <td>将来误把真敏感密钥（OpenAI / PubMed API key 等）写进随仓库提交的 <code>.env.apps</code>，泄露到公开仓库</td>
+            <td><span class="pill high">high</span></td>
+            <td>密钥二分：真 key 一律走 gitignore 的 <code>.env.apps.secret</code>（物理隔离）；pre-commit <code>detect-secrets</code> / <code>detect private key</code> 兜底拦截；<code>.env.apps.secret.example</code> 模板引导正确归位；MVP registry 本身不含任何真 key。</td>
+          </tr>
+          <tr>
+            <td>容器服务名解析依赖基础设施容器在 <code>patra-net</code> 上的网络别名</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>实现时核对各基础设施 compose 的 <code>networks</code> / 别名，用 <code>docker network inspect patra-net</code> 验证 <code>postgres</code> / <code>nacos</code> 可解析。</td>
+          </tr>
+          <tr>
+            <td>健康检查失败时新容器已替换旧容器（非零停机）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>MVP 接受短暂不可用；失败时 workflow 标红 + 手动 <code>workflow_dispatch</code> 回滚旧 sha。零停机为非目标。</td>
+          </tr>
+          <tr>
+            <td>Mac mini / runner 离线导致部署不发生</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>runner 装 launchd 开机自启；离线时 job 排队，runner 上线后自动执行。</td>
+          </tr>
+          <tr>
+            <td>registry 是否真正依赖 Redis 未定（配置有、依赖树疑似无）</td>
+            <td><span class="pill low">low</span></td>
+            <td>首次部署看启动日志：若 autoconfig 尝试连接并失败，则注入 <code>REGISTRY_REDIS_URL</code> 或排除自动配置；若 classpath 无 Redis starter，配置被忽略、不影响启动。</td>
+          </tr>
+          <tr>
+            <td>容器内连 postgres 用容器端口 5432（非宿主映射的 15432）易混淆</td>
+            <td><span class="pill low">low</span></td>
+            <td><code>.env.apps</code> 中注释标明「容器内端口」；prod profile 用 <code>REGISTRY_DB_URL</code> 显式写全连接串。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>8. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><code>patra-api/patra-registry/patra-registry-boot/Dockerfile</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>registry 运行镜像：<code>eclipse-temurin:25-jre</code> + <code>COPY</code> CI 产出的 bootJar + entrypoint</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><code>.github/workflows/cd.yml</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>CD 流水线：<code>build-and-push</code>（云端）+ <code>deploy</code>（self-hosted）；触发 push main + workflow_dispatch</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><code>patra-infra/docker/docker-compose.apps.yaml</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>新 compose project <code>patra-apps</code>：registry 容器（image / env / 加入 patra-net / healthcheck / 端口 6000）</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><code>patra-infra/docker/.env.apps</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>应用容器<strong>非敏感</strong> dev 默认值（DB 默认密码、<code>NACOS_HOST</code> 等内网默认值），随仓库提交</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><code>patra-infra/docker/.env.apps.example</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>非敏感环境变量模板（沿用现有 <code>.env.example</code> 习惯）</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><code>patra-infra/docker/.env.apps.secret.example</code></td>
+            <td><span class="pill create">create</span></td>
+            <td><strong>secret 模板</strong>：列出真敏感 key 占位（OpenAI / PubMed key 等）；真值文件 <code>.env.apps.secret</code> 由 gitignore 防护、绝不进仓库</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><code>.gitignore</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>增加 <code>.env.apps.secret</code> 规则，确保真 key 文件永不被提交</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td><code>patra-infra/scripts/install-github-runner.sh</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>在 Mac mini 安装 self-hosted runner 为 launchd 常驻服务（含 labels <code>self-hosted,macmini</code>）</td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td><code>patra-infra/scripts/compose-all.sh</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>把 apps stack 纳入统一编排入口</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td><code>patra-infra/CLAUDE.md</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>记录 self-hosted runner 安装、CD 运维流程与<strong>密钥二分约定</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>Mac mini 上 self-hosted runner 注册成功：GitHub repo Settings → Actions → Runners 显示 <code>online</code>，能接 <code>macmini</code> 标签的 job。</li>
+        <li><code>workflow_dispatch</code> 手动触发 <code>cd.yml</code>，<code>build-and-push</code> + <code>deploy</code> 两个 job 全绿。</li>
+        <li>Mac mini <code>docker ps</code> 可见 <code>patra-registry</code> 容器 <code>running</code> 且 <code>healthy</code>。</li>
+        <li>经 tailscale <code>curl http://linqibins-mac-mini:6000/actuator/health</code> 返回 <code>UP</code>。</li>
+        <li>改一处无关代码 merge 到 main，观察 <code>cd.yml</code> 自动触发并完成部署，Mac mini 上容器更新为新镜像。</li>
+        <li>回滚验证：<code>workflow_dispatch</code> 输入上一个 git sha，部署回退到该版本。</li>
+        <li>密钥护栏验证：<code>git check-ignore .env.apps.secret</code> 确认其被忽略；pre-commit 的 secret 检测钩子在仓库已生效。</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>

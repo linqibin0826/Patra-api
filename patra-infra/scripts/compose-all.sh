@@ -18,7 +18,7 @@ set -euo pipefail
 DOCKER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../docker" && pwd)"
 
 # 启动顺序：core 基础设施先行；tailnet 网关先于 jobs（jobs 的路由边车 getent 解析 tailscale-gw）。
-ORDER=(core storage search observability tailnet jobs)
+ORDER=(core storage search observability tailnet jobs apps)
 
 compose() { docker compose -f "$DOCKER_DIR/docker-compose.$1.yaml" "${@:2}"; }
 

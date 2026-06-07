@@ -1,3 +1,7 @@
 # 真实敏感密钥：只存在于运行容器的机器上，绝不提交到公开仓库
 # 模板见 .env.secret.example
 .env.secret
+
+# 应用容器的真敏感密钥（模板见 .env.apps.secret.example）
+# 用通配覆盖未来所有 .env.<app>.secret，从源头杜绝真 key 进公开仓库
+.env.*.secret
