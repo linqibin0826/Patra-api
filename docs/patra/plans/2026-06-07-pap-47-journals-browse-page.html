@@ -237,8 +237,8 @@ git commit -m "feat(catalog): venue 浏览 filter 多值化 + facets 读模型 (
             <pre><code class="lang-sql">-- base（page 与 facet 共用；实现者抽成可复用片段或 CTE）
 SELECT v.id, v.title AS name, v.abbreviated_title AS abbr, v.country_code,
        v.cited_by_count, v.image_object_key AS cover_object_key, v.issn_l,
-       (v.open_access->>'isOa')::boolean      AS is_open_access,
-       (v.open_access->>'isInDoaj')::boolean  AS is_in_doaj,
+       (v.open_access-&gt;&gt;'isOa')::boolean      AS is_open_access,
+       (v.open_access-&gt;&gt;'isInDoaj')::boolean  AS is_in_doaj,
        jcr.impact_factor, jcr.jif_quartile AS jcr_quartile, jcr.subject AS jcr_subject,
        cas.major_category AS cas_major_category, cas.major_quartile AS cas_major_quartile,
        cas.is_top_journal AS cas_is_top, v.id AS founded_year_src  -- founded_year 来源同现有实现

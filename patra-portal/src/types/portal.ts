@@ -45,7 +45,7 @@ export interface VenueBrowse {
   name: string;
   abbr: string;
   coverObjectKey: string | null;
-  impactFactor: number;
+  impactFactor: number | null;
   jcrQuartile: string | null; // Q1–Q4
   jcrSubject: string | null;
   casMajorCategory: string | null;

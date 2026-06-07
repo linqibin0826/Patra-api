@@ -44,7 +44,7 @@ export function JournalPagination({ query, total, pageSize }: JournalPaginationP
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   if (pageCount <= 1) return null;
 
-  const page = Math.min(query.page, pageCount);
+  const page = Math.max(1, Math.min(query.page, pageCount));
   const start = (page - 1) * pageSize;
   const end = Math.min(page * pageSize, total);
 

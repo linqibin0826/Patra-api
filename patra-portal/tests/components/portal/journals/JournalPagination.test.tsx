@@ -107,6 +107,15 @@ describe("JournalPagination", () => {
     expect(screen.getByText(/50/)).toBeInTheDocument();
   });
 
+  it("page<=0 时下界裁剪到第 1 页（区间从 1 起，不出现负数/0）", () => {
+    render(<JournalPagination query={{ ...baseQuery, page: 0 }} total={50} pageSize={12} />);
+    // 第 1–12 本，不出现 0/负数起始
+    expect(screen.getByText(/1–12/)).toBeInTheDocument();
+    // 第 1 页 Link 标记当前页
+    const currentLink = screen.getByRole("link", { name: "1" });
+    expect(currentLink).toHaveAttribute("aria-current", "page");
+  });
+
   it("page=1 且页数 > 7（含省略号）时不产生重复 key 警告", () => {
     // total=120, pageSize=12 → pageCount=10，page=1 → 窗口 [1, 2, …, 10]
     // 省略号曾用数组下标 2 作 key，与页码 2 的 key 相撞

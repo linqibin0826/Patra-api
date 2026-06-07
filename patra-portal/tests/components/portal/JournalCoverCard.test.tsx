@@ -56,7 +56,7 @@ describe("JournalCoverCard", () => {
   });
 
   it("impactFactor 为 null 时渲染 '—' 不抛错", () => {
-    render(<JournalCoverCard journal={{ ...journal, impactFactor: null as unknown as number }} />);
+    render(<JournalCoverCard journal={{ ...journal, impactFactor: null }} />);
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 

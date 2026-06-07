@@ -32,6 +32,8 @@ test("/journals 浏览检索 e2e smoke", async ({ page }) => {
   // 4. 清除检索词，恢复无筛选状态（避免影响后续步骤）
   await searchBox.fill("");
   await expect(page).toHaveURL(/\/journals(?:\?.*)?$/, { timeout: 2000 });
+  // 显式断言 q 已移除（仅 path 正则会被 q=lancet 误放行，无法验证回归）
+  await expect(page).not.toHaveURL(/[?&]q=/, { timeout: 2000 });
   // 确保网格刷新完毕（等第一张卡重新可见）
   const refreshed = await page
     .locator('a[href^="/journals/"]')
@@ -39,7 +41,8 @@ test("/journals 浏览检索 e2e smoke", async ({ page }) => {
     .waitFor({ state: "visible", timeout: 5000 })
     .then(() => true)
     .catch(() => false);
-  if (!refreshed) return;
+  // 网格未恢复时显式 skip，避免静默 return 把「未验证」记成通过
+  test.skip(!refreshed, "清空检索后网格未恢复可见：跳过后续 happy-path 断言");
 
   // 5. 筛选：JCR 分区 Q1（fieldset[aria-label="JCR 分区"] 内的 checkbox label）
   //    FacetGroup 在后端有数据才会渲染 Q1；若不存在则容错跳过此步。

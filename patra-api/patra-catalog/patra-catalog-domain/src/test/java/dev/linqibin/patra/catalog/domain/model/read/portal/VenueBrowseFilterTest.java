@@ -1,45 +1,47 @@
 package dev.linqibin.patra.catalog.domain.model.read.portal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class VenueBrowseFilterTest {
 
   @Test
-  void sort_defaults_to_impact_factor_when_null() {
+  void givenNullSort_whenBuild_thenDefaultsToImpactFactor() {
     var filter = VenueBrowseFilter.builder().sort(null).build();
     assertThat(filter.sort()).isEqualTo(VenueBrowseSort.IMPACT_FACTOR);
   }
 
   @Test
-  void subjects_is_empty_list_when_null() {
+  void givenNullSubjects_whenBuild_thenEmptyList() {
     var filter = VenueBrowseFilter.builder().subjects(null).build();
     assertThat(filter.subjects()).isNotNull().isEmpty();
   }
 
   @Test
-  void jcr_quartiles_is_empty_list_when_null() {
+  void givenNullJcrQuartiles_whenBuild_thenEmptyList() {
     var filter = VenueBrowseFilter.builder().jcrQuartiles(null).build();
     assertThat(filter.jcrQuartiles()).isNotNull().isEmpty();
   }
 
   @Test
-  void cas_quartiles_is_empty_list_when_null() {
+  void givenNullCasQuartiles_whenBuild_thenEmptyList() {
     var filter = VenueBrowseFilter.builder().casQuartiles(null).build();
     assertThat(filter.casQuartiles()).isNotNull().isEmpty();
   }
 
   @Test
-  void country_codes_is_empty_list_when_null() {
+  void givenNullCountryCodes_whenBuild_thenEmptyList() {
     var filter = VenueBrowseFilter.builder().countryCodes(null).build();
     assertThat(filter.countryCodes()).isNotNull().isEmpty();
   }
 
   @Test
-  void subjects_is_defensively_copied() {
+  void givenMutableSubjects_whenBuild_thenDefensivelyCopied() {
     var source = new ArrayList<>(List.of("Medicine"));
     var filter = VenueBrowseFilter.builder().subjects(source).build();
     source.add("Biology");
@@ -47,7 +49,7 @@ class VenueBrowseFilterTest {
   }
 
   @Test
-  void jcr_quartiles_is_defensively_copied() {
+  void givenMutableJcrQuartiles_whenBuild_thenDefensivelyCopied() {
     var source = new ArrayList<>(List.of("Q1"));
     var filter = VenueBrowseFilter.builder().jcrQuartiles(source).build();
     source.add("Q2");
@@ -55,7 +57,7 @@ class VenueBrowseFilterTest {
   }
 
   @Test
-  void cas_quartiles_is_defensively_copied() {
+  void givenMutableCasQuartiles_whenBuild_thenDefensivelyCopied() {
     var source = new ArrayList<>(List.of("Q1"));
     var filter = VenueBrowseFilter.builder().casQuartiles(source).build();
     source.add("Q3");
@@ -63,10 +65,17 @@ class VenueBrowseFilterTest {
   }
 
   @Test
-  void country_codes_is_defensively_copied() {
+  void givenMutableCountryCodes_whenBuild_thenDefensivelyCopied() {
     var source = new ArrayList<>(List.of("CN"));
     var filter = VenueBrowseFilter.builder().countryCodes(source).build();
     source.add("US");
     assertThat(filter.countryCodes()).containsExactly("CN");
+  }
+
+  @Test
+  void givenListWithNullElement_whenBuild_thenThrows() {
+    var withNull = Arrays.asList("Medicine", null);
+    assertThatThrownBy(() -> VenueBrowseFilter.builder().subjects(withNull).build())
+        .isInstanceOf(NullPointerException.class);
   }
 }

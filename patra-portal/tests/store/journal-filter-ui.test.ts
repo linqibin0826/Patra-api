@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useJournalFilterUiStore } from "@/store/journal-filter-ui";
 
 describe("useJournalFilterUiStore", () => {
+  // 每个用例前固定为关闭态，避免共享单例的用例顺序耦合
+  beforeEach(() => {
+    useJournalFilterUiStore.setState({ sheetOpen: false });
+  });
+
   it("初始 sheetOpen 为 false", () => {
     const state = useJournalFilterUiStore.getState();
     expect(state.sheetOpen).toBe(false);

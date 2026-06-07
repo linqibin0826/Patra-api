@@ -1,5 +1,9 @@
 import "server-only";
-import { buildVenuesFacetsApiQuery, buildVenuesPageApiQuery } from "@/lib/portal-api/venue-browse";
+import {
+  buildVenuesFacetsApiQuery,
+  buildVenuesPageApiQuery,
+  DEFAULT_PAGE_SIZE,
+} from "@/lib/portal-api/venue-browse";
 import type {
   PageResult,
   VenueBrowse,
@@ -75,7 +79,13 @@ export async function fetchVenuesPage(query: VenueBrowseQuery): Promise<VenueBro
   if (!res.ok) {
     throw new Error(`期刊列表加载失败：${res.status}`);
   }
-  return (await res.json()) as VenueBrowsePage;
+  const data = (await res.json()) as VenueBrowsePage;
+  // 最小运行时校验：缺关键字段时降级返回空页，避免 JournalGrid/Pagination 在 .map/.length 抛错
+  if (!Array.isArray(data?.items) || typeof data?.total !== "number") {
+    console.warn("[fetchVenuesPage] 响应格式异常，降级返回空页", data);
+    return { page: query.page, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 0, items: [] };
+  }
+  return data;
 }
 
 /**
@@ -98,15 +108,19 @@ export async function fetchVenuesFacets(filters: VenueBrowseFilters): Promise<Ve
   if (!res.ok) {
     throw new Error(`期刊 facet 加载失败：${res.status}`);
   }
-  const data = (await res.json()) as VenueFacetsApiResponse;
+  const data = (await res.json()) as Partial<VenueFacetsApiResponse>;
+  // 最小运行时校验：数组字段缺失/类型不符时降级为空，避免筛选面板 .map/.filter 抛错
+  const safeOpts = (arr: unknown): VenueBrowseFacets["subject"] =>
+    Array.isArray(arr) ? (arr as VenueBrowseFacets["subject"]) : [];
+  const safeNum = (n: unknown): number => (typeof n === "number" ? n : 0);
   return {
-    subject: data.subjects,
-    jcr: data.jcrQuartiles,
-    cas: data.casQuartiles,
-    country: data.countries,
-    casTop: data.casTop,
-    oa: data.openAccess,
-    doaj: data.doaj,
+    subject: safeOpts(data?.subjects),
+    jcr: safeOpts(data?.jcrQuartiles),
+    cas: safeOpts(data?.casQuartiles),
+    country: safeOpts(data?.countries),
+    casTop: safeNum(data?.casTop),
+    oa: safeNum(data?.openAccess),
+    doaj: safeNum(data?.doaj),
   };
 }
 

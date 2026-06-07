@@ -209,6 +209,18 @@ describe("fetchVenuesPage", () => {
     await expect(fetchVenuesPage(SAMPLE_BROWSE_QUERY)).rejects.toThrow(/502/);
   });
 
+  it("坏 payload（缺 items/total）降级返回空页，不抛错", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ page: 2 }), { status: 200 })),
+    );
+    const result = await fetchVenuesPage(SAMPLE_BROWSE_QUERY);
+    expect(result.items).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.totalPages).toBe(0);
+    expect(result.page).toBe(SAMPLE_BROWSE_QUERY.page);
+  });
+
   it("缺 PATRA_GATEWAY_BASE_URL 抛错", async () => {
     delete process.env.PATRA_GATEWAY_BASE_URL;
     await expect(fetchVenuesPage(SAMPLE_BROWSE_QUERY)).rejects.toThrow(/PATRA_GATEWAY_BASE_URL/);
@@ -321,6 +333,21 @@ describe("fetchVenuesFacets", () => {
   it("非 2xx 抛错", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("err", { status: 503 })));
     await expect(fetchVenuesFacets(SAMPLE_FILTERS)).rejects.toThrow(/503/);
+  });
+
+  it("坏 payload（缺数组字段）降级为空数组 + 数值 0，不抛错", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 })),
+    );
+    const result = await fetchVenuesFacets(SAMPLE_FILTERS);
+    expect(result.subject).toEqual([]);
+    expect(result.jcr).toEqual([]);
+    expect(result.cas).toEqual([]);
+    expect(result.country).toEqual([]);
+    expect(result.casTop).toBe(0);
+    expect(result.oa).toBe(0);
+    expect(result.doaj).toBe(0);
   });
 
   it("缺 PATRA_GATEWAY_BASE_URL 抛错", async () => {

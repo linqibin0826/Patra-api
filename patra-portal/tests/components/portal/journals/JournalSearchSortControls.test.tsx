@@ -102,6 +102,20 @@ describe("JournalSearchSortControls", () => {
       expect(url).toContain("sort=az");
       expect(url).not.toContain("page=");
     });
+
+    it("输入后立刻点排序 → 取消 pending 防抖，不用旧 query 回滚排序", () => {
+      render(<JournalSearchSortControls query={baseQuery} />);
+      const input = screen.getByRole("searchbox");
+      fireEvent.change(input, { target: { value: "cell" } });
+      // 防抖未到点就点排序
+      fireEvent.click(screen.getByRole("button", { name: "中科院分区" }));
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      // 越过防抖窗口：pending 的 replace 应已被取消，否则会用旧 query 把排序回滚
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(mockReplace).not.toHaveBeenCalled();
+    });
   });
 
   describe("移动端筛选按钮", () => {

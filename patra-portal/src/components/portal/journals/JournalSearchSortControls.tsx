@@ -28,6 +28,13 @@ export function JournalSearchSortControls({ query }: Props) {
     setLocalQ(query.q);
   }, [query.q]);
 
+  // 卸载时清除未触发的防抖 timer，避免陈旧 navigate 在组件消失后仍执行
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   const navigateQ = useCallback(
     (value: string) => {
       const qs = serializeVenueBrowseQuery({ ...query, q: value, page: 1 });
@@ -63,6 +70,8 @@ export function JournalSearchSortControls({ query }: Props) {
 
   const handleSort = useCallback(
     (sortId: VenueBrowseQuery["sort"]) => {
+      // 取消 pending 的检索防抖，否则 300ms 后旧 query 的 replace 会回滚本次排序
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       const qs = serializeVenueBrowseQuery({ ...query, sort: sortId, page: 1 });
       router.push(`/journals${qs ? `?${qs}` : ""}`);
     },

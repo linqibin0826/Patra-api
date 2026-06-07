@@ -37,11 +37,22 @@ public record PortalVenueListRequest(
     @Min(value = 1, message = "pageSize 最小为 1") @Max(value = 50, message = "pageSize 最大为 50")
         Integer pageSize) {
 
-  /// 紧凑构造器：各 List 为 null 时替换为空不可变列表，否则防御性拷贝。
+  /// 紧凑构造器：各 List 归一化（trim + 去空白 token）后防御性拷贝为不可变列表，避免空 token 被误当成有效筛选。
   public PortalVenueListRequest {
-    subject = subject != null ? List.copyOf(subject) : List.of();
-    jcr = jcr != null ? List.copyOf(jcr) : List.of();
-    cas = cas != null ? List.copyOf(cas) : List.of();
-    country = country != null ? List.copyOf(country) : List.of();
+    subject = List.copyOf(normalize(subject));
+    jcr = List.copyOf(normalize(jcr));
+    cas = List.copyOf(normalize(cas));
+    country = List.copyOf(normalize(country));
+  }
+
+  /// 归一化筛选列表：trim 每个元素并过滤空白 token；null 或全空时返回空不可变列表。
+  ///
+  /// @param raw 原始列表，可空
+  /// @return 归一化后的不可变列表
+  private static List<String> normalize(List<String> raw) {
+    if (raw == null) {
+      return List.of();
+    }
+    return raw.stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
   }
 }
