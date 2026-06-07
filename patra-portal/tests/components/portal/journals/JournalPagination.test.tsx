@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { JournalPagination, pageWindow } from "@/components/portal/journals/JournalPagination";
 import type { VenueBrowseQuery } from "@/types/portal";
@@ -105,5 +105,17 @@ describe("JournalPagination", () => {
     // 应显示 1–12 · 共 50 本
     expect(screen.getByText(/1–12/)).toBeInTheDocument();
     expect(screen.getByText(/50/)).toBeInTheDocument();
+  });
+
+  it("page=1 且页数 > 7（含省略号）时不产生重复 key 警告", () => {
+    // total=120, pageSize=12 → pageCount=10，page=1 → 窗口 [1, 2, …, 10]
+    // 省略号曾用数组下标 2 作 key，与页码 2 的 key 相撞
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<JournalPagination query={{ ...baseQuery, page: 1 }} total={120} pageSize={12} />);
+    const duplicateKeyWarning = errorSpy.mock.calls.find((call) =>
+      String(call[0]).includes("same key"),
+    );
+    expect(duplicateKeyWarning).toBeUndefined();
+    errorSpy.mockRestore();
   });
 });

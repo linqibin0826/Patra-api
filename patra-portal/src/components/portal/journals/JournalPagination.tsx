@@ -79,8 +79,8 @@ export function JournalPagination({ query, total, pageSize }: JournalPaginationP
         {window.map((item, position) =>
           item === "…" ? (
             <span
-              // biome-ignore lint/suspicious/noArrayIndexKey: 省略号无业务 id，位置索引是唯一标识
-              key={position}
+              // biome-ignore lint/suspicious/noArrayIndexKey: 省略号无业务 id，位置索引是唯一标识；加 gap- 前缀避免与数字页码 key 相撞
+              key={`gap-${position}`}
               className="flex h-8 w-8 items-center justify-center text-sm text-(--fg-3)"
             >
               …
