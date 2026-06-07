@@ -25,7 +25,7 @@
         <ol class="toc-tasks">
           <li data-task-status="done"><a href="#task-1">Task 1 — registry Dockerfile（本地构建验证）</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — compose.apps + .env.apps</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
@@ -301,7 +301,7 @@ git commit -m "feat(cd): 新增 patra-apps compose 栈与 registry 环境变量 
       </article>
 
       <!-- ============================== TASK 3 ============================== -->
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="done">
         <header>
           <h2>任务 3：密钥二分护栏（gitignore + secret 模板）</h2>
           <dl class="files">
@@ -311,7 +311,7 @@ git commit -m "feat(cd): 新增 patra-apps compose 栈与 registry 环境变量 
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：修改 patra-infra/docker/.gitignore</strong>
             <p>现有内容只精确忽略 <code>.env.secret</code>，不覆盖 <code>.env.apps.secret</code>。追加 <code>.env.*.secret</code> 通配，覆盖未来所有应用的 secret 文件（不误伤 <code>*.example</code>）。最终文件内容：</p>
             <pre><code class="lang-text"># 真实敏感密钥：只存在于运行容器的机器上，绝不提交到公开仓库
@@ -323,7 +323,7 @@ git commit -m "feat(cd): 新增 patra-apps compose 栈与 registry 环境变量 
 .env.*.secret</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：写 .env.apps.secret.example（secret 模板）</strong>
             <pre><code class="lang-ini"># 应用容器真敏感密钥模板
 # ============================================================
@@ -340,7 +340,7 @@ git commit -m "feat(cd): 新增 patra-apps compose 栈与 registry 环境变量 
 # CROSSREF_API_TOKEN=xxxxxxxxxxxx</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证护栏生效</strong>
             <p>制造一个临时真 key 文件，确认它被 gitignore、而模板不被忽略：</p>
             <pre><code class="lang-bash">cd patra-infra/docker
@@ -353,7 +353,7 @@ cd -</code></pre>
             <p>预期：<code>.env.apps.secret</code> 被忽略、不出现在 <code>git status</code>；<code>.env.apps.secret.example</code> 是待提交新文件。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-infra/docker/.gitignore \
         patra-infra/docker/.env.apps.secret.example
