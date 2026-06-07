@@ -817,13 +817,21 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
         </header>
         <p>首次 merge 触发的 CD：build-and-push ✅、deploy ❌——macOS self-hosted runner 上 <code>docker login</code> 走钥匙串(osxkeychain)，launchd 非交互会话无法解锁（<code>-25308</code>）。方案 A（DOCKER_CONFIG + 空 config）经 Mac mini 实测仍 fallback 钥匙串、无效；改<strong>方案 D</strong>：deploy 不调 <code>docker login</code>，直接把 base64 凭据写入 <code>DOCKER_CONFIG/config.json</code> 的 <code>auths</code> 字段，<code>docker compose pull</code> 读 auths 认证、彻底绕过钥匙串（Mac mini 实测认证通过、开始拉取 layers）。另给 pull 加 3 次重试应对 Mac mini 出站 tls 偶发抖动。需重新 merge 触发第二次 CD 验证。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-07T22:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T22:10">06-07 22:10</time>
+          <a href="#task-7">§ Task 7 (deploy)</a>
+        </header>
+        <p>方案 D 的第二次 merge 又 startup failure（jobs 全不创建、"workflow file issue"）：根因是把 <code>DOCKER_CONFIG: ${{ runner.temp }}</code> 放在 <strong>job-level env</strong>，而 <code>runner</code> context 在 job-level env 不可用（解析早于 runner 分配）。改用 <code>${{ github.workspace }}</code>（github context 在 job env 可用），并临时下载 actionlint 静态校验确认无 context 错误后再 merge。教训：job-level env 只能用 github/secrets/vars/inputs/needs，不能用 runner/steps。</p>
+      </li>
     </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">6</span> changes /
+      <span data-counter="change">7</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>

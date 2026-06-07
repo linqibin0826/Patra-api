@@ -83,7 +83,9 @@ jobs:
       # 无法解锁钥匙串（error -25308）；且 config 无 credsStore 时 docker 在 macOS 仍 fallback 钥匙串。
       # 故不调 docker login，改为直接把凭据 base64 写入 DOCKER_CONFIG/config.json 的 auths 字段，
       # docker compose pull 读 auths 认证、完全绕过钥匙串。
-      DOCKER_CONFIG: ${{ runner.temp }}/patra-docker-cfg
+      # 用 github.workspace 而非 runner.temp：runner context 在 job-level env 不可用，
+      # 否则整个 workflow startup failure（jobs 都不会创建）。actionlint 已校验无 context 错误。
+      DOCKER_CONFIG: ${{ github.workspace }}/.patra-docker-cfg
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
