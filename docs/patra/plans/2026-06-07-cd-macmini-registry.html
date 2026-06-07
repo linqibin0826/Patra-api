@@ -29,7 +29,7 @@
           <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
           <li data-task-status="done"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
+          <li data-task-status="in-progress"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -635,7 +635,7 @@ curl -fs http://linqibins-mac-mini:6000/actuator/health</code></pre>
       </article>
 
       <!-- ============================== TASK 7 ============================== -->
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="in-progress">
         <header>
           <h2>任务 7：文档 + 端到端自动部署 & 回滚验证</h2>
           <dl class="files">
@@ -644,13 +644,13 @@ curl -fs http://linqibins-mac-mini:6000/actuator/health</code></pre>
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：Compose 分栈表追加 patra-apps 行</strong>
             <p>在 <code>patra-infra/CLAUDE.md</code> 的「Compose 分栈结构」表格（<code>| patra-jobs | ... |</code> 行之后）追加一行：</p>
             <pre><code class="lang-text">| `patra-apps` | registry（应用容器，镜像来自 GHCR，由 CD 自动部署） |</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：新增「Self-hosted Runner 与 CD」章节</strong>
             <p>在「## scripts 一览」之前插入新章节，固化关键约束：</p>
             <pre><code class="lang-text">## Self-hosted Runner 与 CD
@@ -673,13 +673,13 @@ curl -fs http://linqibins-mac-mini:6000/actuator/health</code></pre>
   compose 用 env_file 叠加加载。新增服务的真 key 一律照此归位。</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：scripts 一览表追加 runner 安装脚本</strong>
             <p>在「## scripts 一览」表格追加一行：</p>
             <pre><code class="lang-text">| `install-github-runner.sh &lt;token&gt;` | Mac mini | 安装 GitHub self-hosted runner 为 launchd 常驻服务 |</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit 文档</strong>
             <pre><code class="lang-bash">git add patra-infra/CLAUDE.md
 git commit -m "docs(cd): patra-infra 记录 self-hosted runner 与 CD 运维约定 (PAP-CD)"</code></pre>
