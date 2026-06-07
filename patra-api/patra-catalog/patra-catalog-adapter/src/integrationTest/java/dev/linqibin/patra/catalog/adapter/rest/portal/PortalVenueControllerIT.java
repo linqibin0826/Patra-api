@@ -1,6 +1,8 @@
 package dev.linqibin.patra.catalog.adapter.rest.portal;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -8,11 +10,14 @@ import dev.linqibin.commons.query.PageResult;
 import dev.linqibin.patra.catalog.adapter.config.CatalogAdapterITWebMvcConfig;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueBrowseQueryService;
 import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQueryService;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFacets;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFilter;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -36,7 +41,7 @@ class PortalVenueControllerIT {
   @MockitoBean private PortalVenueDetailQueryService portalVenueDetailQueryService;
 
   @Test
-  @DisplayName("GET /portal/venues 返回 200 + 分页信封 + 期刊卡片")
+  @DisplayName("GET /portal/venues 返回 200 + 分页信封 + 期刊卡片（回归）")
   void shouldReturnBrowseResult() {
     VenueBrowseReadModel model =
         VenueBrowseReadModel.builder()
@@ -47,8 +52,7 @@ class PortalVenueControllerIT {
             .jcrQuartile("Q1")
             .foundedYear(1990)
             .build();
-    when(portalVenueBrowseQueryService.browse(
-            any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+    when(portalVenueBrowseQueryService.browse(any(), any()))
         .thenReturn(PageResult.of(List.of(model), 1, 12, 1));
 
     restClient
@@ -76,5 +80,66 @@ class PortalVenueControllerIT {
     restClient.get().uri("/portal/venues?pageSize=51").exchange().expectStatus().isEqualTo(422);
 
     verifyNoInteractions(portalVenueBrowseQueryService);
+  }
+
+  @Test
+  @DisplayName("GET /portal/venues 多值筛选：subject/jcr 解析为 List，oa 解析为 Boolean")
+  void shouldParseMultiValueFilters() {
+    when(portalVenueBrowseQueryService.browse(any(), any())).thenReturn(PageResult.empty(2, 12));
+
+    ArgumentCaptor<VenueBrowseFilter> filterCaptor =
+        ArgumentCaptor.forClass(VenueBrowseFilter.class);
+
+    restClient
+        .get()
+        .uri("/portal/venues?subject=Medicine,Oncology&jcr=Q1,Q2&oa=true&page=2")
+        .exchange()
+        .expectStatus()
+        .isOk();
+
+    verify(portalVenueBrowseQueryService).browse(filterCaptor.capture(), any());
+    VenueBrowseFilter captured = filterCaptor.getValue();
+    assertThat(captured.subjects()).containsExactlyInAnyOrder("Medicine", "Oncology");
+    assertThat(captured.jcrQuartiles()).containsExactlyInAnyOrder("Q1", "Q2");
+    assertThat(captured.isOpenAccess()).isTrue();
+  }
+
+  @Test
+  @DisplayName("GET /portal/venues/facets 返回 200 + 正确 JSON 结构")
+  void shouldReturnFacets() {
+    VenueBrowseFacets facets =
+        VenueBrowseFacets.builder()
+            .subjects(
+                List.of(
+                    VenueBrowseFacets.FacetCount.of("Medicine", 120),
+                    VenueBrowseFacets.FacetCount.of("Oncology", 45)))
+            .jcrQuartiles(List.of(VenueBrowseFacets.FacetCount.of("Q1", 80)))
+            .casQuartiles(List.of())
+            .countries(List.of())
+            .casTop(15)
+            .openAccess(60)
+            .doaj(30)
+            .build();
+    when(portalVenueBrowseQueryService.facets(any())).thenReturn(facets);
+
+    restClient
+        .get()
+        .uri("/portal/venues/facets?q=x&jcr=Q1")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectBody()
+        .jsonPath("$.subjects[0].value")
+        .isEqualTo("Medicine")
+        .jsonPath("$.subjects[0].count")
+        .isEqualTo(120)
+        .jsonPath("$.jcrQuartiles[0].value")
+        .isEqualTo("Q1")
+        .jsonPath("$.casTop")
+        .isEqualTo(15)
+        .jsonPath("$.openAccess")
+        .isEqualTo(60)
+        .jsonPath("$.doaj")
+        .isEqualTo(30);
   }
 }

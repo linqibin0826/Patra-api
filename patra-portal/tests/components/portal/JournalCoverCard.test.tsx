@@ -55,6 +55,16 @@ describe("JournalCoverCard", () => {
     expect(screen.queryByText(/est\./)).not.toBeInTheDocument();
   });
 
+  it("impactFactor 为 null 时渲染 '—' 不抛错", () => {
+    render(<JournalCoverCard journal={{ ...journal, impactFactor: null }} />);
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("impactFactor 有值时渲染 toFixed(1)", () => {
+    render(<JournalCoverCard journal={{ ...journal, impactFactor: 12.345 }} />);
+    expect(screen.getByText("12.3")).toBeInTheDocument();
+  });
+
   it("链接到对应期刊详情页", () => {
     render(<JournalCoverCard journal={journal} />);
     expect(screen.getByRole("link", { name: /Annals of oncology/ })).toHaveAttribute(

@@ -630,6 +630,12 @@
     <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS"/>
   </Match>
 
+  <!-- VenueBrowseReadAdapter.toArray: null 表示"不过滤"，语义上区别于"空过滤数组" -->
+  <Match>
+    <Class name="dev.linqibin.patra.catalog.infra.adapter.read.VenueBrowseReadAdapter"/>
+    <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS"/>
+  </Match>
+
   <!-- ========================================================================
        NP_NULL_PARAM_DEREF: Jackson DeserializationContext.reportInputMismatch
        ======================================================================== -->

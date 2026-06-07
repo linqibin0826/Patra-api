@@ -53,7 +53,7 @@ export function JournalCoverCard({ journal, className }: JournalCoverCardProps) 
         <div className="mt-1 flex items-baseline justify-between gap-2">
           <div className="flex flex-col">
             <span className="font-serif text-xl font-medium leading-tight tracking-tight text-ink-900 tabular-nums">
-              {journal.impactFactor.toFixed(1)}
+              {journal.impactFactor != null ? journal.impactFactor.toFixed(1) : "—"}
             </span>
             <span className="font-mono text-[9.5px] uppercase tracking-caps text-fg-3">
               影响因子

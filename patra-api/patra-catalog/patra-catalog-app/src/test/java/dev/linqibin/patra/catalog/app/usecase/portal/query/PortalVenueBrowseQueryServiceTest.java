@@ -1,20 +1,18 @@
 package dev.linqibin.patra.catalog.app.usecase.portal.query;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import dev.linqibin.commons.query.PageResult;
 import dev.linqibin.commons.query.PagingParams;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFacets;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFilter;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
-import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseSort;
 import dev.linqibin.patra.catalog.domain.port.read.VenueBrowseReadPort;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -26,67 +24,31 @@ class PortalVenueBrowseQueryServiceTest {
   @Mock private VenueBrowseReadPort readPort;
   @InjectMocks private PortalVenueBrowseQueryService service;
 
-  private PageResult<VenueBrowseReadModel> emptyPage(int page, int pageSize) {
-    return PageResult.empty(page, pageSize);
+  @Test
+  @DisplayName("browse 直接委托 readPort.search，透传 filter 和 paging")
+  void shouldDelegateToReadPort() {
+    PagingParams paging = PagingParams.normalize(1, 12, 12, 50);
+    VenueBrowseFilter filter = VenueBrowseFilter.builder().build();
+    PageResult<VenueBrowseReadModel> expected = PageResult.empty(1, 12);
+    when(readPort.search(filter, paging)).thenReturn(expected);
+
+    PageResult<VenueBrowseReadModel> result = service.browse(filter, paging);
+
+    assertThat(result).isSameAs(expected);
+    verify(readPort).search(filter, paging);
   }
 
   @Test
-  @DisplayName("默认 pageSize=12")
-  void shouldApplyDefaultPageSize() {
-    when(readPort.search(any(), any())).thenReturn(emptyPage(1, 12));
+  @DisplayName("facets 直接委托 readPort.facets，透传 filter")
+  void shouldDelegateFacetsToReadPort() {
+    VenueBrowseFilter filter = VenueBrowseFilter.builder().build();
+    VenueBrowseFacets expected =
+        VenueBrowseFacets.builder().casTop(10).openAccess(5).doaj(3).build();
+    when(readPort.facets(filter)).thenReturn(expected);
 
-    service.browse(null, null, null, null, null, null, null, null, null, null, null);
+    VenueBrowseFacets result = service.facets(filter);
 
-    ArgumentCaptor<PagingParams> paging = ArgumentCaptor.forClass(PagingParams.class);
-    verify(readPort).search(any(), paging.capture());
-    assertThat(paging.getValue().pageSize()).isEqualTo(12);
-  }
-
-  @Test
-  @DisplayName("pageSize 超过 50 被截断为 50")
-  void shouldCapPageSize() {
-    when(readPort.search(any(), any())).thenReturn(emptyPage(1, 50));
-
-    service.browse(null, null, null, null, null, null, null, null, null, 1, 999);
-
-    ArgumentCaptor<PagingParams> paging = ArgumentCaptor.forClass(PagingParams.class);
-    verify(readPort).search(any(), paging.capture());
-    assertThat(paging.getValue().pageSize()).isEqualTo(50);
-  }
-
-  @Test
-  @DisplayName("keyword 原始值直传 filter（转义由读适配器负责）")
-  void shouldPassRawKeywordToFilter() {
-    when(readPort.search(any(), any())).thenReturn(emptyPage(1, 12));
-
-    service.browse("100%", null, null, null, null, null, null, null, null, null, null);
-
-    ArgumentCaptor<VenueBrowseFilter> filter = ArgumentCaptor.forClass(VenueBrowseFilter.class);
-    verify(readPort).search(filter.capture(), any());
-    assertThat(filter.getValue().keyword()).isEqualTo("100%");
-  }
-
-  @Test
-  @DisplayName("sort 字符串 cas_quartile 解析为 CAS_QUARTILE")
-  void shouldParseSortCode() {
-    when(readPort.search(any(), any())).thenReturn(emptyPage(1, 12));
-
-    service.browse(null, "cas_quartile", null, null, null, null, null, null, null, null, null);
-
-    ArgumentCaptor<VenueBrowseFilter> filter = ArgumentCaptor.forClass(VenueBrowseFilter.class);
-    verify(readPort).search(filter.capture(), any());
-    assertThat(filter.getValue().sort()).isEqualTo(VenueBrowseSort.CAS_QUARTILE);
-  }
-
-  @Test
-  @DisplayName("空白 subject 转为 null 传入 filter")
-  void shouldConvertBlankSubjectToNull() {
-    when(readPort.search(any(), any())).thenReturn(emptyPage(1, 12));
-
-    service.browse(null, null, "  ", null, null, null, null, null, null, null, null);
-
-    ArgumentCaptor<VenueBrowseFilter> filter = ArgumentCaptor.forClass(VenueBrowseFilter.class);
-    verify(readPort).search(filter.capture(), any());
-    assertThat(filter.getValue().subject()).isNull();
+    assertThat(result).isSameAs(expected);
+    verify(readPort).facets(filter);
   }
 }
