@@ -64,3 +64,36 @@ jobs:
           docker build -t "$IMAGE_NAME:$TAG" -t "$IMAGE_NAME:latest" "$CTX"
           docker push "$IMAGE_NAME:$TAG"
           docker push "$IMAGE_NAME:latest"
+
+  deploy:
+    name: deploy
+    needs: build-and-push
+    # 回滚（build 被跳过）时仍部署；仅当 build 失败才不部署
+    if: always() && needs.build-and-push.result != 'failure'
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🚀 Deploy to Mac mini (OrbStack)
+        run: |
+          export REGISTRY_IMAGE_TAG="${{ github.event.inputs.image_tag || github.sha }}"
+          echo "部署镜像 tag: $REGISTRY_IMAGE_TAG"
+          cd patra-infra/docker
+          docker compose -f docker-compose.apps.yaml pull registry
+          docker compose -f docker-compose.apps.yaml up -d registry
+
+      - name: 🩺 Health check
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:6000/actuator/health | grep -q '"status":"UP"'; then
+              echo "✓ registry 健康 (UP)"
+              exit 0
+            fi
+            echo "等待 registry 健康... ($i/30)"
+            sleep 5
+          done
+          echo "✗ registry 健康检查超时，最近日志："
+          docker logs patra-registry --tail 100
+          exit 1

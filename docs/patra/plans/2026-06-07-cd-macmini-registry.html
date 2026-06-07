@@ -28,7 +28,7 @@
           <li data-task-status="done"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
         </ol>
       </li>
@@ -547,7 +547,7 @@ cat ~/actions-runner/.path   # 预期含 /usr/local/bin
       </article>
 
       <!-- ============================== TASK 6 ============================== -->
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：cd.yml deploy job + compose-all.sh 集成</h2>
           <dl class="files">
@@ -557,7 +557,7 @@ cat ~/actions-runner/.path   # 预期含 /usr/local/bin
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：给 cd.yml 追加 deploy job</strong>
             <p>在 <code>build-and-push</code> job 之后（<code>jobs:</code> 内同级）追加。<code>runs-on: [self-hosted, macmini]</code> 让它在 Mac mini 本地执行；<code>if: always() &amp;&amp; needs.build-and-push.result != 'failure'</code> 让回滚（build 被跳过）时仍能部署。在 runner 的 checkout workspace 里直接跑 compose，<code>name: patra-apps</code> 保证操作的是 OrbStack 里同一组容器（compose 用 project 名识别，与目录无关）。</p>
             <pre><code class="lang-yaml">  deploy:
@@ -593,7 +593,7 @@ cat ~/actions-runner/.path   # 预期含 /usr/local/bin
           exit 1</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：把 apps 纳入 compose-all.sh 编排</strong>
             <p>修改 <code>patra-infra/scripts/compose-all.sh</code> 第 21 行的 ORDER 数组，末尾追加 <code>apps</code>（应用在基础设施之后启动）。改后：</p>
             <pre><code class="lang-bash"># 启动顺序：core 基础设施先行；tailnet 网关先于 jobs；apps 应用最后
@@ -601,13 +601,13 @@ ORDER=(core storage search observability tailnet jobs apps)</code></pre>
             <p>说明：手动 <code>compose-all.sh up apps</code> 时镜像 tag 回退 <code>latest</code>（GHCR public 免登录直接 pull）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add .github/workflows/cd.yml patra-infra/scripts/compose-all.sh
 git commit -m "feat(cd): cd.yml deploy job + compose-all 纳入 apps 栈 (PAP-CD)"</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：前置确认 — Mac mini 基础设施在跑</strong>
             <p>registry 容器依赖 patra-net 内的 postgres/nacos/redis。在 Mac mini 上确认 core 栈在运行：</p>
             <pre><code class="lang-bash"># 在 Mac mini 上
@@ -615,7 +615,7 @@ bash ~/Projects/patra/patra-infra/scripts/compose-all.sh up core
 bash ~/Projects/patra/patra-infra/scripts/compose-all.sh ps   # 预期见 patra-postgres / patra-nacos / patra-redis Up</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="skipped">
             <strong>步骤 5：推分支并用 workflow_dispatch 跑通整链</strong>
             <pre><code class="lang-bash">git push
 gh workflow run cd.yml --ref worktree-setup-cd
@@ -623,7 +623,7 @@ gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[
             <p>预期：<code>build-and-push</code> 与 <code>deploy</code> 两 job 全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="skipped">
             <strong>步骤 6：在 Mac mini 与 tailscale 上验证容器健康</strong>
             <pre><code class="lang-bash"># 在 Mac mini 上：容器 running 且 healthy
 docker ps --filter name=patra-registry --format '{{.Names}}\t{{.Status}}'
