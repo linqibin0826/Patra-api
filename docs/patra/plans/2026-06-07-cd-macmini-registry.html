@@ -23,7 +23,7 @@
       <li><a href="#file-structure">文件结构</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li data-task-status="pending"><a href="#task-1">Task 1 — registry Dockerfile（本地构建验证）</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — registry Dockerfile（本地构建验证）</a></li>
           <li data-task-status="pending"><a href="#task-2">Task 2 — compose.apps + .env.apps</a></li>
           <li data-task-status="pending"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
@@ -106,7 +106,7 @@ patra-infra/
       <h2>任务列表</h2>
 
       <!-- ============================== TASK 1 ============================== -->
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：registry Dockerfile（本地构建验证）</h2>
           <dl class="files">
@@ -116,7 +116,7 @@ patra-infra/
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写 Dockerfile</strong>
             <p>采用「CI 先 build jar → 镜像只 COPY」策略。registry 的 convention plugin 已设 <code>bootJar.archiveClassifier=""</code> 且禁用 plain jar，故 <code>build/libs/</code> 下只有一个 fat jar，可用单文件通配 COPY。健康检查需要 curl，temurin jre 镜像默认不含，故 apt 安装。</p>
             <pre><code class="lang-dockerfile"># patra-registry 运行镜像
@@ -139,7 +139,7 @@ EXPOSE 6000
 ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar"]</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：写 .dockerignore</strong>
             <p>docker build context = registry-boot 目录，含庞大的 <code>src/</code> 与 <code>build/</code> 其他产物。只保留 <code>build/libs</code> 下的 jar，排除其余以加速。</p>
             <pre><code class="lang-text"># 缩小 docker build context：只需要 build/libs 下的 fat jar
@@ -153,13 +153,13 @@ build/reports/
 build/test-results/</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：本地构建 bootJar</strong>
             <p>运行（仓库根）：<code>./gradlew :patra-api:patra-registry:patra-registry-boot:bootJar</code></p>
             <p>预期：BUILD SUCCESSFUL；产物出现在 <code>patra-api/patra-registry/patra-registry-boot/build/libs/patra-registry-boot-0.1.0-SNAPSHOT.jar</code>（用 <code>ls</code> 确认只有一个 jar）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：本地构建镜像</strong>
             <p>运行（仓库根）：</p>
             <pre><code class="lang-bash">docker build \
@@ -168,7 +168,7 @@ build/test-results/</code></pre>
             <p>预期：镜像构建成功，最后输出 <code>naming to docker.io/library/patra-registry:local</code>。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：冒烟验证镜像可启动</strong>
             <p>无 DB/Nacos 时容器会启动到加载 prod 配置后失败退出——这是预期的；本步只验证「镜像本身可运行、能进入 Spring Boot 启动流程」。运行：</p>
             <pre><code class="lang-bash">docker run --rm -e SPRING_PROFILES_ACTIVE=prod \
@@ -179,7 +179,7 @@ build/test-results/</code></pre>
             <p>预期：能看到 Spring Boot 启动横幅 / <code>The following 1 profile is active: "prod"</code> 之类日志，随后因连不上 DB 报错退出。看到启动横幅即通过。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-registry/patra-registry-boot/Dockerfile \
         patra-api/patra-registry/patra-registry-boot/.dockerignore
