@@ -27,7 +27,7 @@
           <li data-task-status="done"><a href="#task-2">Task 2 — compose.apps + .env.apps</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
         </ol>
@@ -467,7 +467,7 @@ gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[
       </article>
 
       <!-- ============================== TASK 5 ============================== -->
-      <article class="task" id="task-5" data-status="pending">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：Mac mini self-hosted runner 安装</h2>
           <dl class="files">
@@ -476,7 +476,7 @@ gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写 install-github-runner.sh</strong>
             <p>在 Mac mini 上下载 runner、注册到仓库、装成 launchd 常驻服务。registration token 由用户运行时传入（绝不写死/提交）。关键：runner 以非交互方式跑时 PATH 不含 OrbStack 的 docker（见 patra-infra/CLAUDE.md 非显性约束 #2），用 runner 的 <code>.path</code> 文件显式补 <code>/usr/local/bin</code>。</p>
             <pre><code class="lang-bash">#!/usr/bin/env bash
@@ -521,13 +521,13 @@ echo "==&gt; 安装为 launchd 服务并启动"
             <p>说明：<code>--labels "macmini"</code> 即可，runner 会自动附带内置 <code>self-hosted</code> 标签，故 cd.yml 的 <code>runs-on: [self-hosted, macmini]</code> 能命中。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：Commit 脚本</strong>
             <pre><code class="lang-bash">git add patra-infra/scripts/install-github-runner.sh
 git commit -m "feat(cd): 新增 Mac mini self-hosted runner 安装脚本 (PAP-CD)"</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：在 Mac mini 上安装 runner（用户实操）</strong>
             <p>把脚本同步到 Mac mini（如 Mac mini 的仓库副本 <code>git pull</code>），并在 Mac mini 上执行（<code>&lt;TOKEN&gt;</code> 替换为 GitHub 页面给出的 registration token）：</p>
             <pre><code class="lang-bash"># 在 Mac mini 上（ssh linqibin@linqibins-mac-mini 后）
@@ -535,7 +535,7 @@ bash ~/Projects/patra/patra-infra/scripts/install-github-runner.sh &lt;TOKEN&gt;
             <p>预期：<code>svc.sh status</code> 显示服务 <code>started</code>。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：验证 runner 在线且能访问 docker</strong>
             <p>① GitHub → Settings → Actions → Runners，确认 <code>macmini</code> 状态为 <strong>Idle / online</strong>，labels 含 <code>self-hosted, macmini</code>。</p>
             <p>② 在 Mac mini 上确认 runner 环境能找到 docker：</p>
@@ -777,13 +777,29 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
         </header>
         <p>plan Task 4/6 设想在 feature 分支用 <code>gh workflow run --ref</code> 验证 cd.yml，但 GitHub 要求 workflow_dispatch 的 workflow 先存在于默认分支 main 才能手动触发。调整：Task 4–6 仅写好并 commit，首次完整 CD 验证推迟到 Task 7 merge main 后由 push:main 自动触发；回滚的 workflow_dispatch 验证在 merge 后可用。本地以 Task 1 镜像冒烟 + actionlint 兜底 cd.yml 正确性。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-07T20:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T20:40">06-07 20:40</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>plan 的 install-github-runner.sh 硬编码 RUNNER_VERSION=2.328.0；改为脚本运行时从 GitHub API 查 actions/runner 最新 release，避免硬编码版本失效导致下载 404。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-07T21:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T21:05">06-07 21:05</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>install-github-runner.sh 原把 <code>.path</code> 写在 <code>config.sh</code> 之前，但 config 会按当前 PATH 重新生成 <code>.path</code> 覆盖之 —— 修复为在 config 之后覆写。本次已装的 runner 其 <code>.path</code> 由 config 生成（<code>/usr/local/bin:/usr/bin:...</code>），恰含 OrbStack docker 所在的 /usr/local/bin、docker 可达、runner online，故未重装（功能正常，修复仅保证脚本将来复用正确）。</p>
+      </li>
     </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">1</span> changes /
+      <span data-counter="change">3</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
