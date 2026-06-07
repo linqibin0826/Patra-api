@@ -122,6 +122,49 @@ function FacetGroup({ title, selCount, defaultOpen = true, children }: FacetGrou
   );
 }
 
+interface SearchableCheckListProps {
+  options: { value: string; count: number }[];
+  selected: string[];
+  searchPlaceholder: string;
+  onToggle: (value: string) => void;
+}
+
+// 可搜索 + 可滚动的复选列表（学科、国家等长列表 facet 共用）
+function SearchableCheckList({
+  options,
+  selected,
+  searchPlaceholder,
+  onToggle,
+}: SearchableCheckListProps) {
+  const [search, setSearch] = useState("");
+  const filtered = search
+    ? options.filter((opt) => opt.value.toLowerCase().includes(search.toLowerCase()))
+    : options;
+  return (
+    <>
+      <div className="mb-1.5 pr-1">
+        <Input
+          placeholder={searchPlaceholder}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-7 text-xs"
+        />
+      </div>
+      <div className="max-h-48 overflow-y-auto">
+        {filtered.map((opt) => (
+          <CheckRow
+            key={opt.value}
+            label={opt.value}
+            count={opt.count}
+            checked={selected.includes(opt.value)}
+            onChange={() => onToggle(opt.value)}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
 // ---- 主筛选内容（rail 与 sheet 共用） ----
 
 interface FilterControlsProps {
@@ -131,12 +174,6 @@ interface FilterControlsProps {
 }
 
 function FilterControls({ facets, query, onFilter }: FilterControlsProps) {
-  const [subjectSearch, setSubjectSearch] = useState("");
-
-  const filteredSubjects = subjectSearch
-    ? facets.subject.filter((opt) => opt.value.toLowerCase().includes(subjectSearch.toLowerCase()))
-    : facets.subject;
-
   // JCR 按规范顺序排列，只展示 facets 中有的项
   const jcrOptions = JCR_QUARTILE_ORDER.filter((q) => facets.jcr.some((opt) => opt.value === q));
 
@@ -150,25 +187,12 @@ function FilterControls({ facets, query, onFilter }: FilterControlsProps) {
     <div className="flex flex-col">
       {/* 1. 学科领域 */}
       <FacetGroup title="学科领域" selCount={query.subject.length}>
-        <div className="mb-1.5 pr-1">
-          <Input
-            placeholder="搜索学科…"
-            value={subjectSearch}
-            onChange={(e) => setSubjectSearch(e.target.value)}
-            className="h-7 text-xs"
-          />
-        </div>
-        <div className="max-h-48 overflow-y-auto">
-          {filteredSubjects.map((opt) => (
-            <CheckRow
-              key={opt.value}
-              label={opt.value}
-              count={opt.count}
-              checked={query.subject.includes(opt.value)}
-              onChange={() => onFilter(toggleArrValue(query, "subject", opt.value))}
-            />
-          ))}
-        </div>
+        <SearchableCheckList
+          options={facets.subject}
+          selected={query.subject}
+          searchPlaceholder="搜索学科…"
+          onToggle={(value) => onFilter(toggleArrValue(query, "subject", value))}
+        />
       </FacetGroup>
 
       {/* 2. JCR 分区 */}
@@ -223,15 +247,12 @@ function FilterControls({ facets, query, onFilter }: FilterControlsProps) {
 
       {/* 5. 国家 / 地区 */}
       <FacetGroup title="国家 / 地区" selCount={query.country.length}>
-        {facets.country.map((opt) => (
-          <CheckRow
-            key={opt.value}
-            label={opt.value}
-            count={opt.count}
-            checked={query.country.includes(opt.value)}
-            onChange={() => onFilter(toggleArrValue(query, "country", opt.value))}
-          />
-        ))}
+        <SearchableCheckList
+          options={facets.country}
+          selected={query.country}
+          searchPlaceholder="搜索国家 / 地区…"
+          onToggle={(value) => onFilter(toggleArrValue(query, "country", value))}
+        />
       </FacetGroup>
     </div>
   );

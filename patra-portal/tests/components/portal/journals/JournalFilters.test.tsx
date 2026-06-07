@@ -101,7 +101,7 @@ describe("JournalFilters", () => {
   describe("学科本地搜索", () => {
     it("本地搜索过滤后只显示匹配项，不触发 router", () => {
       render(<JournalFilters facets={baseFacets} query={baseQuery} />);
-      const searchInput = screen.getByPlaceholderText(/搜索/i);
+      const searchInput = screen.getByPlaceholderText(/搜索学科/i);
       fireEvent.change(searchInput, { target: { value: "医" } });
       // 医学可见，生物和化学不可见
       expect(screen.getByText("医学")).toBeInTheDocument();
@@ -113,11 +113,31 @@ describe("JournalFilters", () => {
 
     it("清空搜索后恢复所有项", () => {
       render(<JournalFilters facets={baseFacets} query={baseQuery} />);
-      const searchInput = screen.getByPlaceholderText(/搜索/i);
+      const searchInput = screen.getByPlaceholderText(/搜索学科/i);
       fireEvent.change(searchInput, { target: { value: "医" } });
       fireEvent.change(searchInput, { target: { value: "" } });
       expect(screen.getByText("生物")).toBeInTheDocument();
       expect(screen.getByText("化学")).toBeInTheDocument();
+    });
+  });
+
+  describe("国家本地搜索", () => {
+    it("本地搜索过滤后只显示匹配项，不触发 router", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const searchInput = screen.getByPlaceholderText(/搜索国家/i);
+      fireEvent.change(searchInput, { target: { value: "US" } });
+      expect(screen.getByText("US")).toBeInTheDocument();
+      expect(screen.queryByText("UK")).not.toBeInTheDocument();
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it("清空搜索后恢复所有国家项", () => {
+      render(<JournalFilters facets={baseFacets} query={baseQuery} />);
+      const searchInput = screen.getByPlaceholderText(/搜索国家/i);
+      fireEvent.change(searchInput, { target: { value: "US" } });
+      fireEvent.change(searchInput, { target: { value: "" } });
+      expect(screen.getByText("US")).toBeInTheDocument();
+      expect(screen.getByText("UK")).toBeInTheDocument();
     });
   });
 
