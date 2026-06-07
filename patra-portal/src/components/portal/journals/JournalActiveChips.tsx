@@ -23,15 +23,17 @@ export function JournalActiveChips({ query }: Props) {
         return (
           <li
             key={`${chip.group}-${chip.value}`}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-xs"
+            className="inline-flex items-center gap-1.5 rounded-full border border-clay-200 bg-clay-50 py-0.5 pr-1 pl-2.5 text-xs font-medium text-clay-800"
           >
-            <span className="text-muted-foreground">{chip.group}</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.04em] text-clay-600">
+              {chip.group}
+            </span>
             <span>{chip.label}</span>
             <button
               type="button"
               aria-label={`移除 ${chip.label}`}
               onClick={() => router.push(`/journals${qs ? `?${qs}` : ""}`)}
-              className="ml-0.5 flex items-center text-muted-foreground hover:text-foreground"
+              className="flex size-4 items-center justify-center rounded-full text-clay-600 hover:bg-clay-100 hover:text-clay-900"
             >
               <XIcon className="size-3" />
             </button>
@@ -42,7 +44,7 @@ export function JournalActiveChips({ query }: Props) {
         <button
           type="button"
           onClick={() => router.push("/journals")}
-          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          className="text-xs text-(--fg-3) underline underline-offset-2 hover:text-clay-700"
         >
           清除全部
         </button>

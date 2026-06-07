@@ -1,10 +1,8 @@
 "use client";
 
-import { SlidersHorizontalIcon, XIcon } from "lucide-react";
+import { SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SORT_OPTIONS, serializeVenueBrowseQuery } from "@/lib/portal-api/venue-browse";
 import { cn } from "@/lib/utils";
 import { useJournalFilterUiStore } from "@/store/journal-filter-ui";
@@ -14,8 +12,10 @@ interface Props {
   query: VenueBrowseQuery;
 }
 
-/// 期刊浏览页检索框 + 排序段控件 + 移动端筛选按钮。
-/// 检索框防抖 300ms replace；排序/筛选 push。
+/// 期刊浏览页检索 / 排序条。
+/// 检索框：白底内嵌井（放大镜 + 清除）+ 独立「检索」提交按钮；防抖 300ms replace。
+/// 排序：「排序」标签 + 连体 segmented 控件（选中深填充，降序项带 ↓）；push。
+/// 移动端附「筛选」按钮（开抽屉）。
 export function JournalSearchSortControls({ query }: Props) {
   const router = useRouter();
   const open = useJournalFilterUiStore((s) => s.open);
@@ -28,24 +28,38 @@ export function JournalSearchSortControls({ query }: Props) {
     setLocalQ(query.q);
   }, [query.q]);
 
+  const navigateQ = useCallback(
+    (value: string) => {
+      const qs = serializeVenueBrowseQuery({ ...query, q: value, page: 1 });
+      router.replace(`/journals${qs ? `?${qs}` : ""}`);
+    },
+    [query, router],
+  );
+
   const handleInputChange = useCallback(
     (value: string) => {
       setLocalQ(value);
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        const qs = serializeVenueBrowseQuery({ ...query, q: value, page: 1 });
-        router.replace(`/journals${qs ? `?${qs}` : ""}`);
-      }, 300);
+      debounceRef.current = setTimeout(() => navigateQ(value), 300);
     },
-    [query, router],
+    [navigateQ],
   );
 
   const handleClear = useCallback(() => {
     setLocalQ("");
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const qs = serializeVenueBrowseQuery({ ...query, q: "", page: 1 });
-    router.replace(`/journals${qs ? `?${qs}` : ""}`);
-  }, [query, router]);
+    navigateQ("");
+  }, [navigateQ]);
+
+  // 「检索」按钮 / 回车提交：立即冲刷防抖，按当前输入检索
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      navigateQ(localQ);
+    },
+    [navigateQ, localQ],
+  );
 
   const handleSort = useCallback(
     (sortId: VenueBrowseQuery["sort"]) => {
@@ -55,7 +69,7 @@ export function JournalSearchSortControls({ query }: Props) {
     [query, router],
   );
 
-  // 计算已选筛选维度总数（用于移动端角标）
+  // 已选筛选维度总数（移动端角标）
   const activeFilterCount =
     query.subject.length +
     query.jcr.length +
@@ -66,67 +80,98 @@ export function JournalSearchSortControls({ query }: Props) {
     (query.doaj ? 1 : 0);
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* 检索框 */}
-      <div className="relative flex items-center gap-2">
-        <Input
-          role="searchbox"
-          type="search"
-          placeholder="搜索期刊名称或缩写…"
-          value={localQ}
-          onChange={(e) => handleInputChange(e.target.value)}
-          className="pr-8"
-        />
-        {localQ && (
-          <button
-            type="button"
-            aria-label="清除搜索"
-            onClick={handleClear}
-            className="absolute right-2 flex items-center text-muted-foreground hover:text-foreground"
-          >
-            <XIcon className="size-3.5" />
-          </button>
-        )}
-      </div>
-
-      {/* 排序 + 移动端筛选按钮 */}
-      <div className="flex items-center gap-2">
-        {/* 排序段 */}
-        <fieldset className="flex flex-wrap gap-1 border-0 p-0" aria-label="排序方式">
-          {SORT_OPTIONS.map((opt) => (
-            <Button
-              key={opt.id}
-              variant="outline"
-              size="sm"
-              aria-pressed={query.sort === opt.id}
-              onClick={() => handleSort(opt.id)}
-              className={cn(query.sort === opt.id && "border-ring bg-muted font-semibold")}
+    <div className="flex flex-wrap items-center gap-3.5 border-b border-(--border-default) py-3">
+      {/* 检索框 + 检索按钮 */}
+      <form
+        onSubmit={handleSubmit}
+        className="flex min-w-0 flex-1 basis-[360px] items-center gap-2"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md border border-(--border-strong) bg-white px-3 shadow-inner transition-colors focus-within:border-clay-400">
+          <SearchIcon className="size-4 shrink-0 text-(--fg-3)" aria-hidden="true" />
+          <input
+            type="search"
+            placeholder="按刊名 / 缩写检索期刊"
+            value={localQ}
+            onChange={(e) => handleInputChange(e.target.value)}
+            autoComplete="off"
+            spellCheck="false"
+            aria-label="按刊名检索期刊"
+            className="min-w-0 flex-1 border-0 bg-transparent py-2.5 text-base text-ink-900 outline-none placeholder:text-(--fg-4)"
+          />
+          {localQ && (
+            <button
+              type="button"
+              aria-label="清除搜索"
+              onClick={handleClear}
+              className="flex size-6 shrink-0 items-center justify-center rounded text-(--fg-3) hover:bg-paper-200 hover:text-ink-900"
             >
-              {opt.label}
-            </Button>
-          ))}
-        </fieldset>
-
-        {/* 移动端筛选按钮（md 以上隐藏） */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="relative ml-auto md:hidden"
-          onClick={open}
-          aria-label="筛选"
-        >
-          <SlidersHorizontalIcon className="size-3.5" />
-          筛选
-          {activeFilterCount > 0 && (
-            <span
-              data-testid="filter-badge"
-              className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground"
-            >
-              {activeFilterCount}
-            </span>
+              <XIcon className="size-3.5" />
+            </button>
           )}
-        </Button>
+        </div>
+        <button
+          type="submit"
+          className="flex shrink-0 items-center gap-1.5 self-stretch rounded-md border border-(--border-strong) bg-paper-50 px-3.5 text-sm font-semibold text-(--fg-1) transition-colors hover:bg-paper-200"
+        >
+          <SearchIcon className="size-3.5 text-clay-600" aria-hidden="true" />
+          检索
+        </button>
+      </form>
+
+      {/* 排序段控件 */}
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-(--fg-4)">
+          排序
+        </span>
+        <fieldset
+          aria-label="排序方式"
+          className="m-0 inline-flex min-w-0 items-center overflow-hidden rounded-md border border-(--border-default) p-0"
+        >
+          {SORT_OPTIONS.map((opt) => {
+            const active = query.sort === opt.id;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => handleSort(opt.id)}
+                className={cn(
+                  "border-0 border-r border-(--border-subtle) px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors last:border-r-0",
+                  active
+                    ? "bg-ink-900 text-paper-50 hover:bg-ink-800"
+                    : "text-(--fg-3) hover:bg-paper-200 hover:text-ink-900",
+                )}
+              >
+                {opt.label}
+                {opt.desc && (
+                  <span aria-hidden="true" className="ml-1 font-mono text-[10px] opacity-70">
+                    ↓
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </fieldset>
       </div>
+
+      {/* 移动端筛选按钮（md 以上隐藏） */}
+      <button
+        type="button"
+        onClick={open}
+        aria-label="筛选"
+        className="relative ml-auto flex shrink-0 items-center gap-1.5 rounded-md border border-(--border-default) bg-paper-50 px-3 py-1.5 text-sm font-semibold text-(--fg-1) transition-colors hover:bg-paper-200 md:hidden"
+      >
+        <SlidersHorizontalIcon className="size-3.5" />
+        筛选
+        {activeFilterCount > 0 && (
+          <span
+            data-testid="filter-badge"
+            className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-clay-500 text-[10px] font-semibold text-white"
+          >
+            {activeFilterCount}
+          </span>
+        )}
+      </button>
     </div>
   );
 }
