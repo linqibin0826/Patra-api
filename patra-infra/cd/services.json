@@ -1,0 +1,45 @@
+{
+  "_comment": "后端服务 CD 单一事实源（SSOT）。cd.yml 的 detect-changes / build matrix / deploy 都从这里取。加新服务=加一个条目，不改 workflow 逻辑。srcPrefix 用于选择性构建的路径映射（带末尾斜杠）；context 是 docker build 上下文（boot 模块，build/libs 所在）。",
+  "services": [
+    {
+      "name": "registry",
+      "gradleTask": ":patra-api:patra-registry:patra-registry-boot:bootJar",
+      "context": "patra-api/patra-registry/patra-registry-boot",
+      "srcPrefix": "patra-api/patra-registry/",
+      "port": 6000,
+      "image": "ghcr.io/linqibin0826/patra-registry"
+    },
+    {
+      "name": "object-storage",
+      "gradleTask": ":patra-api:patra-object-storage:patra-object-storage-boot:bootJar",
+      "context": "patra-api/patra-object-storage/patra-object-storage-boot",
+      "srcPrefix": "patra-api/patra-object-storage/",
+      "port": 6200,
+      "image": "ghcr.io/linqibin0826/patra-object-storage"
+    },
+    {
+      "name": "catalog",
+      "gradleTask": ":patra-api:patra-catalog:patra-catalog-boot:bootJar",
+      "context": "patra-api/patra-catalog/patra-catalog-boot",
+      "srcPrefix": "patra-api/patra-catalog/",
+      "port": 6300,
+      "image": "ghcr.io/linqibin0826/patra-catalog"
+    },
+    {
+      "name": "ingest",
+      "gradleTask": ":patra-api:patra-ingest:patra-ingest-boot:bootJar",
+      "context": "patra-api/patra-ingest/patra-ingest-boot",
+      "srcPrefix": "patra-api/patra-ingest/",
+      "port": 6100,
+      "image": "ghcr.io/linqibin0826/patra-ingest"
+    },
+    {
+      "name": "gateway",
+      "gradleTask": ":patra-api:patra-gateway-boot:bootJar",
+      "context": "patra-api/patra-gateway-boot",
+      "srcPrefix": "patra-api/patra-gateway-boot/",
+      "port": 9528,
+      "image": "ghcr.io/linqibin0826/patra-gateway"
+    }
+  ]
+}

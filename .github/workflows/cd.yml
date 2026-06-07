@@ -1,21 +1,35 @@
 name: CD
 
-# 持续部署：merge 到 main（或手动触发）→ 构建 registry 镜像推 GHCR
-#          → self-hosted runner 部署到 Mac mini。
+# 持续部署（多服务）：merge 到 main（或手动触发）
+#   → detect-changes 算出本次改动了哪些服务（含「改公共面→重建全部」规则）
+#   → build-and-push 用动态 matrix 只构建改动的服务，推 GHCR
+#   → deploy 在 Mac mini self-hosted runner 上选择性 compose pull + up。
+# 服务清单 SSOT：patra-infra/cd/services.json。
 # 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
 #       保证 self-hosted runner 永不执行未经审查的 fork PR 代码。
 on:
   push:
     branches: [main]
     paths:
-      - 'patra-api/patra-registry/**'
-      - 'patra-infra/docker/docker-compose.apps.yaml'
-      - 'patra-infra/docker/.env.apps'
+      - 'patra-api/**'
+      - 'linqibin-commons/**'
+      - 'patra-starters/**'
+      - 'build-logic/**'
+      - 'gradle/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle.properties'
+      - 'patra-infra/docker/**'
+      - 'patra-infra/cd/**'
       - '.github/workflows/cd.yml'
   workflow_dispatch:
     inputs:
+      service:
+        description: '部署哪个服务（留空/all=全部改动判定；单服务名配合 image_tag 回滚）'
+        required: false
+        default: ''
       image_tag:
-        description: '要部署的镜像 tag（留空=构建并部署本次 commit；回滚时填旧 sha）'
+        description: '镜像 tag（留空=构建并部署本次 commit；回滚填旧 sha，需配合单 service）'
         required: false
         default: ''
 
@@ -23,24 +37,61 @@ concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  IMAGE_NAME: ghcr.io/linqibin0826/patra-registry
-
 jobs:
+  # ---- 1) 算出本次需要 build/deploy 的服务 ----
+  detect-changes:
+    name: detect-changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+    steps:
+      - name: 📥 Checkout（全历史，detect 需 git diff）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 🔍 Detect changed services
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SERVICES=$(bash patra-infra/cd/detect-changes.sh dispatch "${{ github.event.inputs.service }}")
+          else
+            SERVICES=$(bash patra-infra/cd/detect-changes.sh push "${{ github.event.before }}" "${{ github.sha }}")
+          fi
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          echo "本次改动服务: $SERVICES"
+
+  # ---- 2) 只构建改动的服务，推 GHCR（动态 matrix）----
   build-and-push:
     name: build-and-push
-    # 回滚（指定了 image_tag）时跳过构建，直接部署 GHCR 已有镜像
-    if: github.event_name == 'push' || github.event.inputs.image_tag == ''
+    needs: detect-changes
+    # 回滚（指定了 image_tag）时跳过构建；无改动服务（[]）时也跳过
+    if: needs.detect-changes.outputs.services != '[]' && (github.event_name == 'push' || github.event.inputs.image_tag == '')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
       packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.detect-changes.outputs.services) }}
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: 🧭 读取服务元数据（from services.json）
+        id: meta
+        run: |
+          SVC='${{ matrix.service }}'
+          J=patra-infra/cd/services.json
+          echo "gradleTask=$(jq -r --arg s "$SVC" '.services[]|select(.name==$s)|.gradleTask' "$J")" >> "$GITHUB_OUTPUT"
+          echo "context=$(jq -r --arg s "$SVC" '.services[]|select(.name==$s)|.context' "$J")" >> "$GITHUB_OUTPUT"
+          echo "port=$(jq -r --arg s "$SVC" '.services[]|select(.name==$s)|.port' "$J")" >> "$GITHUB_OUTPUT"
+          echo "image=$(jq -r --arg s "$SVC" '.services[]|select(.name==$s)|.image' "$J")" >> "$GITHUB_OUTPUT"
 
       - name: ☕ Setup JDK 25 (Temurin)
         uses: actions/setup-java@v4
@@ -53,39 +104,42 @@ jobs:
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-      - name: 🔨 Build bootJar
-        run: ./gradlew :patra-api:patra-registry:patra-registry-boot:bootJar
+      - name: 🔨 Build bootJar (${{ matrix.service }})
+        run: ./gradlew ${{ steps.meta.outputs.gradleTask }}
 
       - name: 🔑 Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: 🐳 Build & push image
+      - name: 🐳 Build & push image (${{ matrix.service }})
         run: |
           TAG="${{ github.sha }}"
-          CTX="patra-api/patra-registry/patra-registry-boot"
-          docker build -t "$IMAGE_NAME:$TAG" -t "$IMAGE_NAME:latest" "$CTX"
-          docker push "$IMAGE_NAME:$TAG"
-          docker push "$IMAGE_NAME:latest"
+          IMG="${{ steps.meta.outputs.image }}"
+          docker build \
+            -f patra-infra/docker/service.Dockerfile \
+            --build-arg APP_PORT=${{ steps.meta.outputs.port }} \
+            -t "$IMG:$TAG" -t "$IMG:latest" \
+            "${{ steps.meta.outputs.context }}"
+          docker push "$IMG:$TAG"
+          docker push "$IMG:latest"
 
+  # ---- 3) 在 Mac mini 上选择性部署（单 job 循环，按依赖顺序）----
   deploy:
     name: deploy
-    needs: build-and-push
-    # 回滚（build 被跳过）时仍部署；仅当 build 失败才不部署
-    # 正常部署 build 成功（success）；回滚跳过 build（skipped）。failure/cancelled 都不部署。
-    if: always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
+    needs: [detect-changes, build-and-push]
+    # 无改动服务则不部署；build 成功（正常）或被跳过（回滚）都部署；build 失败/取消不部署。
+    if: always() && needs.detect-changes.outputs.services != '[]' && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
     runs-on: [self-hosted, macmini]
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: read
     env:
-      # macOS self-hosted runner：docker login 默认走钥匙串(osxkeychain)，launchd 非交互会话
-      # 无法解锁钥匙串（error -25308）；且 config 无 credsStore 时 docker 在 macOS 仍 fallback 钥匙串。
-      # 故不调 docker login，改为直接把凭据 base64 写入 DOCKER_CONFIG/config.json 的 auths 字段，
-      # docker compose pull 读 auths 认证、完全绕过钥匙串。
-      # 用 github.workspace 而非 runner.temp：runner context 在 job-level env 不可用，
-      # 否则整个 workflow startup failure（jobs 都不会创建）。actionlint 已校验无 context 错误。
+      # macOS self-hosted runner：不调 docker login（launchd 非交互无法解锁钥匙串 -25308），
+      # 直接把凭据 base64 写入 DOCKER_CONFIG/config.json 的 auths 字段，绕过钥匙串。
+      # 用 github.workspace（runner context 在 job-level env 不可用，否则 workflow startup failure）。
       DOCKER_CONFIG: ${{ github.workspace }}/.patra-docker-cfg
+      SERVICES: ${{ needs.detect-changes.outputs.services }}
+      IMAGE_TAG_INPUT: ${{ github.event.inputs.image_tag }}
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
@@ -95,37 +149,56 @@ jobs:
       - name: 🔑 配置 GHCR 凭据（写 auths + 软链 compose 插件，绕过 macOS 钥匙串）
         run: |
           mkdir -p "$DOCKER_CONFIG"
-          # 自定义 DOCKER_CONFIG 后 docker 只在 $DOCKER_CONFIG/cli-plugins 找插件；
-          # 软链到默认 ~/.docker/cli-plugins，使 docker compose（OrbStack 插件）仍可用
+          # 自定义 DOCKER_CONFIG 后 docker 只在 $DOCKER_CONFIG/cli-plugins 找插件；软链回默认目录使 compose 可用
           ln -sf "$HOME/.docker/cli-plugins" "$DOCKER_CONFIG/cli-plugins"
-          # 直接写 auths（不调 docker login）绕过 macOS 钥匙串硬默认
           AUTH=$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')
           printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" > "$DOCKER_CONFIG/config.json"
 
-      - name: 🚀 Deploy to Mac mini (OrbStack)
+      - name: 🚀 Deploy 改动服务（按依赖顺序，object-storage 优先）
         run: |
-          export REGISTRY_IMAGE_TAG="${{ github.event.inputs.image_tag || github.sha }}"
-          echo "部署镜像 tag: $REGISTRY_IMAGE_TAG"
+          set -uo pipefail
+          TAG="${IMAGE_TAG_INPUT:-${{ github.sha }}}"
           cd patra-infra/docker
-          # Mac mini 出站偶发 tls 抖动，pull 加重试韧性
-          ok=0
-          for i in 1 2 3; do
-            if docker compose -f docker-compose.apps.yaml pull registry; then ok=1; break; fi
-            echo "pull 失败（网络抖动？），重试 $i/3..."; sleep 10
-          done
-          [ "$ok" = 1 ] || { echo "✗ 镜像 pull 3 次均失败"; exit 1; }
-          docker compose -f docker-compose.apps.yaml up -d registry
-
-      - name: 🩺 Health check
-        run: |
-          for i in $(seq 1 30); do
-            if curl -fs http://localhost:6000/actuator/health | grep -q '"status":"UP"'; then
-              echo "✓ registry 健康 (UP)"
-              exit 0
+          # 依赖顺序：object-storage 先（catalog/ingest 运行时 HTTP 依赖它）；其余顺序无关。
+          ORDER='object-storage registry gateway catalog ingest'
+          DEPLOYED=""
+          for svc in $ORDER; do
+            if ! echo "$SERVICES" | jq -e --arg s "$svc" 'index($s) != null' >/dev/null; then
+              continue
             fi
-            echo "等待 registry 健康... ($i/30)"
-            sleep 5
+            VAR="$(echo "$svc" | tr 'a-z-' 'A-Z_')_IMAGE_TAG"
+            export "$VAR=$TAG"
+            echo "===== 部署 $svc（$VAR=$TAG）====="
+            ok=0
+            for i in 1 2 3; do
+              if docker compose -f docker-compose.apps.yaml pull "$svc"; then ok=1; break; fi
+              echo "pull 失败（网络抖动？），重试 $i/3..."; sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "✗ $svc 镜像 pull 3 次均失败"; exit 1; }
+            docker compose -f docker-compose.apps.yaml up -d "$svc"
+            DEPLOYED="$DEPLOYED $svc"
           done
-          echo "✗ registry 健康检查超时，最近日志："
-          docker logs patra-registry --tail 100
-          exit 1
+          echo "已 up:$DEPLOYED"
+
+      - name: 🩺 Health check（逐服务轮询各自端口 /actuator/health）
+        run: |
+          set -uo pipefail
+          fail=0
+          for svc in $(echo "$SERVICES" | jq -r '.[]'); do
+            PORT=$(jq -r --arg s "$svc" '.services[]|select(.name==$s)|.port' patra-infra/cd/services.json)
+            echo "----- 检查 $svc (:$PORT) -----"
+            healthy=0
+            for i in $(seq 1 30); do
+              if curl -fs "http://localhost:$PORT/actuator/health" | grep -q '"status":"UP"'; then
+                echo "✓ $svc 健康 (UP)"; healthy=1; break
+              fi
+              echo "等待 $svc 健康... ($i/30)"
+              sleep 5
+            done
+            if [ "$healthy" != 1 ]; then
+              echo "✗ $svc 健康检查超时，最近日志："
+              docker logs "patra-$svc" --tail 80 2>&1 || true
+              fail=1
+            fi
+          done
+          [ "$fail" = 0 ] || { echo "存在不健康服务，deploy 失败"; exit 1; }

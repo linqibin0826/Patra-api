@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>后端多服务 CD 设计</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#services">服务清单与 SSOT</a></li>
+      <li><a href="#workflow">工作流架构</a></li>
+      <li><a href="#infra">Dockerfile / compose / env</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>后端多服务 CD 设计</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-08</span>
+        <span>🌿 worktree-cd-backend-multiservice</span>
+        <span>👤 Lin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>把 object-storage / catalog / ingest / gateway 四个后端服务接入已有的 Mac mini self-hosted CD（registry 已完成，作为模板）。采用<strong>单 workflow + 动态 matrix + 选择性构建</strong>：<code>detect-changes</code> 用 git diff 算出本次改动了哪些服务（含「改公共面 → 重建全部」的正确性规则）→ matrix 只并行构建改动的服务并推 GHCR → Mac mini 选择性 <code>compose pull + up</code>。5 个服务共用<strong>一份分层 Dockerfile</strong>与<strong>一个服务 SSOT</strong>（<code>services.json</code>），加新服务只改配置、不改工作流逻辑。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>registry 已通过 PR #137–142 完成容器化 + Spring Boot 4 分层 jar + 端到端 CD：merge main → 云端（ubuntu）build 镜像推 GHCR → Mac mini self-hosted runner 部署（auths 绕钥匙串 + 软链 compose 插件 + pull 重试 + health check）。现把其余 4 个后端服务纳入同一条流水线。</p>
+      <p>关键事实（已核查）：<strong>基建全部已 provision</strong> —— <code>docker-compose.core.yaml</code> 有 PG/Redis/Nacos，<code>jobs.yaml</code> 有 RocketMQ + xxl-job，<code>storage.yaml</code> 有 MinIO；<strong>5 个服务全部用同一 <code>linqibin.hexagonal-boot</code> 约定插件打包</strong>（bootJar <code>archiveClassifier=""</code> + 禁 plain jar），连 gateway（Spring Cloud Gateway / WebFlux）也是普通 fat jar，意味着刚做的分层 Dockerfile 是 5 个服务的通用模板。另发现 <strong><code>patra-object-storage</code> 是完整的第 5 个服务</strong>（六层齐全），且 catalog / ingest 都通过 <code>lb://patra-object-storage</code> HTTP 依赖它 —— 是个隐藏的前置依赖。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>object-storage(6200) / catalog(6300) / ingest(6100) / gateway(9528) 四服务接入 CD</li>
+            <li>服务 SSOT：<code>patra-infra/cd/services.json</code></li>
+            <li>共享分层 Dockerfile（<strong>合并删除 registry 那份</strong>）</li>
+            <li><code>cd.yml</code> 重写：detect-changes（含「改公共面 → 重建全部」规则）+ matrix 选择性 build/push + 选择性 deploy</li>
+            <li><code>docker-compose.apps.yaml</code> 扩为 5 服务</li>
+            <li>env 结构：<code>.env.common</code> + <code>.env.{svc}</code> + <code>.env.{svc}.secret</code></li>
+            <li><code>workflow_dispatch</code> 单服务部署 / 回滚到指定 tag</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>前端 patra-portal CD（结构不同，另开一轮 brainstorm）</li>
+            <li>gateway 功能加固（本轮只部署骨架，filter/限流/认证不在此）</li>
+            <li>蓝绿 / 零停机部署（dev 环境 <code>up -d</code> 重建够用）</li>
+            <li>多架构镜像（Mac mini 单 arm64 目标）</li>
+            <li>新增基建服务（PG/Redis/Nacos/MinIO/RocketMQ/xxl-job 已全部 provision）</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="services">
+      <h2>3. 服务清单与 SSOT</h2>
+      <p>新增 <code>patra-infra/cd/services.json</code> 作为单一事实源，workflow（detect-changes 路径映射、build matrix、deploy）与文档都从这里取。<strong>加服务 = 加一个条目</strong>：</p>
+      <table>
+        <thead>
+          <tr><th>服务</th><th>gradle 模块 / docker context</th><th>端口</th><th>外部依赖</th><th>成熟度</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>registry</code></td><td><code>patra-api/patra-registry/patra-registry-boot</code></td><td>6000</td><td>PG · Redis · Nacos</td><td><span class="pill low">已完成</span></td></tr>
+          <tr><td><code>object-storage</code></td><td><code>patra-api/patra-object-storage/patra-object-storage-boot</code></td><td>6200</td><td>PG · Nacos · MinIO</td><td>可部署</td></tr>
+          <tr><td><code>catalog</code></td><td><code>patra-api/patra-catalog/patra-catalog-boot</code></td><td>6300</td><td>PG · Redis · Nacos · MinIO · xxl-job · object-storage(HTTP)</td><td>可部署</td></tr>
+          <tr><td><code>ingest</code></td><td><code>patra-api/patra-ingest/patra-ingest-boot</code></td><td>6100</td><td>PG · Redis · Nacos · MinIO · RocketMQ · xxl-job · object-storage(HTTP)</td><td>可部署（调度/MQ 驱动，无 HTTP 业务端点）</td></tr>
+          <tr><td><code>gateway</code></td><td><code>patra-gateway-boot</code> <strong>（顶层，路径不规则）</strong></td><td>9528</td><td>Nacos（仅服务发现，WebFlux）</td><td>骨架（静态路由可运行）</td></tr>
+        </tbody>
+      </table>
+      <p>每条 entry 含：<code>name</code> · <code>gradleTask</code>（如 <code>:patra-api:patra-catalog:patra-catalog-boot:bootJar</code>）· <code>context</code>（docker build 上下文）· <code>port</code> · <code>image</code>（<code>ghcr.io/linqibin0826/patra-{name}</code>）。gateway 的 context 路径不规则由此条目吸收，workflow 无需特判。</p>
+    </section>
+
+    <section id="workflow">
+      <h2>4. 工作流架构（方案 A：单 workflow + 动态 matrix + 选择性构建）</h2>
+      <p><code>cd.yml</code> 三段 job，触发 <code>push:main</code>（paths 扩到 patra-api 全部服务 + patra-infra/docker + cd.yml + 共享面）与 <code>workflow_dispatch</code>：</p>
+      <div class="decision">
+        <h3>job 1 — <code>detect-changes</code>（ubuntu）</h3>
+        <p>用 <code>git diff --name-only</code> 对比本次 push 的前后 commit，按 <code>services.json</code> 把改动路径映射成服务名，输出 <code>services</code>（JSON 数组）供下游 matrix。<strong>核心规则</strong>：</p>
+        <ul>
+          <li>改 <code>patra-api/patra-{svc}/**</code> 或 gateway 目录 → 该服务进 matrix</li>
+          <li>改<strong>共享面</strong>（<code>patra-common-*</code> / <code>linqibin-spring-boot-starter-*</code> / <code>build-logic/</code> / <code>patra-infra/docker/service.Dockerfile</code> / <code>docker-compose.apps.yaml</code> / <code>.env.common</code>）→ <strong>输出全部 5 个服务</strong>（公共依赖变了，所有服务的 jar 都需重建重部）</li>
+          <li><code>workflow_dispatch</code> → 输出指定的单个服务（或 all）</li>
+          <li><code>github.event.before</code> 为全零（首次 / force push）时 → fallback 为全部服务</li>
+        </ul>
+      </div>
+      <div class="decision">
+        <h3>job 2 — <code>build-and-push</code>（ubuntu，matrix）</h3>
+        <p><code>strategy.matrix.service: ${{ fromJson(needs.detect-changes.outputs.services) }}</code>，<strong>只对改动的服务</strong>并行执行（一套 step 参数化）：setup-java 25 + gradle bootJar（<code>matrix.service</code> 对应的 gradleTask）→ <code>docker build -f patra-infra/docker/service.Dockerfile {context}</code> → 推 <code>ghcr.io/linqibin0826/patra-{service}:{sha}</code> + <code>:latest</code>。空 matrix（无服务改动）时整 job 跳过。</p>
+      </div>
+      <div class="decision">
+        <h3>job 3 — <code>deploy</code>（self-hosted macmini，matrix）</h3>
+        <p>沿用 registry 已验证的部署机制（auths 写 <code>DOCKER_CONFIG/config.json</code> 绕钥匙串 + 软链 cli-plugins + pull 重试）。对每个改动服务：<code>export {SVC}_IMAGE_TAG={sha}</code> → <code>docker compose pull {service}</code>（重试 3 次）→ <code>compose up -d {service}</code> → 轮询该服务端口的 <code>/actuator/health</code> 直到 UP。回滚（dispatch 指定 tag、build 跳过）时仍部署。</p>
+      </div>
+    </section>
+
+    <section id="infra">
+      <h2>5. 共享 Dockerfile / compose / env</h2>
+      <div class="decision">
+        <h3>共享分层 Dockerfile — <code>patra-infra/docker/service.Dockerfile</code></h3>
+        <p>把 registry 那份分层 Dockerfile 泛化：内容逐字节通用（<code>COPY build/libs/*.jar</code> 本就与服务无关），唯一参数化点是端口 → <code>ARG APP_PORT</code> + <code>EXPOSE ${APP_PORT}</code>（EXPOSE 仅文档性，实际端口由 compose 映射）。保留多阶段 <code>jarmode=tools extract --layers</code>、非 root appuser、<code>/app/logs</code> 权限、curl、内存上限、瘦 jar entrypoint。<strong>删除 <code>patra-registry-boot/Dockerfile</code></strong>。</p>
+      </div>
+      <div class="decision">
+        <h3><code>docker-compose.apps.yaml</code> 扩为 5 服务</h3>
+        <p>每个服务一个 service 块：<code>image: ghcr.io/linqibin0826/patra-{svc}:${{SVC}_IMAGE_TAG:-latest}</code>、<code>env_file: [.env.common, .env.{svc}, {path: .env.{svc}.secret, required: false}]</code>、<code>ports: {host}:{container}</code>、<code>healthcheck</code> curl 各自端口 <code>/actuator/health</code>、<code>networks: patra-net</code>（external）。无 <code>depends_on</code> 链（见决策 5）。</p>
+      </div>
+      <div class="decision">
+        <h3>env 结构</h3>
+        <p><code>.env.common</code>（共享基建坐标：NACOS_HOST/PORT、PG host、Redis、MinIO、RocketMQ namesrv、xxl-job admin —— dev 默认，进仓库）+ <code>.env.{svc}</code>（服务专属：DB 名、SPRING_PROFILES_ACTIVE、服务端口 —— dev 默认，进仓库）+ <code>.env.{svc}.secret</code>（真敏感密钥，<code>.gitignore</code> 已含 <code>.env.*.secret</code>，可选）。registry 现有 <code>.env.apps</code> 改名 <code>.env.registry</code> 以统一命名。</p>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <h2>6. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：工作流采用方案 A（单 workflow + 动态 matrix + 选择性构建）</h3>
+        <p>一个 cd.yml，detect-changes 算改动服务 → matrix 只构建改动的 → 选择性 deploy。DRY、只构建改动的、加服务只加配置、并行快。</p>
+        <p class="alternatives"><strong>备选 B（可复用 workflow <code>workflow_call</code>）：</strong>抽 cd-service.yml 逐服务 call — 否决：reusable 的 inputs/secrets 传递样板多，对 5 个同构服务是过度抽象，matrix 已够 DRY。<br>
+        <strong>备选 C（每服务一个 workflow 文件）：</strong>5 份 cd-*.yml — 否决：5 份高度重复 YAML，改一处部署逻辑要同步 5 个文件，DRY 灾难，绿地项目不该如此。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：5 服务共用一份 Dockerfile，删除 registry 自己那份</h3>
+        <p>5 个 Dockerfile 逐字节相同（仅端口可参数化）→ 抽成 <code>patra-infra/docker/service.Dockerfile</code> 一份，<code>ARG APP_PORT</code> 处理端口差异。</p>
+        <p class="alternatives"><strong>备选：</strong>每服务一份 Dockerfile（registry 模式复制 5 份）— 否决：DRY 违反，改部署镜像逻辑要同步 5 份，绿地无理由保留重复。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：detect-changes 纳入「改公共面 → 重建全部」规则</h3>
+        <p>改 <code>patra-common-*</code> / starter / <code>build-logic</code> / 共享 Dockerfile / compose / <code>.env.common</code> 时，detect-changes 输出全部 5 个服务。</p>
+        <p class="alternatives"><strong>备选：</strong>只按 <code>patra-{svc}</code> 目录算改动 — 否决：公共模块改了却不重建依赖它的服务，是<strong>正确性 bug</strong>（服务跑着旧公共代码 / 旧依赖）。宁可多建不可漏建。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：env 用 common + svc + secret 三层</h3>
+        <p>共享基建坐标抽 <code>.env.common</code>，服务专属各一份，密钥单独 gitignore。</p>
+        <p class="alternatives"><strong>备选：</strong>每服务一份自包含 env — 否决：基建坐标（Nacos/PG host 等）在 5 份里重复，改一处要同步 5 份。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：不做严格部署顺序（无 depends_on 链）</h3>
+        <p>catalog/ingest 对 object-storage 是 <strong>lazy HTTP-Interface 调用</strong>（运行时才调，非启动时）+ Nacos 发现 + 重试 → 即使 object-storage 未起，它们也能 healthy 启动，仅运行时调用受影响。故选择性单服务部署安全。</p>
+        <p class="alternatives"><strong>备选：</strong>compose <code>depends_on</code> + 健康门控编排部署顺序 — 否决：启动健康不依赖下游，编排徒增复杂度；首次全量部署时建议同批 up 即可，无需强制链。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>7. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>detect-changes 漏判共享面 → 服务跑旧公共依赖</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>决策 3 的「改公共面 → 重建全部」规则覆盖；<code>github.event.before</code> 为空时 fallback 全建（宁可多建）</td>
+          </tr>
+          <tr>
+            <td>ingest 无 HTTP 业务端点，health check 依赖 actuator</td>
+            <td><span class="pill low">low</span></td>
+            <td>ingest 是 Spring Boot 应用，actuator 独立于业务 Controller；落地时确认 <code>/actuator/health</code> 已暴露在服务端口</td>
+          </tr>
+          <tr>
+            <td>object-storage 未起时 catalog/ingest 运行时调用失败</td>
+            <td><span class="pill low">low</span></td>
+            <td>lazy HTTP + Nacos + 重试，仅运行时受影响、不影响启动健康；首次全量部署时同批 up</td>
+          </tr>
+          <tr>
+            <td>弱网首次拉 5 个镜像的依赖层（各约 80MB）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>分层 jar 已优化：各服务 dependencies 层独立缓存，仅首次拉一次；pull 重试 3 次；后续部署只传变化的 application 层</td>
+          </tr>
+          <tr>
+            <td>gateway（WebFlux）与其他服务（MVC）同 compose</td>
+            <td><span class="pill low">low</span></td>
+            <td>独立容器、独立 fat jar，无同 classpath 冲突</td>
+          </tr>
+          <tr>
+            <td>matrix + 动态 <code>fromJson</code> YAML 出错（空 matrix / 语法）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>空数组时下游 job 自动跳过（GitHub matrix 行为）；先用 <code>workflow_dispatch</code> 单服务跑通再依赖 push 自动触发</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>8. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>patra-infra/cd/services.json</code></td><td><span class="pill create">create</span></td><td>服务 SSOT（name/gradleTask/context/port/image）</td></tr>
+          <tr><td>2</td><td><code>patra-infra/docker/service.Dockerfile</code></td><td><span class="pill create">create</span></td><td>共享分层 Dockerfile（从 registry 泛化，ARG APP_PORT）</td></tr>
+          <tr><td>3</td><td><code>patra-api/patra-registry/patra-registry-boot/Dockerfile</code></td><td><span class="pill delete">delete</span></td><td>合并到共享 Dockerfile</td></tr>
+          <tr><td>4</td><td><code>.github/workflows/cd.yml</code></td><td><span class="pill modify">modify</span></td><td>重写：detect-changes + matrix build/push + 选择性 deploy</td></tr>
+          <tr><td>5</td><td><code>patra-infra/docker/docker-compose.apps.yaml</code></td><td><span class="pill modify">modify</span></td><td>加 object-storage/catalog/ingest/gateway 4 服务</td></tr>
+          <tr><td>6</td><td><code>patra-infra/docker/.env.common</code></td><td><span class="pill create">create</span></td><td>共享基建坐标（dev 默认）</td></tr>
+          <tr><td>7</td><td><code>patra-infra/docker/.env.{object-storage,catalog,ingest,gateway}</code></td><td><span class="pill create">create</span></td><td>4 个服务专属 env（dev 默认）</td></tr>
+          <tr><td>8</td><td><code>patra-infra/docker/.env.apps</code> → <code>.env.registry</code></td><td><span class="pill modify">modify</span></td><td>registry env 改名以统一 <code>.env.{svc}</code> 命名</td></tr>
+          <tr><td>9</td><td><code>patra-infra/CLAUDE.md</code></td><td><span class="pill modify">modify</span></td><td>CD 章节更新为多服务（SSOT / matrix / 选择性构建）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>改单个服务代码 push main → 仅该服务 rebuild + redeploy，其余 build 跳过</li>
+        <li>改公共模块（如 <code>patra-common-core</code> / 某 starter）push main → 全部 5 个服务 rebuild + redeploy</li>
+        <li>5 个服务容器在 Mac mini 全部 healthy（各自端口 <code>/actuator/health</code> 返回 UP）</li>
+        <li><code>workflow_dispatch</code> 能把单个服务部署 / 回滚到指定 tag</li>
+        <li>各服务 dependencies 层缓存复用（沿用分层 jar 收益，第二次部署只传 application 层）</li>
+        <li>在 <code>services.json</code> 加一个条目即可纳入新服务，无需改 workflow 逻辑</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>

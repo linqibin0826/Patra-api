@@ -1,10 +1,21 @@
-version: "3.9"
-
 name: patra-apps
 
 # Patra 应用容器栈（与基础设施容器同在外部网络 patra-net）。
 # 镜像由 CD（.github/workflows/cd.yml）构建推送到 GHCR，本文件只负责在 Mac mini 上编排运行。
-# 镜像 tag 由 deploy job 通过 REGISTRY_IMAGE_TAG 注入；手动 compose-all.sh up apps 时回退 latest。
+# 镜像 tag 由 deploy job 通过 {SVC}_IMAGE_TAG 注入；手动 compose-all.sh up apps 时回退 latest。
+#
+# env_file 三层叠加（后者覆盖同名）：
+#   .env.common         共享基建坐标（Nacos/MinIO/RocketMQ/xxl-job，patra-net 服务名 + dev 默认）
+#   .env.<svc>          服务专属（DB/Redis/bucket/日志路径，dev 默认）
+#   .env.<svc>.secret   真敏感密钥（gitignore，缺失时跳过）
+#
+# 服务清单 SSOT 见 patra-infra/cd/services.json（端口/镜像/构建上下文）。
+
+x-app-healthcheck: &app-healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 15
+  start_period: 60s
 
 services:
   registry:
@@ -13,16 +24,69 @@ services:
     restart: unless-stopped
     ports: [ "6000:6000" ]
     env_file:
-      - .env.apps
-      # 真敏感密钥（gitignore，绝不进仓库）；registry 当前不需要，文件缺失时跳过
-      - path: .env.apps.secret
+      - .env.common
+      - .env.registry
+      - path: .env.registry.secret
         required: false
     healthcheck:
       test: [ "CMD", "curl", "-fs", "http://localhost:6000/actuator/health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 40s
+      <<: *app-healthcheck
+
+  object-storage:
+    image: ghcr.io/linqibin0826/patra-object-storage:${OBJECT_STORAGE_IMAGE_TAG:-latest}
+    container_name: patra-object-storage
+    restart: unless-stopped
+    ports: [ "6200:6200" ]
+    env_file:
+      - .env.common
+      - .env.object-storage
+      - path: .env.object-storage.secret
+        required: false
+    healthcheck:
+      test: [ "CMD", "curl", "-fs", "http://localhost:6200/actuator/health" ]
+      <<: *app-healthcheck
+
+  catalog:
+    image: ghcr.io/linqibin0826/patra-catalog:${CATALOG_IMAGE_TAG:-latest}
+    container_name: patra-catalog
+    restart: unless-stopped
+    ports: [ "6300:6300" ]
+    env_file:
+      - .env.common
+      - .env.catalog
+      - path: .env.catalog.secret
+        required: false
+    healthcheck:
+      test: [ "CMD", "curl", "-fs", "http://localhost:6300/actuator/health" ]
+      <<: *app-healthcheck
+
+  ingest:
+    image: ghcr.io/linqibin0826/patra-ingest:${INGEST_IMAGE_TAG:-latest}
+    container_name: patra-ingest
+    restart: unless-stopped
+    ports: [ "6100:6100" ]
+    env_file:
+      - .env.common
+      - .env.ingest
+      - path: .env.ingest.secret
+        required: false
+    healthcheck:
+      test: [ "CMD", "curl", "-fs", "http://localhost:6100/actuator/health" ]
+      <<: *app-healthcheck
+
+  gateway:
+    image: ghcr.io/linqibin0826/patra-gateway:${GATEWAY_IMAGE_TAG:-latest}
+    container_name: patra-gateway
+    restart: unless-stopped
+    ports: [ "9528:9528" ]
+    env_file:
+      - .env.common
+      - .env.gateway
+      - path: .env.gateway.secret
+        required: false
+    healthcheck:
+      test: [ "CMD", "curl", "-fs", "http://localhost:9528/actuator/health" ]
+      <<: *app-healthcheck
 
 networks:
   default:

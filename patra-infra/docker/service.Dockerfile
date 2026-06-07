@@ -1,8 +1,12 @@
-# patra-registry 运行镜像（Spring Boot 4 分层 jar）
-# CI 已用 Gradle 构建好 bootJar（复用 Actions Gradle 缓存）。这里用多阶段构建：
-#   builder 阶段以 jarmode=tools 把 fat jar 拆成 4 层；runtime 阶段按「变化频率从低到高」
-#   逐层 COPY。78M 的第三方依赖层在依赖不变时被 docker 永久缓存复用，每次部署只需
-#   传约 500K 的 application 层——这是 Mac mini 弱网部署的关键优化（详见 patra-infra/CLAUDE.md）。
+# patra 后端服务通用运行镜像（Spring Boot 4 分层 jar）
+# 5 个服务（registry / object-storage / catalog / ingest / gateway）共用这一份——它们都用同一
+# linqibin.hexagonal-boot 约定插件打包成 fat jar（archiveClassifier="" + 禁 plain jar），
+# 故 COPY build/libs/*.jar 与服务无关，逐字节通用。唯一参数化点是 EXPOSE 端口（仅文档性）。
+#
+# 用法：docker build -f patra-infra/docker/service.Dockerfile --build-arg APP_PORT=<port> <boot 模块 context>
+#
+# 分层：builder 用 jarmode=tools 拆 4 层；runtime 按变化频率低→高逐层 COPY，使 ~80M 第三方依赖层
+# 在依赖不变时被 docker 永久缓存复用，每次部署只传约几百 KB 的 application 层（弱网部署关键）。
 
 # ---- builder：提取分层 ----
 FROM eclipse-temurin:25-jre AS builder
@@ -30,10 +34,10 @@ RUN useradd -r -u 10001 appuser \
     && chown -R appuser:appuser /app
 
 # 分层 COPY，顺序即缓存策略——越少变化的层越靠前，使其 docker 缓存命中率最大化：
-#   dependencies        78M 第三方 jar，build.gradle 不变则层 hash 不变 → 永久缓存
+#   dependencies        第三方 jar（build.gradle 不变则层 hash 不变 → 永久缓存）
 #   spring-boot-loader  loader 类（SB4 tools 模式下内嵌于 app.jar，本层当前为空）
 #   snapshot-dependencies  SNAPSHOT 第三方依赖（当前无，留层契合 Spring Boot 分层约定）
-#   application         约 500K，瘦启动 jar app.jar + patra 自身模块，每次 build 仅此层变
+#   application         瘦启动 jar app.jar + patra 自身模块，每次 build 仅此层变
 COPY --from=builder --chown=appuser:appuser /builder/extracted/dependencies/ ./
 COPY --from=builder --chown=appuser:appuser /builder/extracted/spring-boot-loader/ ./
 COPY --from=builder --chown=appuser:appuser /builder/extracted/snapshot-dependencies/ ./
@@ -41,7 +45,9 @@ COPY --from=builder --chown=appuser:appuser /builder/extracted/application/ ./
 
 USER appuser
 
-EXPOSE 6000
+# 各服务端口不同，由 build-arg 注入（EXPOSE 仅文档性，实际端口由 compose 映射）
+ARG APP_PORT=8080
+EXPOSE ${APP_PORT}
 
 # 启动瘦 jar（非 uber jar）：仅含应用代码 + 对 lib/ 下已提取依赖的引用，CDS/AOT 友好。
 # 容器感知内存（temurin 25 默认开启 container support；显式给上限更稳）。
