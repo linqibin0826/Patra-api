@@ -35,9 +35,9 @@
     },
     {
       "name": "gateway",
-      "gradleTask": ":patra-gateway-boot:bootJar",
-      "context": "patra-gateway-boot",
-      "srcPrefix": "patra-gateway-boot/",
+      "gradleTask": ":patra-api:patra-gateway-boot:bootJar",
+      "context": "patra-api/patra-gateway-boot",
+      "srcPrefix": "patra-api/patra-gateway-boot/",
       "port": 9528,
       "image": "ghcr.io/linqibin0826/patra-gateway"
     }
