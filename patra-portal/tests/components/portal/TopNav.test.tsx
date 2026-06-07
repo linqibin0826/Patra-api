@@ -51,12 +51,17 @@ describe("TopNav", () => {
     expect(journalLink).toHaveAttribute("aria-current", "page");
   });
 
-  it("文献 / 主题 link 仍标记为 aria-disabled", () => {
+  it("文献 link 仍标记为 aria-disabled 且用可生效的 (--fg-4) 灰置灰", () => {
     render(<TopNav />);
-    for (const label of ["文献", "主题"]) {
-      const link = screen.getByText(label).closest("a");
-      expect(link).toHaveAttribute("aria-disabled", "true");
-    }
+    const link = screen.getByText("文献").closest("a");
+    expect(link).toHaveAttribute("aria-disabled", "true");
+    // 死类 text-fg-4 不生成 CSS；必须用 arbitrary value (--fg-4) 才真正变灰
+    expect(link?.className).toMatch(/\(--fg-4\)/);
+  });
+
+  it("主题 tab 已移除（不再渲染）", () => {
+    render(<TopNav />);
+    expect(screen.queryByText("主题")).not.toBeInTheDocument();
   });
 
   it("点击汉堡按钮打开 Sheet drawer", async () => {

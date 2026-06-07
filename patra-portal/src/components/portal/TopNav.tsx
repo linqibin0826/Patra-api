@@ -13,7 +13,6 @@ const NAV_ITEMS = [
   { label: "首页", href: "/", disabled: false },
   { label: "文献", href: "#", disabled: true },
   { label: "期刊", href: "/journals", disabled: false },
-  { label: "主题", href: "#", disabled: true },
 ] as const;
 
 /// 当前路径是否命中导航项。首页要求精确匹配，其余按前缀匹配以覆盖 `/journals/[id]` 等子路由。
@@ -50,11 +49,11 @@ export function TopNav() {
                     <a
                       href={item.href}
                       aria-disabled="true"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-fg-4 cursor-not-allowed"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-(--fg-4) cursor-not-allowed"
                       onClick={(e) => e.preventDefault()}
                     >
                       {item.label}
-                      <span className="rounded-sm border border-border-subtle bg-paper-100 px-1 font-mono text-[9.5px] uppercase tracking-caps text-fg-4">
+                      <span className="rounded-sm border border-(--border-subtle) bg-paper-100 px-1 font-mono text-[9.5px] uppercase tracking-caps text-(--fg-4)">
                         soon
                       </span>
                     </a>
@@ -123,10 +122,10 @@ export function TopNav() {
                           href={item.href}
                           aria-disabled="true"
                           onClick={(e) => e.preventDefault()}
-                          className="flex items-center justify-between border-b border-border-subtle px-2 py-3 text-base font-medium text-fg-4"
+                          className="flex items-center justify-between border-b border-(--border-subtle) px-2 py-3 text-base font-medium text-(--fg-4)"
                         >
                           {item.label}
-                          <span className="rounded-sm border border-border-subtle bg-paper-50 px-1 font-mono text-[10px] uppercase tracking-caps">
+                          <span className="rounded-sm border border-(--border-subtle) bg-paper-50 px-1 font-mono text-[10px] uppercase tracking-caps">
                             soon
                           </span>
                         </a>
