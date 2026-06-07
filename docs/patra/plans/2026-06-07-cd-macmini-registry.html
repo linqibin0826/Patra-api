@@ -793,13 +793,21 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
         </header>
         <p>install-github-runner.sh 原把 <code>.path</code> 写在 <code>config.sh</code> 之前，但 config 会按当前 PATH 重新生成 <code>.path</code> 覆盖之 —— 修复为在 config 之后覆写。本次已装的 runner 其 <code>.path</code> 由 config 生成（<code>/usr/local/bin:/usr/bin:...</code>），恰含 OrbStack docker 所在的 /usr/local/bin、docker 可达、runner online，故未重装（功能正常，修复仅保证脚本将来复用正确）。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-07T21:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T21:20">06-07 21:20</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>偏离 spec 决策 6（GHCR public）：deploy job 改加 <code>permissions: packages:read</code> + <code>docker login ghcr</code>（GITHUB_TOKEN），镜像保持 <strong>private</strong>。原因：build-push 与 deploy 同 workflow 连续自动跑，首次部署时包仍是 private、没有手动设 public 的窗口、会 pull 失败；用 GITHUB_TOKEN 自动登录更优——更安全、无首次时序摩擦。代价：手动 <code>compose-all up apps</code> 时 Mac mini 需预先 <code>docker login ghcr</code> 一次。</p>
+      </li>
     </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">3</span> changes /
+      <span data-counter="change">4</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
