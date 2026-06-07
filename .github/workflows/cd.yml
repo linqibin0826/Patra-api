@@ -92,9 +92,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: 🔑 配置 GHCR 凭据（写 auths，绕过 macOS 钥匙串）
+      - name: 🔑 配置 GHCR 凭据（写 auths + 软链 compose 插件，绕过 macOS 钥匙串）
         run: |
           mkdir -p "$DOCKER_CONFIG"
+          # 自定义 DOCKER_CONFIG 后 docker 只在 $DOCKER_CONFIG/cli-plugins 找插件；
+          # 软链到默认 ~/.docker/cli-plugins，使 docker compose（OrbStack 插件）仍可用
+          ln -sf "$HOME/.docker/cli-plugins" "$DOCKER_CONFIG/cli-plugins"
+          # 直接写 auths（不调 docker login）绕过 macOS 钥匙串硬默认
           AUTH=$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')
           printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" > "$DOCKER_CONFIG/config.json"
 
