@@ -825,13 +825,21 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
         </header>
         <p>方案 D 的第二次 merge 又 startup failure（jobs 全不创建、"workflow file issue"）：根因是把 <code>DOCKER_CONFIG: ${{ runner.temp }}</code> 放在 <strong>job-level env</strong>，而 <code>runner</code> context 在 job-level env 不可用（解析早于 runner 分配）。改用 <code>${{ github.workspace }}</code>（github context 在 job env 可用），并临时下载 actionlint 静态校验确认无 context 错误后再 merge。教训：job-level env 只能用 github/secrets/vars/inputs/needs，不能用 runner/steps。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-07T22:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T22:30">06-07 22:30</time>
+          <a href="#task-7">§ Task 7 (deploy)</a>
+        </header>
+        <p>第三次 deploy 失败：<code>docker compose -f</code> 报 "unknown shorthand flag: 'f'"——自定义 DOCKER_CONFIG 后 docker 只在 <code>$DOCKER_CONFIG/cli-plugins</code> 找插件，OrbStack 的 compose 插件在默认 <code>~/.docker/cli-plugins</code> 下丢失。修复（方案 I）：凭据 step 里 <code>ln -sf ~/.docker/cli-plugins $DOCKER_CONFIG/cli-plugins</code>。Mac mini 完整模拟 deploy（pull+up+health）全过：health UP ~25s、nacos 注册成功、Started in 16s，容器健康运行——端到端确认 deploy 链路无误。</p>
+      </li>
     </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">7</span> changes /
+      <span data-counter="change">8</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
