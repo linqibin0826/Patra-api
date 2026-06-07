@@ -24,7 +24,7 @@
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
           <li data-task-status="done"><a href="#task-1">Task 1 — registry Dockerfile（本地构建验证）</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — compose.apps + .env.apps</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — compose.apps + .env.apps</a></li>
           <li data-task-status="pending"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
@@ -189,7 +189,7 @@ git commit -m "feat(cd): 新增 patra-registry 运行镜像 Dockerfile (PAP-CD)"
       </article>
 
       <!-- ============================== TASK 2 ============================== -->
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：docker-compose.apps.yaml + .env.apps</h2>
           <dl class="files">
@@ -200,7 +200,7 @@ git commit -m "feat(cd): 新增 patra-registry 运行镜像 Dockerfile (PAP-CD)"
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写 docker-compose.apps.yaml</strong>
             <p>独立 Docker project <code>name: patra-apps</code>（与现有子栈一致，便于 OrbStack 分组）。镜像 tag 由 deploy job 经 <code>REGISTRY_IMAGE_TAG</code> 注入（默认 latest）。<code>env_file</code> 叠加加载 <code>.env.apps</code> 与 <code>.env.apps.secret</code>（后者 gitignore、缺失时 <code>required: false</code> 跳过）。</p>
             <pre><code class="lang-yaml">version: "3.9"
@@ -236,7 +236,7 @@ networks:
     external: true</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：写 .env.apps（非敏感 dev 默认值，随仓库提交）</strong>
             <p>容器内走 patra-net 服务名 + 容器内端口（注意是 <code>postgres:5432</code> / <code>redis:6379</code> / <code>nacos:8848</code>，不是宿主映射的 15432/16379）。提供 <code>REGISTRY_REDIS_URL</code> 以避免 prod profile 解析无默认值占位符时报错。</p>
             <pre><code class="lang-ini"># Patra 应用容器 - 非敏感 dev 默认值（随仓库提交）
@@ -263,7 +263,7 @@ NACOS_USERNAME=nacos
 NACOS_PASSWORD=nacos</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：写 .env.apps.example（模板，沿用现有 .env.example 习惯）</strong>
             <pre><code class="lang-ini"># Patra 应用容器环境变量模板 —— 复制为 .env.apps 使用
 # 仅放非敏感 dev 默认值；真敏感密钥见 .env.apps.secret.example
@@ -281,7 +281,7 @@ NACOS_USERNAME=nacos
 NACOS_PASSWORD=changeme</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：校验 compose 语法</strong>
             <p>运行：</p>
             <pre><code class="lang-bash">cd patra-infra/docker
@@ -290,7 +290,7 @@ cd -</code></pre>
             <p>预期：打印 <code>OK</code>（compose 文件可解析；<code>image</code> 的 tag 插值为 latest，<code>.env.apps.secret</code> 缺失因 <code>required:false</code> 不报错）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-infra/docker/docker-compose.apps.yaml \
         patra-infra/docker/.env.apps \
