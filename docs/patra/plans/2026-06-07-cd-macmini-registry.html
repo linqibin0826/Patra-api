@@ -29,7 +29,7 @@
           <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
           <li data-task-status="done"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
-          <li data-task-status="in-progress"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -635,7 +635,7 @@ curl -fs http://linqibins-mac-mini:6000/actuator/health</code></pre>
       </article>
 
       <!-- ============================== TASK 7 ============================== -->
-      <article class="task" id="task-7" data-status="in-progress">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：文档 + 端到端自动部署 & 回滚验证</h2>
           <dl class="files">
@@ -685,7 +685,7 @@ curl -fs http://linqibins-mac-mini:6000/actuator/health</code></pre>
 git commit -m "docs(cd): patra-infra 记录 self-hosted runner 与 CD 运维约定 (PAP-CD)"</code></pre>
           </li>
 
-          <li class="step" data-status="in-progress">
+          <li class="step" data-status="done">
             <strong>步骤 5：合并到 main，启用自动部署</strong>
             <p>开 PR 并合并（CI 会跑；合并后 cd.yml 的 push:main 触发生效）：</p>
             <pre><code class="lang-bash">gh pr create --fill --base main --head worktree-setup-cd
@@ -694,7 +694,7 @@ gh pr merge --squash --delete-branch</code></pre>
             <p>预期：合并触发 cd.yml，build-and-push + deploy 自动跑，Mac mini 上 registry 更新为 main 最新 sha 的镜像。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：端到端验证自动部署</strong>
             <p>改一处无关代码（如 registry 的注释）走完整流程，确认自动部署：</p>
             <pre><code class="lang-bash"># merge 后观察最新一次 cd run 全绿
@@ -704,7 +704,7 @@ docker inspect --format '{{index .Config.Image}}' patra-registry</code></pre>
             <p>预期：cd run 绿；容器 Image tag = 最新 main 的 sha。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：回滚验证</strong>
             <p>用 workflow_dispatch 部署上一个 sha，确认回退（跳过构建、直接部署 GHCR 已有镜像）：</p>
             <pre><code class="lang-bash">PREV_SHA=&lt;上一个已部署的完整 sha&gt;
@@ -833,6 +833,14 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
         </header>
         <p>第三次 deploy 失败：<code>docker compose -f</code> 报 "unknown shorthand flag: 'f'"——自定义 DOCKER_CONFIG 后 docker 只在 <code>$DOCKER_CONFIG/cli-plugins</code> 找插件，OrbStack 的 compose 插件在默认 <code>~/.docker/cli-plugins</code> 下丢失。修复（方案 I）：凭据 step 里 <code>ln -sf ~/.docker/cli-plugins $DOCKER_CONFIG/cli-plugins</code>。Mac mini 完整模拟 deploy（pull+up+health）全过：health UP ~25s、nacos 注册成功、Started in 16s，容器健康运行——端到端确认 deploy 链路无误。</p>
       </li>
+      <li class="note" data-type="other" data-time="2026-06-07T23:15">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-06-07T23:15">06-07 23:15</time>
+          <a href="#task-7">§ Task 7 (done)</a>
+        </header>
+        <p><strong>CD 端到端闭环成功</strong>：workflow_dispatch deploy（run 27096267696）全绿、build skipped（回滚机制）、registry 容器 Mac mini healthy、tailscale health UP、nacos 注册、15.7s 启动。首次 push 自动触发的 deploy 曾卡在 65MB jar layer 弱网下载（timeout cancelled），靠 docker pull 续传过。<strong>遗留改进</strong>：每次 build 产生新 fat-jar layer，Mac mini 弱网每次都可能卡；治本是 Spring Boot 分层 jar（dependencies layer 缓存复用、日常只下几 MB application layer）——建议作为下一个稳定性 PR。</p>
+      </li>
     </ol>
 
 
@@ -841,7 +849,7 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
       <span data-counter="decision">0</span> decisions /
       <span data-counter="change">8</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="other">1</span> others
     </footer>
   </aside>
 
