@@ -26,7 +26,7 @@
           <li data-task-status="done"><a href="#task-1">Task 1 — registry Dockerfile（本地构建验证）</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — compose.apps + .env.apps</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 密钥二分护栏（gitignore）</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml: build-and-push</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — Mac mini self-hosted runner</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — cd.yml: deploy + compose-all</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — 文档 + 端到端 & 回滚验证</a></li>
@@ -363,7 +363,7 @@ git commit -m "feat(cd): 密钥二分护栏 — .env.*.secret gitignore + secret
       </article>
 
       <!-- ============================== TASK 4 ============================== -->
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：cd.yml — build-and-push job</h2>
           <dl class="files">
@@ -372,7 +372,7 @@ git commit -m "feat(cd): 密钥二分护栏 — .env.*.secret gitignore + secret
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写 cd.yml（先只含 build-and-push job）</strong>
             <p>触发只监听 <code>push:main</code> 与 <code>workflow_dispatch</code>（不监听 pull_request，保证 self-hosted runner 不跑 fork 代码）。回滚（workflow_dispatch 指定 <code>image_tag</code>）时跳过 build，直接部署 GHCR 已有镜像。<code>permissions.packages: write</code> 让 <code>GITHUB_TOKEN</code> 能推 GHCR。Gradle 缓存沿用 CI 的 <code>GRADLE_ENCRYPTION_KEY</code> secret。</p>
             <pre><code class="lang-yaml">name: CD
@@ -443,13 +443,13 @@ jobs:
           docker push "$IMAGE_NAME:latest"</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：Commit</strong>
             <pre><code class="lang-bash">git add .github/workflows/cd.yml
 git commit -m "feat(cd): cd.yml build-and-push — 构建 registry 镜像推 GHCR (PAP-CD)"</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="skipped">
             <strong>步骤 3：推分支并用 workflow_dispatch 验证构建推送</strong>
             <p>merge 到 main 前先在本分支验证（workflow_dispatch 可在任意含该 workflow 文件的分支触发）。推分支后运行：</p>
             <pre><code class="lang-bash">git push -u origin worktree-setup-cd
@@ -458,7 +458,7 @@ gh run watch "$(gh run list --workflow=cd.yml --limit=1 --json databaseId -q '.[
             <p>预期：<code>build-and-push</code> job 绿；<code>deploy</code> 因 runner 未装而排队/跳过（Task 5/6 处理）。本步只关注 build-and-push 成功。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="skipped">
             <strong>步骤 4：确认镜像进入 GHCR</strong>
             <p>到 GitHub → 仓库 → Packages，确认出现 <code>patra-registry</code> 包，含 <code>latest</code> 与本次 sha 两个 tag。首次推送后到 Package settings 把可见性设为 <strong>public</strong>（镜像不含密钥，Mac mini pull 免认证）。</p>
             <p>预期：GHCR 有 <code>ghcr.io/linqibin0826/patra-registry:latest</code> 与 <code>:&lt;sha&gt;</code>。</p>
@@ -769,14 +769,21 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
       data-type 4 类：decision / change / tradeoff / other
       追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
       -->
+      <li class="note" data-type="change" data-time="2026-06-07T20:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T20:35">06-07 20:35</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>plan Task 4/6 设想在 feature 分支用 <code>gh workflow run --ref</code> 验证 cd.yml，但 GitHub 要求 workflow_dispatch 的 workflow 先存在于默认分支 main 才能手动触发。调整：Task 4–6 仅写好并 commit，首次完整 CD 验证推迟到 Task 7 merge main 后由 push:main 自动触发；回滚的 workflow_dispatch 验证在 merge 后可用。本地以 Task 1 镜像冒烟 + actionlint 兜底 cd.yml 正确性。</p>
+      </li>
     </ol>
 
-    <p class="empty-state">no notes yet</p>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="change">1</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>

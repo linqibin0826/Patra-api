@@ -1,0 +1,66 @@
+name: CD
+
+# 持续部署：merge 到 main（或手动触发）→ 构建 registry 镜像推 GHCR
+#          → self-hosted runner 部署到 Mac mini。
+# 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
+#       保证 self-hosted runner 永不执行未经审查的 fork PR 代码。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'patra-api/patra-registry/**'
+      - 'patra-infra/docker/docker-compose.apps.yaml'
+      - 'patra-infra/docker/.env.apps'
+      - '.github/workflows/cd.yml'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: '要部署的镜像 tag（留空=构建并部署本次 commit；回滚时填旧 sha）'
+        required: false
+        default: ''
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/linqibin0826/patra-registry
+
+jobs:
+  build-and-push:
+    name: build-and-push
+    # 回滚（指定了 image_tag）时跳过构建，直接部署 GHCR 已有镜像
+    if: github.event_name == 'push' || github.event.inputs.image_tag == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup JDK 25 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: 🐘 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: 🔨 Build bootJar
+        run: ./gradlew :patra-api:patra-registry:patra-registry-boot:bootJar
+
+      - name: 🔑 Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: 🐳 Build & push image
+        run: |
+          TAG="${{ github.sha }}"
+          CTX="patra-api/patra-registry/patra-registry-boot"
+          docker build -t "$IMAGE_NAME:$TAG" -t "$IMAGE_NAME:latest" "$CTX"
+          docker push "$IMAGE_NAME:$TAG"
+          docker push "$IMAGE_NAME:latest"
