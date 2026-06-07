@@ -168,7 +168,7 @@ jobs:
             fi
             VAR="$(echo "$svc" | tr 'a-z-' 'A-Z_')_IMAGE_TAG"
             export "$VAR=$TAG"
-            echo "===== 部署 $svc（$VAR=$TAG）====="
+            echo "===== deploy ${svc} (${VAR}=${TAG}) ====="
             ok=0
             for i in 1 2 3; do
               if docker compose -f docker-compose.apps.yaml pull "$svc"; then ok=1; break; fi
