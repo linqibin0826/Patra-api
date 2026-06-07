@@ -78,21 +78,36 @@ jobs:
     permissions:
       contents: read
       packages: read
+    env:
+      # macOS self-hosted runner：docker login 默认走钥匙串(osxkeychain)，launchd 非交互会话
+      # 无法解锁钥匙串（error -25308）；且 config 无 credsStore 时 docker 在 macOS 仍 fallback 钥匙串。
+      # 故不调 docker login，改为直接把凭据 base64 写入 DOCKER_CONFIG/config.json 的 auths 字段，
+      # docker compose pull 读 auths 认证、完全绕过钥匙串。
+      DOCKER_CONFIG: ${{ runner.temp }}/patra-docker-cfg
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: 🔑 Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: 🔑 配置 GHCR 凭据（写 auths，绕过 macOS 钥匙串）
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          AUTH=$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" > "$DOCKER_CONFIG/config.json"
 
       - name: 🚀 Deploy to Mac mini (OrbStack)
         run: |
           export REGISTRY_IMAGE_TAG="${{ github.event.inputs.image_tag || github.sha }}"
           echo "部署镜像 tag: $REGISTRY_IMAGE_TAG"
           cd patra-infra/docker
-          docker compose -f docker-compose.apps.yaml pull registry
+          # Mac mini 出站偶发 tls 抖动，pull 加重试韧性
+          ok=0
+          for i in 1 2 3; do
+            if docker compose -f docker-compose.apps.yaml pull registry; then ok=1; break; fi
+            echo "pull 失败（网络抖动？），重试 $i/3..."; sleep 10
+          done
+          [ "$ok" = 1 ] || { echo "✗ 镜像 pull 3 次均失败"; exit 1; }
           docker compose -f docker-compose.apps.yaml up -d registry
 
       - name: 🩺 Health check
