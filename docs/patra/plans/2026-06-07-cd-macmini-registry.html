@@ -809,13 +809,21 @@ docker inspect --format '{{index .Config.Image}}' patra-registry  # 预期 tag =
         </header>
         <p>处理 PR #137 CodeRabbit review。<strong>采纳 4 项</strong>：Dockerfile 非 root（appuser）、deploy <code>if</code> 改 <code>success||skipped</code> 排除 cancelled、两处 checkout <code>persist-credentials:false</code>、install-github-runner.sh 加 <code>RUNNER_VERSION</code> 非空校验。非 root 化经冒烟测出<strong>回归</strong>：logback 写 <code>/app/logs</code> 需在 Dockerfile 预建该目录并 chown appuser，否则非 root 启动 Exited 1，已修并复验通过。<strong>驳回 4 项</strong>（技术理由）：Action pin SHA 应全仓统一非本 PR 范围 / health check 的 docker logs 是失败路径 best-effort 诊断 / <code>.path</code> 是 runner 专用确定值有意固定 / runner 版本有 auto-update+兼容（YAGNI）。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-07T21:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-07T21:55">06-07 21:55</time>
+          <a href="#task-7">§ Task 7 (deploy)</a>
+        </header>
+        <p>首次 merge 触发的 CD：build-and-push ✅、deploy ❌——macOS self-hosted runner 上 <code>docker login</code> 走钥匙串(osxkeychain)，launchd 非交互会话无法解锁（<code>-25308</code>）。方案 A（DOCKER_CONFIG + 空 config）经 Mac mini 实测仍 fallback 钥匙串、无效；改<strong>方案 D</strong>：deploy 不调 <code>docker login</code>，直接把 base64 凭据写入 <code>DOCKER_CONFIG/config.json</code> 的 <code>auths</code> 字段，<code>docker compose pull</code> 读 auths 认证、彻底绕过钥匙串（Mac mini 实测认证通过、开始拉取 layers）。另给 pull 加 3 次重试应对 Mac mini 出站 tls 偶发抖动。需重新 merge 触发第二次 CD 验证。</p>
+      </li>
     </ol>
 
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">5</span> changes /
+      <span data-counter="change">6</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
