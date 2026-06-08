@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CI/CD 生产级优化：变更感知门控 + 治理硬化</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题。相对路径 ../styles/ 从生成位置 docs/patra/specs/ 出发；
+       放进子目录的 spec（如 docs/patra/specs/<feature>/）改成 ../../styles/。
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 spec 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#ci-orchestration">CI 编排重构</a></li>
+      <li><a href="#test-gating">测试门控矩阵</a></li>
+      <li><a href="#coderabbit">CodeRabbit 治理</a></li>
+      <li><a href="#caching">缓存策略</a></li>
+      <li><a href="#hardening">安全加固</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>CI/CD 生产级优化：变更感知门控 + 治理硬化</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-08</span>
+        <span>🌿 feat/cicd-production-overhaul</span>
+        <span>👤 linqibin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>把后端 CI 从「前端改动也触发后端全套、4 个 shard 永远全跑」重构为「统一编排 + 变更感知门控」：一个 <code>detect-changes</code> 决策、一个 <code>required-check</code> 总 gate，按受影响服务精确门控 unit / slice / integration / e2e（调查证实 Patra 测试零跨服务，可安全按服务门控），foundation 模块变更才扇出全跑，nightly cron 跑全量做安全网。同时根治 CodeRabbit rate limit（关增量复评、复评改由 Claude 分批 <code>@coderabbitai review</code> 触发）、补齐两层 Gradle 缓存与前端 / Docker 层缓存、按公开仓库生产标准 pin action 到 SHA + 最小 permissions + Dependabot 托管。顺手修复「前端质量门 <code>portal-ci-required-check</code> 未进分支保护 → 前端 lint/test 拦不住合并」的隐藏 bug。分支保护配置零改动。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>最近 #140–144 已建成后端<strong>多服务 CD</strong>：<code>patra-infra/cd/detect-changes.sh</code> + <code>services.json</code> 作为 SSOT 路由出受影响服务 → 动态 matrix 并行 <code>bootJar</code>+<code>docker build</code> 推 GHCR → Mac mini self-hosted runner 按依赖顺序 <code>compose pull/up</code> + 健康检查；Spring Boot 4 分层 jar 让弱网部署只传 ~487KB 的 application 层。<strong>CD 侧的选择性构建已经达标，本次不动它。</strong></p>
+      <p>问题集中在 <strong>CI 侧</strong>（<code>ci.yml</code> / <code>ci-docs.yml</code> / <code>portal-ci.yml</code>）——三个痛点 + 三个隐患：</p>
+      <ol>
+        <li><strong>CodeRabbit rate limit</strong>：<code>.coderabbit.yaml</code> 未设 <code>auto_incremental_review</code>（默认 <code>true</code>，每次 push 增量复评），且把 <code>auto_pause_after_reviewed_commits</code> 显式设为 <code>0</code>（关掉了「复评 N 次后暂停」的安全阀）。TDD 多碎 commit + 一个 PR 内反复 push → 配额必然打爆。</li>
+        <li><strong>前后端未隔离</strong>：<code>ci.yml</code> 的 <code>paths-ignore</code> 只排除 <code>docs/**</code>、<code>*.md</code>，<strong>没排除 <code>patra-portal/**</code></strong>——只改前端，整套后端 CI（4 个测试 shard + 集成 + e2e）照样全跑。更隐蔽的是：分支保护只 require 了 <code>required-check</code>（后端 CI 产出的），<code>portal-ci-required-check</code> 根本没进 required 列表，<strong>前端 lint/typecheck/test 失败其实拦不住合并</strong>。</li>
+        <li><strong>测试全量重跑</strong>：后端 <code>unit-tests</code> 是固定 4-shard matrix（commons / registry / ingest / catalog-and-misc），永远全跑；<code>integration-tests</code> / <code>e2e-tests</code> 各一个 job 也全量跑。改 catalog 一个文件，registry / ingest / commons 全部陪跑。</li>
+        <li><strong>隐患 · 供应链</strong>：所有 action pin 到可变 tag <code>@vX</code>（非 commit SHA）。本仓库是公开仓库——2025 年 <code>tj-actions/changed-files</code> 投毒波及 2.3 万仓库、泄露 secrets。</li>
+        <li><strong>隐患 · 构建缓存</strong>：CD 的 <code>docker build</code> 未接 buildx 层缓存，每次从零重建镜像层。</li>
+        <li><strong>隐患 · 前端缓存</strong>：<code>portal-ci</code> 未缓存 Next.js <code>.next/cache</code>。</li>
+      </ol>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>后端 CI 重构为<strong>单一编排 workflow</strong>：<code>detect-changes</code> → 受影响服务 matrix → <code>required-check</code> 总 gate。</li>
+            <li>unit / slice / integration / e2e <strong>按受影响服务门控</strong>；foundation 变更扇出全跑；<strong>nightly cron 全量</strong>兜底。</li>
+            <li>前端检查并入统一编排，修复 portal 质量门未被 require 的 bug。</li>
+            <li>删除 <code>ci-docs.yml</code>、<code>portal-ci.yml</code>。</li>
+            <li>CodeRabbit：关增量复评、复评改由 Claude <code>@</code> 驱动、更新评审流程文档。</li>
+            <li>两层 Gradle 缓存（GHA + Mac mini <code>build-cache-node</code>）、portal <code>.next/cache</code>、CD buildx 层缓存。</li>
+            <li>全 workflow pin commit SHA、最小 <code>permissions:</code>、新增 <code>.github/dependabot.yml</code>。</li>
+            <li><code>detect-changes</code> 路由的 TDD 测试。</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>不动 CD 部署逻辑本身（<code>cd.yml</code> deploy job、compose、分层 jar）——已达标。</li>
+            <li>不引入 Develocity Predictive Test Selection（单人 + 私有 + 无历史，过度工程）。</li>
+            <li>不引入 Bazel / Nx / AffectedModuleDetector。</li>
+            <li>不做跨服务 e2e（当前代码库零跨服务测试；将来真有了再单列一档）。</li>
+            <li>不改 GitHub 分支保护设置（<code>required-check</code> 名称不变）。</li>
+            <li>Mac mini 网络层修复由用户处理，非本 PR 的工程范围。</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="ci-orchestration">
+      <h2>3. CI 编排重构（统一 gate + 变更感知）</h2>
+      <p><strong>现状结构性问题</strong>：三个 workflow + 两个 gate 名互补拼凑——<code>ci.yml</code>（除 docs 外什么都触发，含前端）+ <code>ci-docs.yml</code>（docs-only 兜底 gate）+ <code>portal-ci.yml</code>（产出 <code>portal-ci-required-check</code>，但没进分支保护）。漏了前端隔离，前端质量门形同虚设。</p>
+      <p><strong>目标结构</strong>：合并成一个编排 workflow，一个 <code>detect-changes</code> 决策、一个 <code>required-check</code> 总 gate（分支保护那条 <code>required-check</code> 不用动）：</p>
+      <pre><code>ci.yml  (on: pull_request + push:main + schedule[nightly])
+└─ detect-changes ──────────► 输出: units[]（每服务一单元 + foundation 单元）, portal?, only_docs?
+   │   复用并扩展 patra-infra/cd 的路由 SSOT；
+   │   foundation / .github/workflows/** 变更 或 event=schedule → units = 全部
+   ├─ backend  [matrix: units]   每个受影响服务一个 job：
+   │                             ./gradlew :&lt;svc&gt;…:check :…:integrationTest :…:e2eTest（有啥跑啥）
+   ├─ portal   (lint/typecheck/test)   if portal 受影响
+   ├─ coverage  聚合实际跑过的 jacoco
+   └─ required-check  (if: always, needs: 全部)  ← 唯一 required，真覆盖前后端</code></pre>
+      <ul>
+        <li><strong>单元粒度</strong>：matrix 的单位是「服务」（registry / ingest / catalog / object-storage / gateway）+ 一个「foundation」单元。每个 backend job 跑该服务自己的 <code>check</code>（unit + spotbugs + spotless）+ <code>integrationTest</code>（slice + Testcontainers）+ <code>e2eTest</code>（若有）。</li>
+        <li><strong>正确性扇出</strong>：foundation 模块（common / starter / build-logic / 根构建 / <code>gradle/</code> / 共享 Dockerfile / compose）或 <code>.github/workflows/**</code> 变更 → <code>units</code> 展开为全部服务（CI 自身改动强制全跑以验证新管线）。保守 fallback：未识别路径一律全跑。</li>
+        <li><strong>nightly cron</strong>：<code>event=schedule</code> 时 <code>detect-changes</code> 直接返回全部单元，跑全量 <code>check + integrationTest + e2eTest</code> + 前端——既是漏测安全网，也把 Gradle 缓存喂满，给白天 PR 提速。</li>
+        <li><strong>删 <code>ci-docs.yml</code> / <code>portal-ci.yml</code></strong>：docs-only PR 时所有真实 job 跳过，<code>required-check</code> 判「无失败即绿」，不再需要单独兜底 workflow；portal 检查并入主编排后，<code>required-check</code> <strong>从此真正覆盖前端</strong>。CD 侧（<code>cd.yml</code> / <code>portal-cd.yml</code>）保持独立，部署生命周期不同。</li>
+      </ul>
+    </section>
+
+    <section id="test-gating">
+      <h2>4. 测试门控矩阵</h2>
+      <p><strong>调查依据（关键）</strong>：Patra 后端 <code>integrationTest</code> 几乎全是 Spring slice 测试——<code>@DataJpaTest</code>×27、<code>@WebMvcTest</code>×5、<code>@WireMockTest</code>×1、最小化 <code>@SpringBootTest(classes=SomeJob.class)</code>×4，且 <strong>零跨服务</strong>：唯一看着跨服务的 <code>DictionaryResolverAdapterIT</code>（catalog 调 registry）用 <strong>WireMock stub 掉了 registry</strong>，自包含在 catalog-infra。e2e 仅 catalog-boot 两个，<code>@SpringBootTest</code> 只起 catalog 自身上下文、<code>@MockitoBean</code> 屏蔽文件下载/MinIO/Nacos，<strong>不启动任何别的服务</strong>。各服务 IT 用<strong>独立容器、独立库名</strong>（<code>patra_catalog</code>/<code>patra_registry</code>/<code>patra_ingest</code>，<code>withReuse(false)</code>）。→ integration 与 e2e <strong>都能安全按服务门控</strong>。</p>
+      <table>
+        <thead>
+          <tr><th>档</th><th>Gradle 源集</th><th>门控粒度</th><th>PR / push:main</th><th>nightly cron</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>unit（纯 Java）</td><td><code>test</code>（经 <code>check</code>）</td><td>按服务</td><td>仅受影响服务</td><td>全量</td></tr>
+          <tr><td>slice + integration</td><td><code>integrationTest</code></td><td>按服务</td><td>仅受影响服务</td><td>全量</td></tr>
+          <tr><td>e2e（单服务全上下文）</td><td><code>e2eTest</code></td><td>按服务</td><td>仅受影响服务</td><td>全量</td></tr>
+          <tr><td>前端</td><td>pnpm</td><td>独立单元</td><td>仅 portal 受影响</td><td>全量</td></tr>
+          <tr><td><strong>foundation 变更</strong></td><td>common / starter / build-logic / 根构建</td><td>扇出全部服务</td><td>全跑</td><td>全跑</td></tr>
+        </tbody>
+      </table>
+      <p><strong>为何门控才是省时杠杆（不是缓存）</strong>：Testcontainers 测试因随机端口等 volatile 输入，Gradle build cache 的 FROM-CACHE 基本不成立（Gradle issue #9151）；CI 在全新 runner 上 UP-TO-DATE 也帮不上。所以对 IT 唯一能省时间的，就是<strong>压根不启动未受影响服务的 integrationTest</strong>——正是服务级门控做的事。unit/slice 的 <code>test</code> 任务则可正常 FROM-CACHE。</p>
+      <aside class="callout info">
+        <span class="title">foundation 单元的扇出清单</span>
+        <p><code>linqibin-commons-*</code>、<code>patra-spring-boot-starter-*</code>、<code>patra-common-model</code> / <code>patra-common-enums</code> / <code>patra-common-provenance-api</code>（Shared Kernel）、<code>patra-expr-kernel</code>、<code>build-logic/</code>、根 <code>build.gradle.kts</code> / <code>settings.gradle.kts</code> / <code>gradle.properties</code>、<code>gradle/</code>、<code>service.Dockerfile</code>、<code>docker-compose.apps.yaml</code>、<code>.github/workflows/**</code> —— 任一变更即全跑。</p>
+      </aside>
+    </section>
+
+    <section id="coderabbit">
+      <h2>5. CodeRabbit rate limit 治理</h2>
+      <ul>
+        <li><strong><code>.coderabbit.yaml</code> 改一处</strong>：<code>auto_review.auto_incremental_review: false</code>（push 不再自动增量复评——根治点）。保留 <code>enabled: true</code> + <code>drafts: false</code>（PR 转 ready 时仍自动首评兜底）。删掉随之失效的 <code>auto_pause_after_reviewed_commits: 0</code> 避免误导。</li>
+        <li><strong>复评由 Claude 驱动</strong>：开发期 PR 挂 <code>draft</code>（不评）→ 完工转 ready（自动首评）→ Claude 处理完<strong>一批</strong>反馈、推送后在评论区发 <code>@coderabbitai review</code> 触发复评。用户全程不参与触发。</li>
+        <li><strong>固化进规则</strong>：更新根 <code>CLAUDE.md</code>「PR 与代码评审」节——「复评由 Claude 分批 <code>@</code> 触发、开发期保持 draft 降频」，并接上既有的「开 PR 后必启 Monitor」规则（Monitor 跟踪评论流不变，只是复评变手动触发）。</li>
+      </ul>
+    </section>
+
+    <section id="caching">
+      <h2>6. 缓存策略（两层 Gradle + 前端 + Docker）</h2>
+      <ul>
+        <li><strong>Gradle 第一层 · GHA 缓存</strong>：维持 <code>gradle/actions/setup-gradle</code>，PR 只读、main / nightly 写。与 runner 同地、最快、始终可用。</li>
+        <li><strong>Gradle 第二层 · Mac mini <code>build-cache-node</code></strong>：在 <code>patra-infra</code> compose 起一个 <code>gradle/build-cache-node</code> 容器（带鉴权 + 持久卷），桥接<strong>本地开发 ↔ CI</strong>——本地 TDD 跑完测试推上去，CI 的 PR 直接命中刚算好的产物，且不受 GHA 10GB 上限约束。<code>settings.gradle.kts</code> 配 <code>HttpBuildCache</code>：本地 dev 与 CI main/nightly <code>push=true</code>、PR 只读。CI 经 tailnet 访问该 node；Gradle 远程缓存 <strong>fail-soft</strong>——node 不可达只是缓存未命中、绝不让 CI 失败，第一层 GHA 缓存兜底。Networking 细节留给实现计划与用户的网络修复对接。</li>
+        <li><strong>前端</strong>：portal job 加 <code>actions/cache</code> 缓存 <code>.next/cache</code>（key = lockfile + 源码 hash）；pnpm 缓存已有。</li>
+        <li><strong>CD docker build</strong>：接 buildx <code>cache-from</code>/<code>cache-to=type=registry,mode=max</code>，让分层 jar 的 dependencies 层不再每次从零重建（push 因 GHCR 去重本就小，省的是构建时间）。</li>
+      </ul>
+    </section>
+
+    <section id="hardening">
+      <h2>7. 安全加固（公开仓库生产级）</h2>
+      <ul>
+        <li><strong>所有 action pin 到 commit SHA</strong>（带 <code># vX.Y.Z</code> 注释）。公开仓库 post-<code>tj-actions</code> 的硬标准。</li>
+        <li><strong>最小 <code>permissions:</code></strong>：workflow 顶层默认 <code>contents: read</code>，仅在需要处 job 级提权（CD 推 GHCR 才 <code>packages: write</code>，deploy 才 <code>packages: read</code>）。</li>
+        <li><strong>新增 <code>.github/dependabot.yml</code></strong>：托管 <code>github-actions</code>（自动升 SHA）、<code>gradle</code>、<code>pnpm</code> 三个生态，<strong>按周分组</strong>提 PR 降噪。bot PR 已被 coderabbit <code>ignore_usernames</code> 排除，不会加重 rate limit。（更强的 Renovate 需装 GitHub App，对单人徒增装配，故选原生 Dependabot。）</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：变更感知的服务级门控 + Gradle 构建缓存</h3>
+        <p>复用 CD 的 <code>detect-changes</code> SSOT 驱动 CI，按变更落到的服务只跑对应 job；服务内部靠 build cache 跳过未变 task。微服务间互不依赖内部实现（跨服务走 API/事件契约），服务级隔离安全。</p>
+        <p class="alternatives"><strong>备选 A：</strong>纯 Gradle 构建缓存、不做门控 — 否决：4 个 shard 仍全部启动，没真正消除「无关服务陆跑」的观感与固定 runner 开销。<br>
+        <strong>备选 B：</strong>完整依赖图 affected detection — 否决：对单人项目是过度工程，需额外工具/脚本维护依赖图。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：integration / e2e 也按服务门控（而非粗粒度全跑）</h3>
+        <p>调查证实 Patra 的 IT 几乎全是 slice、且零跨服务（跨服务交互均被 WireMock/<code>@MockitoBean</code> 隔离在单服务边界内），各服务独立容器独立库名。因此 integration 与 e2e 可与 unit 同档按服务门控。</p>
+        <p class="alternatives"><strong>备选 A：</strong>integration/e2e 任一后端变更就全跑 — 否决：数据不支持，会让改 catalog 仍陪跑 registry/ingest 的 IT，违背痛点初衷。<br>
+        <strong>兜底：</strong>nightly cron 全量 + 「未来新增跨服务测试时同步更新门控/单列 e2e 档」的不变量约定。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：统一编排 + 单一 <code>required-check</code> gate</h3>
+        <p>一个 <code>detect-changes</code> + 一个 <code>if: always()</code> 的总 gate（名仍为 <code>required-check</code>），下游 backend/portal job 随意跳过。分支保护只认 <code>required-check</code>，配置零改动，且首次真正覆盖前端质量门。</p>
+        <p class="alternatives"><strong>备选 A：</strong>保留多 workflow + 多互补 gate（现状）— 否决：拼凑脆弱、漏了前端隔离、portal gate 没进保护形同虚设。<br>
+        <strong>备选 B：</strong>用 <code>on.paths</code> 在 workflow 级过滤 + 设 required — 否决：skipped 的 required check 会让 PR 永久卡 pending。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：CodeRabbit 关增量复评 + Claude 分批 <code>@</code> 驱动</h3>
+        <p><code>auto_incremental_review: false</code>，保留 ready 首评；复评由 Claude 处理完一批反馈后 <code>@coderabbitai review</code> 触发，用户不参与。</p>
+        <p class="alternatives"><strong>备选 A：</strong>保留增量、靠 draft/squash 纪律降频 — 否决：依赖每次自觉，偶尔忘了又打爆。<br>
+        <strong>备选 B：</strong><code>auto_pause_after_reviewed_commits: 3</code> — 否决：每个 PR 仍先消耗 3 次配额，半吊子。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：两层缓存含 Mac mini <code>build-cache-node</code></h3>
+        <p>GHA 缓存（CI↔CI）+ Mac mini 远程 node（桥接本地↔CI、突破 10GB 上限）。远程缓存 fail-soft，node 下线退化为缓存未命中、不阻断 CI。</p>
+        <p class="alternatives"><strong>备选：</strong>仅 GHA 缓存 — 否决（用户决策）：放弃本地↔CI 的产物复用与无上限缓存；用户将修复 Mac mini 网络，连通性不再是阻碍。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 6：Dependabot（而非 Renovate / 手动）</h3>
+        <p>原生、零 App 装配，<code>.github/dependabot.yml</code> 一文件托管 actions(SHA)/gradle/pnpm，按周分组降噪。</p>
+        <p class="alternatives"><strong>备选 A：</strong>Renovate — 否决：SHA 管理更强但需装 GitHub App，对单人徒增装配。<br>
+        <strong>备选 B：</strong>手动升级 — 否决：pin SHA 后不托管会滞后腐化。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 7：不上 Develocity Predictive Test Selection</h3>
+        <p>PTS 是企业级「真正工业答案」，但需 ≥14 天历史 + 50+ 次执行冷启动、私有商业项目无免费层。单人 + 私有 + 无历史三条全不满足。</p>
+        <p class="alternatives"><strong>否决理由：</strong>当前阶段过度工程；服务级门控 + build cache 已覆盖收益。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>detect-changes</code> 路由错误：该跑的服务没跑、漏测合并</td>
+            <td><span class="pill high">high</span></td>
+            <td>TDD 先覆盖六场景（单服务/foundation/仅portal/仅docs/混合/workflows 自身）；未识别路径保守全跑；<code>.github/workflows/**</code> 与 foundation 变更强制全跑</td>
+          </tr>
+          <tr>
+            <td>改名/删 workflow 导致 <code>required-check</code> 失配、PR 永久 pending</td>
+            <td><span class="pill high">high</span></td>
+            <td>gate job 名严格保持 <code>required-check</code>；删 workflow 前确认 <code>portal-ci-required-check</code> 未进保护（已确认）；feature branch 实跑四场景验证后再合并</td>
+          </tr>
+          <tr>
+            <td>服务级门控漏测：未来新增跨服务测试时会被错跳</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>文档化「零跨服务」不变量；nightly 全量兜底；新增跨服务测试时同步更新门控规则或单列 e2e 档</td>
+          </tr>
+          <tr>
+            <td>大 PR 评审负担重</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>规格 + writing-plans 拆任务推进；如需可拆「①核心门控重构 / ②硬化」两个 PR</td>
+          </tr>
+          <tr>
+            <td>Mac mini cache node 不可达</td>
+            <td><span class="pill low">low</span></td>
+            <td>Gradle 远程缓存 fail-soft，退化为缓存未命中，GHA 缓存兜底，不阻断 CI</td>
+          </tr>
+          <tr>
+            <td>pin SHA 后 action 更新滞后腐化</td>
+            <td><span class="pill low">low</span></td>
+            <td>Dependabot 周更分组托管，CodeRabbit 不评 bot PR</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>.github/workflows/ci.yml</code></td><td><span class="pill modify">modify</span></td><td>重写为统一编排：detect-changes → 受影响服务 matrix（check+integrationTest+e2eTest）+ portal job + coverage + required-check gate；on 增加 schedule(nightly)；pin SHA + 最小 permissions</td></tr>
+          <tr><td>2</td><td><code>.github/workflows/ci-docs.yml</code></td><td><span class="pill delete">delete</span></td><td>docs-only 兜底 gate 由统一 gate「无失败即绿」取代</td></tr>
+          <tr><td>3</td><td><code>.github/workflows/portal-ci.yml</code></td><td><span class="pill delete">delete</span></td><td>前端检查并入 ci.yml；其 <code>portal-ci-required-check</code> 本未进保护</td></tr>
+          <tr><td>4</td><td><code>.github/workflows/cd.yml</code></td><td><span class="pill modify">modify</span></td><td>build-and-push 接 buildx 层缓存（type=registry,mode=max）；pin SHA + 最小 permissions（部署逻辑不动）</td></tr>
+          <tr><td>5</td><td><code>.github/workflows/portal-cd.yml</code></td><td><span class="pill modify">modify</span></td><td>pin SHA + 最小 permissions</td></tr>
+          <tr><td>6</td><td><code>.github/workflows/claude.yml</code></td><td><span class="pill modify">modify</span></td><td>pin SHA + 最小 permissions</td></tr>
+          <tr><td>7</td><td><code>patra-infra/cd/detect-changes.sh</code></td><td><span class="pill modify">modify</span></td><td>扩展为 CI/CD 共用：输出「受影响测试单元」（服务 + foundation + portal + only_docs），保留 CD 既有服务路由</td></tr>
+          <tr><td>8</td><td><code>patra-infra/cd/services.json</code></td><td><span class="pill modify">modify</span></td><td>补 CI 测试任务映射 / foundation 单元定义（与 CD 构建任务并存的 SSOT）</td></tr>
+          <tr><td>9</td><td><code>patra-infra/cd/detect-changes.bats</code>（或等价测试脚本）</td><td><span class="pill create">create</span></td><td>TDD 路由测试，覆盖六场景</td></tr>
+          <tr><td>10</td><td><code>settings.gradle.kts</code></td><td><span class="pill modify">modify</span></td><td><code>buildCache { remote&lt;HttpBuildCache&gt; }</code> 指向 Mac mini node，push 策略按环境，fail-soft</td></tr>
+          <tr><td>11</td><td><code>patra-infra/docker/docker-compose.buildcache.yaml</code> + <code>.env</code></td><td><span class="pill create">create</span></td><td><code>gradle/build-cache-node</code> 服务（鉴权 + 持久卷），并入 compose 编排</td></tr>
+          <tr><td>12</td><td><code>.coderabbit.yaml</code></td><td><span class="pill modify">modify</span></td><td><code>auto_incremental_review: false</code>；删 <code>auto_pause_after_reviewed_commits: 0</code></td></tr>
+          <tr><td>13</td><td><code>CLAUDE.md</code>（根）</td><td><span class="pill modify">modify</span></td><td>「PR 与代码评审」节固化：复评由 Claude 分批 <code>@</code> 触发、开发期 draft 降频</td></tr>
+          <tr><td>14</td><td><code>.github/dependabot.yml</code></td><td><span class="pill create">create</span></td><td>github-actions / gradle / pnpm 三生态，按周分组</td></tr>
+          <tr><td>15</td><td><code>docs/patra/specs/2026-06-08-cicd-production-grade-design.html</code></td><td><span class="pill create">create</span></td><td>本设计文档</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>feature branch 实跑验证四场景：①只改前端 → 后端零 job；②只改 catalog → 仅 catalog job；③改 foundation → 全起；④只改 docs → gate 绿、无测试 job。</li>
+        <li><code>detect-changes</code> 路由测试六场景全绿。</li>
+        <li>一个 PR 内多次 push 不再触发多次 CodeRabbit 增量复评；<code>@coderabbitai review</code> 手动复评生效。</li>
+        <li>portal lint/typecheck/test 失败能拦住合并（<code>required-check</code> 覆盖前端）。</li>
+        <li>所有 workflow action pin 到 SHA、<code>actionlint</code> 通过、<code>permissions</code> 最小化。</li>
+        <li>Gradle 远程 cache node 命中可观测；node 下线时 CI 不失败（fail-soft 验证）。</li>
+        <li>Dependabot 正常提分组 PR；nightly cron 全量绿。</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       由 ../styles/user-notes.js 驱动，仅本机本浏览器、不进 git；
+       放子目录的 spec 把下方 <script src> 同改成 ../../styles/
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
