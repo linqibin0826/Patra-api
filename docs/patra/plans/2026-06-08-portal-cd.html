@@ -34,7 +34,7 @@
           <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
           -->
           <li data-task-status="done"><a href="#task-1">Task 1 — 构建可运行的 portal 镜像</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — 运行时编排（compose + .env.portal）</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 运行时编排（compose + .env.portal）</a></li>
           <li data-task-status="pending"><a href="#task-3">Task 3 — CD 流水线 + CI 职责切分</a></li>
         </ol>
       </li>
@@ -227,7 +227,7 @@ git commit -m "feat(portal): 加 standalone 镜像构建（Dockerfile + next.con
       </article>
 
       <!-- ===================== TASK 2 ===================== -->
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：运行时编排（compose service + .env.portal）</h2>
           <dl class="files">
@@ -238,7 +238,7 @@ git commit -m "feat(portal): 加 standalone 镜像构建（Dockerfile + next.con
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：新建 <code>patra-infra/docker/.env.portal</code></strong>
             <p>portal 专属运行时坐标。<strong>不</strong>加载 <code>.env.common</code>（那是 Spring/Nacos/MinIO，portal 用不到）：</p>
             <pre><code class="lang-bash"># ============================================================
@@ -257,7 +257,7 @@ PORT=4000
 NODE_ENV=production</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：在 <code>docker-compose.apps.yaml</code> 末尾的 <code>gateway</code> service 之后、<code>networks:</code> 之前，插入 <code>portal</code> service</strong>
             <p>沿用现有 service 写法，但 <strong>env_file 不含 <code>.env.common</code></strong>，healthcheck 用 busybox <code>wget</code>（alpine 自带，免装 curl）：</p>
             <pre><code class="lang-yaml">  portal:
@@ -275,7 +275,7 @@ NODE_ENV=production</code></pre>
             <p>注：复用文件顶部已定义的 <code>&amp;app-healthcheck</code> 锚点（interval 10s / timeout 5s / retries 15 / start_period 60s），无需重复定义。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：校验 compose 解析（这一步是本任务的「测试」）</strong>
             <p>运行（在 <code>patra-infra/docker/</code>），用假 tag 验证插值与 yaml 结构：</p>
             <pre><code class="lang-bash">cd patra-infra/docker
@@ -284,7 +284,7 @@ PORTAL_IMAGE_TAG=test docker compose -f docker-compose.apps.yaml config | grep -
             <p>预期：<code>--services</code> 列表含 <code>portal</code>（共 6 个）；<code>config</code> 输出里 <code>image</code> 解析为 <code>ghcr.io/linqibin0826/patra-portal:test</code>，<code>container_name: patra-portal</code>。无 yaml 解析错误、无「missing anchor」报错（证明 <code>*app-healthcheck</code> 锚点引用成功）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-infra/docker/.env.portal patra-infra/docker/docker-compose.apps.yaml
 git commit -m "feat(portal): compose 加 portal service + .env.portal 运行时坐标"</code></pre>
@@ -519,15 +519,21 @@ git commit -m "feat(portal): 加 portal-cd 流水线 + CI 去掉 push:main（CI=
       data-type 4 类：decision / change / tradeoff / other
       追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
       -->
+      <li class="note" data-type="tradeoff" data-time="2026-06-08T13:34">
+        <header>
+          <span class="note-type">TRADEOFF</span>
+          <time datetime="2026-06-08T13:34">06-08 13:34</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>portal 加入共享的 <code>docker-compose.apps.yaml</code>（spec 决策 4）→ 该文件在 cd.yml 触发路径 <code>patra-infra/docker/**</code> 内，且 detect-changes 把它与新增的 <code>.env.portal</code> 都判为「公共面」（REBUILD_ALL，二者均不匹配任何后端 srcPrefix、也不在 ignore 列表）。后果：本 PR 合并时 cd.yml 会连带重建+重部署全部 5 个后端服务（幂等、安全，仅浪费 CI 分钟 + 后端容器短暂重启）；未来对 apps.yaml 的任何改动同样触发后端全量重建。接受此耦合——apps.yaml 是后端共享文件，detect-changes 无法在文件粒度区分改动归属。彻底解耦方案（本 plan 范围外）：拆独立 docker-compose.portal.yaml + 把 portal 基建文件加进 detect-changes.sh ignore 列表。</p>
+      </li>
     </ol>
-
-    <p class="empty-state">no notes yet</p>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
       <span data-counter="change">0</span> changes /
-      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="tradeoff">1</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
   </aside>
