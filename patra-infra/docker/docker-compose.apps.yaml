@@ -88,6 +88,21 @@ services:
       test: [ "CMD", "curl", "-fs", "http://localhost:9528/actuator/health" ]
       <<: *app-healthcheck
 
+  portal:
+    image: ghcr.io/linqibin0826/patra-portal:${PORTAL_IMAGE_TAG:-latest}
+    container_name: patra-portal
+    restart: unless-stopped
+    ports: [ "4000:4000" ]
+    # portal 是 BFF（Next.js Node server），不读 .env.common（那是 Spring/Nacos/MinIO，portal 用不到）
+    env_file:
+      - .env.portal
+      - path: .env.portal.secret
+        required: false
+    healthcheck:
+      # busybox wget（node:alpine 自带，免装 curl）；/api/health 不依赖 gateway
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost:4000/api/health" ]
+      <<: *app-healthcheck
+
 networks:
   default:
     # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）
