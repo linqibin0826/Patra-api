@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>前端 portal CD — 设计文档</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题。相对路径 ../styles/ 从生成位置 docs/patra/specs/ 出发；
+       放进子目录的 spec（如 docs/patra/specs/<feature>/）改成 ../../styles/。
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 spec 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#architecture">总体架构</a></li>
+      <li><a href="#build">镜像构建</a></li>
+      <li><a href="#runtime">运行时编排与网络</a></li>
+      <li><a href="#ci-split">与现有 CI 切分</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>前端 portal CD — 设计文档</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-08</span>
+        <span>🌿 worktree-portal-cd</span>
+        <span>👤 Lin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>为 <code>patra-portal</code>(Next.js 15 / React 19 / Node 24)新建一条<strong>独立的 <code>portal-cd.yml</code></strong> 持续部署流水线，与后端 <code>cd.yml</code> 平行、与 <code>portal-ci.yml</code>(质量门)职责分离。portal 是单个前端单元，无后端「多服务选择性构建+依赖排序」复杂度,故流水线为<strong>线性两段</strong>:ubuntu 上 pnpm 多阶段 docker build 推 GHCR → Mac mini self-hosted runner 上 compose pull + up + 健康检查。镜像用 <code>output: "standalone"</code> 自包含 Node server,运行时注入 <code>PATRA_GATEWAY_BASE_URL</code> 保持 BFF(gateway 地址只在容器内可见)。<strong>仅部署 Mac mini 容器</strong>(tailscale 内网),不碰 Vercel/公网。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>后端 5 个服务(registry / object-storage / catalog / ingest / gateway)的 CD 已全打通:<code>cd.yml</code> 走 detect-changes → 动态 matrix 构建 → Mac mini 选择性 compose 部署,服务清单 SSOT 在 <code>patra-infra/cd/services.json</code>,5 服务共享一份 Java 分层 jar 的 <code>service.Dockerfile</code>。</p>
+      <p>前端 <code>patra-portal</code> 目前<strong>只有 CI(<code>portal-ci.yml</code>:lint / typecheck / test / e2e),没有任何 CD/部署</strong>——没有 Dockerfile,不在 <code>services.json</code>,不在 <code>docker-compose.apps.yaml</code>,Mac mini 上没有它的容器。本次补齐这块缺口:把 portal 也纳入「merge 到 main → 自动构建 + 部署到 Mac mini」的闭环。</p>
+      <p>两个决定本设计走向的事实:(1) portal 是 <strong>BFF 架构</strong>——Next.js 服务端(RSC / Route Handler)读 <code>PATRA_GATEWAY_BASE_URL</code> 去调 gateway,地址<strong>绝不下发浏览器</strong>(<code>.env.example</code> 明令禁止 <code>NEXT_PUBLIC_</code> 前缀),因此它必须以 <strong>Node server 运行</strong>,不能静态导出。(2) portal 与后端技术栈完全不同(pnpm/Node vs Gradle/Java),无法复用后端那套构建机制。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>新建独立 <code>.github/workflows/portal-cd.yml</code>(build-and-push + deploy 两段)</li>
+            <li>新建 <code>patra-portal/Dockerfile</code>(Next.js standalone 多阶段)</li>
+            <li><code>next.config.ts</code> 加 <code>output: "standalone"</code></li>
+            <li><code>docker-compose.apps.yaml</code> 加第 6 个 service <code>portal</code></li>
+            <li>新建 <code>patra-infra/docker/.env.portal</code>(运行时坐标)</li>
+            <li><code>portal-ci.yml</code> 去掉 <code>push:main</code> 触发(CI=PR 门禁,CD=main 部署)</li>
+            <li>回滚:<code>workflow_dispatch</code> 带 <code>image_tag</code> 输入</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>Vercel / 公网托管 / 公网 gateway ingress(本版只 Mac mini 容器)</li>
+            <li>detect-changes / 动态 matrix(单单元,用不上)</li>
+            <li>把 portal 写进 <code>services.json</code>(那是后端构建 SSOT)</li>
+            <li>加载 <code>.env.common</code>(Spring/Nacos/MinIO,portal 用不到)</li>
+            <li>反向代理/统一域名/HTTPS 终止(tailscale 内网直接端口访问即可)</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 总体架构</h2>
+      <p>独立 <code>portal-cd.yml</code> 与后端 <code>cd.yml</code> 平行,与 <code>portal-ci.yml</code> 职责切分。因 portal 是单个前端单元,流水线是<strong>线性两段</strong>(无 detect-changes、无 matrix、无依赖排序):</p>
+      <pre><code>push:main (paths: patra-portal/**)  或  workflow_dispatch
+  │
+  ├─ build-and-push   (runs-on: ubuntu-latest)
+  │     pnpm 多阶段 docker build(内含 next build)
+  │     → 推 GHCR  ghcr.io/linqibin0826/patra-portal:&lt;sha&gt; + :latest
+  │
+  └─ deploy           (runs-on: [self-hosted, macmini])
+        写 GHCR 凭据(绕 macOS 钥匙串) → compose pull(3× 重试,抗 GHCR 代理 TLS 抖动)
+        → docker compose up -d portal → host 侧 curl /api/health 轮询</code></pre>
+      <ul>
+        <li><strong>触发</strong>:<code>push: main</code> 且 <code>paths: [patra-portal/**, .github/workflows/portal-cd.yml]</code>;<code>workflow_dispatch</code>(含 <code>image_tag</code> 输入,回滚用)。<strong>不监听 <code>pull_request</code></strong>——self-hosted runner 永不跑未审查的 fork PR 代码(沿用 cd.yml 安全约束)。</li>
+        <li><strong>并发</strong>:<code>concurrency: portal-cd-${{ github.ref }}</code>,<code>cancel-in-progress: false</code>(部署不可半路取消)。</li>
+        <li><strong>回滚</strong>:<code>workflow_dispatch</code> 填旧 <code>image_tag</code> → 跳过 build、直接 deploy 该 tag(对齐 cd.yml 语义)。</li>
+        <li><strong>安全</strong>:dispatch 输入通过 <code>env:</code> 传入 shell(不直接 <code>${{ }}</code> 插值),避免脚本注入(沿用 cd.yml 加固写法)。</li>
+      </ul>
+    </section>
+
+    <section id="build">
+      <h2>4. 镜像构建 — <code>patra-portal/Dockerfile</code></h2>
+      <p>后端 5 服务共享一份 Dockerfile(因为都是同构 Java jar);portal <strong>自带</strong> <code>patra-portal/Dockerfile</code>——Next.js 约定,紧贴源码,docker build 上下文 = <code>patra-portal/</code>。</p>
+      <p>前置:<code>next.config.ts</code> 加 <code>output: "standalone"</code>,产出自包含 server(<code>.next/standalone/server.js</code>),镜像精简、运行时只需 Node。三阶段:</p>
+      <ol>
+        <li><strong>deps</strong>:<code>node:24-alpine</code> + corepack 启用 pnpm,<code>pnpm install --frozen-lockfile</code>(独立层,锁文件不变则缓存命中)。</li>
+        <li><strong>builder</strong>:copy 源码 + <code>pnpm build</code>(standalone trace)。</li>
+        <li><strong>runner</strong>:<code>node:24-alpine</code>,非 root(uid 10001),copy <code>.next/standalone</code> + <code>.next/static</code> + <code>public</code>(standalone 不自动带后两者,必须手动 COPY);env <code>PORT=4000</code> <code>HOSTNAME=0.0.0.0</code> <code>NODE_ENV=production</code>;<code>CMD ["node","server.js"]</code>。</li>
+      </ol>
+      <ul>
+        <li>镜像名 <code>ghcr.io/linqibin0826/patra-portal</code>,tag <code>&lt;sha&gt;</code> + <code>latest</code>(与后端同 GHCR 命名约定)。</li>
+        <li>容器内健康检查用 busybox <code>wget</code>(alpine 自带,免装 curl)。</li>
+        <li>node 版本由 <code>.nvmrc</code>(24)与 <code>package.json engines</code>(>=24)锚定,Dockerfile 基镜像与之对齐。</li>
+      </ul>
+    </section>
+
+    <section id="runtime">
+      <h2>5. 运行时编排与网络</h2>
+      <p>portal 作为 <code>patra-net</code> 上<strong>第 6 个 app 容器</strong>加入现有 <code>docker-compose.apps.yaml</code>(不另开 compose 文件,app 栈集中管理):</p>
+      <ul>
+        <li><code>image: ghcr.io/linqibin0826/patra-portal:${PORTAL_IMAGE_TAG:-latest}</code>、<code>container_name: patra-portal</code>、<code>ports: ["4000:4000"]</code>、<code>restart: unless-stopped</code>。</li>
+        <li><code>env_file: [.env.portal, .env.portal.secret(required:false)]</code> —— <strong>不加载 <code>.env.common</code></strong>。</li>
+        <li>compose healthcheck:容器内 <code>wget -q -O - http://localhost:4000/api/health</code>。</li>
+        <li>新建 <code>.env.portal</code>(committed dev 默认,非敏感):<code>PATRA_GATEWAY_BASE_URL=http://gateway:9528</code>(patra-net 服务名 + 容器内端口)、<code>PORT=4000</code>、<code>NODE_ENV=production</code>。</li>
+      </ul>
+      <p><strong>数据流</strong>:浏览器 → <code>http://&lt;macmini-tailscale&gt;:4000</code> → Next.js standalone server(RSC / Route Handler)→ 服务端 fetch <code>http://gateway:9528</code>(patra-net 内部)→ catalog。gateway 地址只在容器内可见、不下发浏览器(BFF 保持)。</p>
+      <aside class="callout info">
+        <span class="title">健康检查契约</span>
+        <p>portal 已有 <code>src/app/api/health/route.ts</code>,GET 返回 HTTP 200 + <code>{status:"ok",version,timestamp}</code>。deploy 用 <code>curl -fs http://localhost:4000/api/health</code> 判定——<code>-f</code> 遇非 2xx 即失败,无需 grep body(后端那套 grep <code>"status":"UP"</code> 不适用,因 portal 返回 <code>"ok"</code> 非 <code>"UP"</code>)。</p>
+      </aside>
+    </section>
+
+    <section id="ci-split">
+      <h2>6. 与现有 CI 切分</h2>
+      <p>当前 <code>portal-ci.yml</code> 在 <code>push:main</code> 与 <code>pull_request</code> 双触发。引入 portal-cd 后,merge 到 main 会让 CI(lint/test,内含 <code>next build</code>)与 CD(docker 内又跑一次 <code>next build</code>)<strong>重复构建</strong>。</p>
+      <p>方案:<strong>去掉 <code>portal-ci.yml</code> 的 <code>push:main</code> 触发,只留 <code>pull_request</code> + <code>workflow_dispatch</code></strong>。理由:main 受分支保护、PR 是质量门;切分为 <strong>CI = PR 门禁,CD = main 部署</strong>。这正是 <code>portal-ci.yml</code> 注释里已预想的方向。</p>
+    </section>
+
+    <section id="decisions">
+      <h2>7. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1:独立 <code>portal-cd.yml</code>,不扩展后端 <code>cd.yml</code></h3>
+        <p>新建独立 workflow,后端 <code>cd.yml</code> / <code>services.json</code> 完全不动。镜像现有 <code>ci.yml</code> / <code>portal-ci.yml</code> 的前后端拆分,各自内聚。</p>
+        <p class="alternatives"><strong>备选 A:扩展 cd.yml 为多态</strong>(portal 进 services.json 加 <code>type: node</code>,build 按 type 分支 Gradle/pnpm) — 否决:给 Java-centric 的 cd.yml 引入一堆条件分支,detect-changes/matrix 对单单元是过度设计。<br>
+        <strong>备选 B:cd.yml 里加专用 build-portal job</strong> — 否决:要给 cd.yml 加 <code>patra-portal/**</code> 触发路径,会耦合前后端触发、让 portal 改动多余地跑后端 detect-changes。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2:Dockerfile 与 portal 源码同目录,不放 <code>patra-infra/docker/</code></h3>
+        <p>portal 的 Dockerfile 紧贴源码放 <code>patra-portal/Dockerfile</code>,build 上下文即 <code>patra-portal/</code>。</p>
+        <p class="alternatives"><strong>备选:放 <code>patra-infra/docker/portal.Dockerfile</code></strong>(对齐后端集中放置) — 否决:后端 5 服务共享一份 Dockerfile 才集中放;portal 的 Dockerfile 与其源码强耦合(COPY package.json / 锁文件 / 源码),Next.js 惯例就近放更清晰。compose 只引用镜像、不关心 Dockerfile 位置。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3:standalone 自包含镜像 + 运行时 env 注入</h3>
+        <p>用 <code>output: "standalone"</code> 产出 Node server,<code>PATRA_GATEWAY_BASE_URL</code> 在容器启动时由 env 注入(非构建期 bake)。</p>
+        <p class="alternatives"><strong>备选 A:静态导出(<code>next export</code>)+ nginx</strong> — 否决:portal 是 BFF,服务端要代理 gateway、保持地址不下发浏览器,静态导出无服务端运行时,做不到。<br>
+        <strong>备选 B:不开 standalone,镜像内 <code>pnpm start</code></strong> — 否决:要把 node_modules 全量带进运行镜像,体积大;standalone 只带 trace 到的依赖。<br><em>注:此做法天然云可移植(将来可搬 Vercel/Cloud Run),但本版不为公网写任何东西——选它纯因为是 Next.js 容器化的正确做法。</em></p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4:portal 加入 <code>docker-compose.apps.yaml</code>,不另开 compose 文件</h3>
+        <p>portal 是一个 app,与后端 5 服务同属 app 栈、同在 <code>patra-net</code>,放进同一个 compose 文件统一编排,deploy 用 <code>docker compose -f docker-compose.apps.yaml up -d portal</code>。</p>
+        <p class="alternatives"><strong>备选:独立 <code>docker-compose.portal.yaml</code></strong> — 否决:无必要的文件碎片化,portal 本就是 app 栈一员。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>8. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Mac mini 拉 portal 镜像过 Shadowrocket 代理,大层首拉间歇 TLS 损坏(<code>tls: bad record MAC</code> 等)。不能直连(够不到 GitHub)。</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>复用后端 deploy 的 <strong>3× pull 重试</strong>循环;standalone node:alpine 镜像约 150–200MB,首拉失败重试/预拉即可,非硬墙。</td>
+          </tr>
+          <tr>
+            <td>standalone 用 <code>node server.js</code> 启动(非 pnpm script),<code>/api/health</code> 里 <code>npm_package_version</code> 取不到 → version 回退 <code>"0.0.0"</code>。</td>
+            <td><span class="pill low">low</span></td>
+            <td>不影响健康判定(只看 HTTP 200)。本版不修(YAGNI);如需真实版本,可在 Dockerfile 注入 <code>npm_package_version</code> env。</td>
+          </tr>
+          <tr>
+            <td>去掉 <code>portal-ci.yml</code> 的 <code>push:main</code> 后,直接 push 到 main(非 PR)的 portal 改动不再跑 CI 质量门。</td>
+            <td><span class="pill low">low</span></td>
+            <td>main 已开分支保护、改动一律走 PR;portal-cd 自身在 docker build 内会跑 <code>next build</code>,构建失败即部署失败,兜底。</td>
+          </tr>
+          <tr>
+            <td>portal 容器起来但连不上 gateway(<code>PATRA_GATEWAY_BASE_URL</code> 配错 / gateway 未就绪),页面拉不到数据。</td>
+            <td><span class="pill mid">mid</span></td>
+            <td><code>.env.portal</code> 用 patra-net 服务名 <code>gateway:9528</code>(容器内端口);<code>/api/health</code> 不依赖 gateway,故健康检查仍 UP——需在 Done 判定里显式验证「页面能拉到 catalog 数据」而非只看容器 healthy。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>9. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><code>.github/workflows/portal-cd.yml</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>独立 CD 流水线:build-and-push(ubuntu/pnpm)+ deploy(macmini)。</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><code>patra-portal/Dockerfile</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>Next.js standalone 多阶段(deps / builder / runner)。</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><code>patra-portal/next.config.ts</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>加 <code>output: "standalone"</code>。</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><code>patra-infra/docker/docker-compose.apps.yaml</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>加第 6 个 service <code>portal</code>(image / port 4000 / env_file / healthcheck)。</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><code>patra-infra/docker/.env.portal</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>运行时坐标:<code>PATRA_GATEWAY_BASE_URL</code> / <code>PORT</code> / <code>NODE_ENV</code>。</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><code>.github/workflows/portal-ci.yml</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>去掉 <code>push:main</code> 触发,只留 <code>pull_request</code> + <code>workflow_dispatch</code>。</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><code>patra-portal/.dockerignore</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>排除 <code>node_modules</code> / <code>.next</code> / <code>tests</code> 等,缩小 build context。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>本地可 <code>docker build -f patra-portal/Dockerfile patra-portal</code> 成功,<code>docker run -e PATRA_GATEWAY_BASE_URL=... -p 4000:4000</code> 起得来,<code>/api/health</code> 返回 200。</li>
+        <li>merge 含 portal 改动的 PR 到 main → <code>portal-cd</code> 自动触发,build-and-push 成功推 GHCR。</li>
+        <li>deploy job 在 Mac mini 上 compose pull + up <code>patra-portal</code> 容器,健康检查通过。</li>
+        <li>tailscale 内 <code>http://&lt;macmini&gt;:4000</code> 可访问,页面能拉到 catalog 真实数据(BFF 链路通)。</li>
+        <li><code>workflow_dispatch</code> 填旧 <code>image_tag</code> 能回滚到指定镜像。</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       由 ../styles/user-notes.js 驱动，仅本机本浏览器、不进 git；
+       放子目录的 spec 把下方 <script src> 同改成 ../../styles/
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
