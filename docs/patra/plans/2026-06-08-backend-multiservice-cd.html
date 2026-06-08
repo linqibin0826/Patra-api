@@ -111,7 +111,7 @@ patra-infra/CLAUDE.md                     [modify] CD 章节更新为多服务</
           <dl class="files"><dt>创建</dt><dd><code>patra-infra/cd/services.json</code></dd></dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="done"><strong>步骤 1</strong>：写 5 服务数组，每条含 <code>name / gradleTask / context / port / image / srcPrefix</code>。gateway 的 context=<code>patra-gateway-boot</code>、srcPrefix=<code>patra-gateway-boot/</code>（顶层不规则）；其余 <code>patra-api/patra-{svc}/...</code>。image=<code>ghcr.io/linqibin0826/patra-{name}</code>。端口 registry6000/object-storage6200/catalog6300/ingest6100/gateway9528。</li>
+          <li class="step" data-status="done"><strong>步骤 1</strong>：写 5 服务数组，每条含 <code>name / gradleTask / context / port / image / srcPrefix</code>。gateway 的 context=<code>patra-api/patra-gateway-boot</code>、srcPrefix=<code>patra-api/patra-gateway-boot/</code>（单模块服务，无 domain/app/infra 分层）；其余 <code>patra-api/patra-{svc}/...</code>。image=<code>ghcr.io/linqibin0826/patra-{name}</code>。端口 registry6000/object-storage6200/catalog6300/ingest6100/gateway9528。</li>
           <li class="step" data-status="done"><strong>步骤 2</strong>：<code>jq . services.json</code> 验证合法 JSON。commit。</li>
         </ol>
       </article>

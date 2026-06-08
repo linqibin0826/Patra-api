@@ -9,6 +9,12 @@ spring:
     activate:
       on-profile: prod
 
+  # Batch Job 不在启动时自动执行（catalog 有多个 Job，由 XXL-Job 手动触发）。
+  # 缺此项时多 Job 场景启动期报「Job name must be specified in case of multiple jobs」。
+  batch:
+    job:
+      enabled: false
+
   # Production database (environment variables)
   datasource:
     url: ${CATALOG_DB_URL}

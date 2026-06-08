@@ -53,11 +53,17 @@ jobs:
           persist-credentials: false
       - name: 🔍 Detect changed services
         id: detect
+        # 通过 env 传入而非直接 ${{ }} 插值到 shell，避免 workflow_dispatch 输入的脚本注入
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SERVICE: ${{ github.event.inputs.service }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            SERVICES=$(bash patra-infra/cd/detect-changes.sh dispatch "${{ github.event.inputs.service }}")
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SERVICES=$(bash patra-infra/cd/detect-changes.sh dispatch "$DISPATCH_SERVICE")
           else
-            SERVICES=$(bash patra-infra/cd/detect-changes.sh push "${{ github.event.before }}" "${{ github.sha }}")
+            SERVICES=$(bash patra-infra/cd/detect-changes.sh push "$EVENT_BEFORE" "$EVENT_SHA")
           fi
           echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
           echo "本次改动服务: $SERVICES"
