@@ -10,6 +10,10 @@ on:
     branches: [main]
     paths:
       - 'patra-portal/**'
+      # portal 与后端共享 docker-compose.apps.yaml（spec 决策 4）；portal 编排/坐标变更也要重新部署。
+      # 代价：后端 service 块改动也会触发 portal 重建+重部署（幂等无害，与 cd.yml 侧的共享耦合对称）。
+      - 'patra-infra/docker/docker-compose.apps.yaml'
+      - 'patra-infra/docker/.env.portal'
       - '.github/workflows/portal-cd.yml'
   workflow_dispatch:
     inputs:
@@ -117,3 +121,7 @@ jobs:
             docker logs patra-portal --tail 80 2>&1 || true
             exit 1
           fi
+
+      - name: 🧹 清理 GHCR 凭据（self-hosted 持久 workspace，防 config.json 落盘残留）
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"

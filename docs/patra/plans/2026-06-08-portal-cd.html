@@ -527,12 +527,20 @@ git commit -m "feat(portal): 加 portal-cd 流水线 + CI 去掉 push:main（CI=
         </header>
         <p>portal 加入共享的 <code>docker-compose.apps.yaml</code>（spec 决策 4）→ 该文件在 cd.yml 触发路径 <code>patra-infra/docker/**</code> 内，且 detect-changes 把它与新增的 <code>.env.portal</code> 都判为「公共面」（REBUILD_ALL，二者均不匹配任何后端 srcPrefix、也不在 ignore 列表）。后果：本 PR 合并时 cd.yml 会连带重建+重部署全部 5 个后端服务（幂等、安全，仅浪费 CI 分钟 + 后端容器短暂重启）；未来对 apps.yaml 的任何改动同样触发后端全量重建。接受此耦合——apps.yaml 是后端共享文件，detect-changes 无法在文件粒度区分改动归属。彻底解耦方案（本 plan 范围外）：拆独立 docker-compose.portal.yaml + 把 portal 基建文件加进 detect-changes.sh ignore 列表。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-08T13:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-06-08T13:45">06-08 13:45</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>CodeRabbit review（PR #147）驱动修复 3 条：①<strong>portal-cd 触发路径补</strong> <code>docker-compose.apps.yaml</code> + <code>.env.portal</code>（修复 portal 配置漂移——原先只监听 patra-portal/**，portal 编排/坐标变更不会重新部署）；代价是 apps.yaml 改动现会<strong>双向</strong>触发后端全量重建 + portal 重建重部署（幂等无害，与上方 tradeoff 同源、接受）。②deploy job 加 <code>if: always()</code> 清理 <code>$DOCKER_CONFIG</code>（防 GHCR 凭据 config.json 在 self-hosted 持久 workspace 落盘残留）。③spec HTML 行内 <code>&gt;=</code> 转义。<strong>不修复 3 条</strong>：checkout@SHA pin（全仓 6 workflow 统一 <code>@v4</code>，应走仓库级策略而非单文件）、version 0.0.0（YAGNI 已接受、不影响健康判定）、<code>&amp;app-healthcheck</code> 锚点「不存在」（误报——锚点确在 apps.yaml:14，compose config 已验证合并成功）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="change">1</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>

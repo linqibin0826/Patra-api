@@ -121,7 +121,7 @@
       <ul>
         <li>镜像名 <code>ghcr.io/linqibin0826/patra-portal</code>,tag <code>&lt;sha&gt;</code> + <code>latest</code>(与后端同 GHCR 命名约定)。</li>
         <li>容器内健康检查用 busybox <code>wget</code>(alpine 自带,免装 curl)。</li>
-        <li>node 版本由 <code>.nvmrc</code>(24)与 <code>package.json engines</code>(>=24)锚定,Dockerfile 基镜像与之对齐。</li>
+        <li>node 版本由 <code>.nvmrc</code>(24)与 <code>package.json engines</code>(&gt;=24)锚定,Dockerfile 基镜像与之对齐。</li>
       </ul>
     </section>
 
