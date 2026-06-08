@@ -35,7 +35,7 @@
           -->
           <li data-task-status="done"><a href="#task-1">Task 1 — 构建可运行的 portal 镜像</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — 运行时编排（compose + .env.portal）</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — CD 流水线 + CI 职责切分</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — CD 流水线 + CI 职责切分</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -293,7 +293,7 @@ git commit -m "feat(portal): compose 加 portal service + .env.portal 运行时�
       </article>
 
       <!-- ===================== TASK 3 ===================== -->
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="done">
         <header>
           <h2>任务 3：CD 流水线 + CI 职责切分</h2>
           <dl class="files">
@@ -304,7 +304,7 @@ git commit -m "feat(portal): compose 加 portal service + .env.portal 运行时�
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：新建 <code>.github/workflows/portal-cd.yml</code></strong>
             <p>两段线性流水线。安全沿用 cd.yml：只监听 push:main + dispatch（不监听 pull_request，self-hosted runner 永不跑 fork PR 代码）；dispatch 的 <code>image_tag</code> 经 <code>env</code> 传入 shell（不直接插值，防注入）；Mac mini 上写 GHCR auths 绕钥匙串 + 3× pull 重试抗代理 TLS 抖动：</p>
             <pre><code class="lang-yaml">name: Portal CD
@@ -428,7 +428,7 @@ jobs:
           fi</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：改 <code>.github/workflows/portal-ci.yml</code> 的 <code>on:</code> 块——去掉 <code>push:</code> 触发</strong>
             <p>把现有 <code>on:</code> 块（含 <code>push: branches:[main] paths:...</code>）整体替换为只留 <code>pull_request</code> + <code>workflow_dispatch</code>：</p>
             <pre><code class="lang-yaml">on:
@@ -441,7 +441,7 @@ jobs:
             <p>其余 jobs（lint / typecheck / test / e2e / portal-ci-required-check）保持不变。同时把文件顶部那条「后续如需将 patra-portal/** 从 ci.yml 的 paths-ignore 中排除」注释删掉或更新（已不再相关）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：校验两个 workflow YAML（这一步是本任务的「测试」）</strong>
             <p>优先用 actionlint（若已安装）；无则用 python yaml 解析兜底：</p>
             <pre><code class="lang-bash"># 首选：actionlint（语义级校验，捕获 expression/上下文错误）
@@ -453,7 +453,7 @@ python3 -c "import yaml; yaml.safe_load(open('.github/workflows/portal-cd.yml'))
             <p>预期：actionlint 无 error（或降级提示），python 输出 <code>✓ YAML 解析通过</code>。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add .github/workflows/portal-cd.yml .github/workflows/portal-ci.yml
 git commit -m "feat(portal): 加 portal-cd 流水线 + CI 去掉 push:main（CI=PR 门禁，CD=main 部署）"</code></pre>
