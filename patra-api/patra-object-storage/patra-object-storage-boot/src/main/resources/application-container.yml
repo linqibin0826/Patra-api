@@ -7,7 +7,7 @@
 spring:
   config:
     activate:
-      on-profile: prod
+      on-profile: container
 
   # 生产数据库（凭据从环境变量注入，无默认值 → 强制由 .env 提供）
   datasource:

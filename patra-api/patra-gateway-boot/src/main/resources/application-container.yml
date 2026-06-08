@@ -8,7 +8,7 @@
 spring:
   config:
     activate:
-      on-profile: prod
+      on-profile: container
 
 # ----------------------------------------------------------------------------
 # Production Configuration
