@@ -33,7 +33,7 @@
 
           <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
           -->
-          <li data-task-status="pending"><a href="#task-1">Task 1 — 构建可运行的 portal 镜像</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — 构建可运行的 portal 镜像</a></li>
           <li data-task-status="pending"><a href="#task-2">Task 2 — 运行时编排（compose + .env.portal）</a></li>
           <li data-task-status="pending"><a href="#task-3">Task 3 — CD 流水线 + CI 职责切分</a></li>
         </ol>
@@ -107,7 +107,7 @@ patra-infra/docker/
       <h2>任务列表</h2>
 
       <!-- ===================== TASK 1 ===================== -->
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：构建可运行的 portal 镜像（本地验证）</h2>
           <dl class="files">
@@ -119,7 +119,7 @@ patra-infra/docker/
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：next.config.ts 加 <code>output: "standalone"</code></strong>
             <p>把 <code>patra-portal/next.config.ts</code> 整体替换为下列内容（仅新增一行 <code>output</code>，保留原 <code>reactStrictMode</code>）：</p>
             <pre><code class="lang-ts">import type { NextConfig } from "next";
@@ -133,7 +133,7 @@ const nextConfig: NextConfig = {
 export default nextConfig;</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：新建 <code>patra-portal/.dockerignore</code></strong>
             <p>排除不该进 build context 的内容（host 的 node_modules / .next 会在镜像内重建；本地密钥与测试产物不进镜像）：</p>
             <pre><code class="lang-text">node_modules
@@ -155,7 +155,7 @@ Dockerfile
 .dockerignore</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：新建 <code>patra-portal/Dockerfile</code>（三阶段 standalone）</strong>
             <p>构建上下文为 <code>patra-portal/</code>。<code>deps</code> 装依赖（缓存层）、<code>builder</code> 跑 <code>next build</code>、<code>runner</code> 只带 standalone 产物且非 root 运行：</p>
             <pre><code class="lang-dockerfile"># patra-portal 运行镜像（Next.js 15 standalone Node server）
@@ -197,14 +197,14 @@ EXPOSE 4000
 CMD ["node", "server.js"]</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：本地构建镜像（验证 build 通过）</strong>
             <p>运行（在 git root）：</p>
             <pre><code class="lang-bash">docker build -f patra-portal/Dockerfile -t patra-portal:local patra-portal</code></pre>
             <p>预期：三阶段全部成功，最后输出 <code>naming to docker.io/library/patra-portal:local</code>。若 <code>COPY /app/public</code> 报错说明 public 被 .dockerignore 误排——检查 .dockerignore 未含 <code>public</code>。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：本地运行容器并验证健康（这一步是本任务的「测试」）</strong>
             <p>后台起容器（gateway 地址此处仅占位，<code>/api/health</code> 不依赖 gateway）：</p>
             <pre><code class="lang-bash">docker run -d --name portal-local -p 4000:4000 \
@@ -218,7 +218,7 @@ curl -fs http://localhost:4000/api/health</code></pre>
             <pre><code class="lang-bash">docker rm -f portal-local</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-portal/next.config.ts patra-portal/.dockerignore patra-portal/Dockerfile
 git commit -m "feat(portal): 加 standalone 镜像构建（Dockerfile + next.config + dockerignore）"</code></pre>
