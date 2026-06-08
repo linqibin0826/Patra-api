@@ -2,13 +2,13 @@
 
 ## 环境配置
 
-Patra 使用两个环境：**dev（开发）** 和 **prod（生产）**
+Patra 使用两个 profile：**dev（本地 IDE 开发）** 和 **container（容器化部署）**（`prod` 预留给未来真正的云生产）
 
 ```
 patra-{service}-boot/src/main/resources/
 ├── application.yaml           # 基础配置
-├── application-dev.yaml       # 开发环境
-└── application-prod.yaml      # 生产环境
+├── application-dev.yaml       # 本地 IDE 开发
+└── application-container.yaml      # 容器化部署(环境变量注入)
 ```
 
 ## 配置优先级（由高到低）

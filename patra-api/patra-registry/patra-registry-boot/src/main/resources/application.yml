@@ -24,7 +24,7 @@ spring:
   application:
     name: patra-registry
 
-  # Active profile (dev/prod), overridable via environment variable
+  # Active profile (dev = 本地 IDE / container = 容器部署), overridable via environment variable
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
@@ -60,7 +60,7 @@ spring:
   # ========================================
   datasource:
     driver-class-name: org.postgresql.Driver
-    # URL, username, password are profile-specific (see application-dev.yml, application-prod.yml)
+    # URL, username, password are profile-specific (see application-dev.yml, application-container.yml)
     hikari:
       # Connection pool settings
       maximum-pool-size: 10

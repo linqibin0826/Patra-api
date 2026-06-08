@@ -23,7 +23,7 @@ patra-gateway-boot/
 ├── src/main/resources/
 │   ├── application.yml                 # 主配置文件(路由、Nacos)
 │   ├── application-dev.yml             # 开发环境配置(DEBUG 日志)
-│   └── application-prod.yml            # 生产环境配置
+│   └── application-container.yml        # 容器部署配置(环境变量注入)
 └── build.gradle.kts                    # Gradle 依赖定义
 ```
 
