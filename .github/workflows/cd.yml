@@ -60,13 +60,16 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_SHA: ${{ github.sha }}
         run: |
+          # 受影响单元路由（结构化对象）；CD 部署服务 = backend_units 去掉 foundation
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            SERVICES=$(bash patra-infra/cd/detect-changes.sh dispatch "$DISPATCH_SERVICE")
+            R=$(bash patra-infra/cd/detect-changes.sh dispatch "$DISPATCH_SERVICE")
           else
-            SERVICES=$(bash patra-infra/cd/detect-changes.sh push "$EVENT_BEFORE" "$EVENT_SHA")
+            R=$(bash patra-infra/cd/detect-changes.sh push "$EVENT_BEFORE" "$EVENT_SHA")
           fi
+          SERVICES=$(echo "$R" | jq -c '[.backend_units[] | select(. != "foundation")]')
           echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
-          echo "本次改动服务: $SERVICES"
+          echo "受影响单元: $R"
+          echo "本次构建/部署服务: $SERVICES"
 
   # ---- 2) 只构建改动的服务，推 GHCR（动态 matrix）----
   build-and-push:
