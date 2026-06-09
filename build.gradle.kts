@@ -70,7 +70,7 @@ reporting {
 
 // ============================================================================
 // CI 受影响单元门控 SSOT：把真实 Gradle 模块依赖图导出为 patra-infra/cd/module-graph.json。
-// detect-changes.sh 读它把「变更文件」映射成「受影响测试单元」（含跨服务编译期契约扇出）。
+// (Task 3 起) detect-changes.sh 将读它把「变更文件」映射成「受影响测试单元」（含跨服务编译期契约扇出）。
 // 改了任何 build.gradle.kts 后必须重跑：./gradlew dumpModuleGraph（CI preflight 用 git diff 守卫陈旧）。
 // ============================================================================
 tasks.register("dumpModuleGraph") {
@@ -102,10 +102,10 @@ tasks.register("dumpModuleGraph") {
         }
         // 4) 物理目录 -> 单元
         fun unitOf(dir: String): String = when {
-            dir.startsWith("patra-api/patra-registry/") -> "registry"
-            dir.startsWith("patra-api/patra-object-storage/") -> "object-storage"
-            dir.startsWith("patra-api/patra-catalog/") -> "catalog"
-            dir.startsWith("patra-api/patra-ingest/") -> "ingest"
+            dir == "patra-api/patra-registry" || dir.startsWith("patra-api/patra-registry/") -> "registry"
+            dir == "patra-api/patra-object-storage" || dir.startsWith("patra-api/patra-object-storage/") -> "object-storage"
+            dir == "patra-api/patra-catalog" || dir.startsWith("patra-api/patra-catalog/") -> "catalog"
+            dir == "patra-api/patra-ingest" || dir.startsWith("patra-api/patra-ingest/") -> "ingest"
             dir == "patra-api/patra-gateway-boot" -> "gateway"
             else -> "foundation"
         }
