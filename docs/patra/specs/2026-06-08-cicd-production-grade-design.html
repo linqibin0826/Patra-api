@@ -25,7 +25,7 @@
       <li><a href="#scope">范围边界</a></li>
       <li><a href="#ci-orchestration">CI 编排与 gate 语义</a></li>
       <li><a href="#test-gating">受影响单元门控与测试矩阵</a></li>
-      <li><a href="#coderabbit">CodeRabbit 治理</a></li>
+      <li><a href="#coderabbit">AI Review 治理（CodeRabbit + Claude）</a></li>
       <li><a href="#caching">缓存策略与信任边界</a></li>
       <li><a href="#hardening">安全加固</a></li>
       <li><a href="#decisions">关键决策与备选</a></li>
@@ -52,7 +52,7 @@
 
     <aside class="callout summary">
       <span class="title">关键决策摘要</span>
-      <p>把后端 CI 从「前端改动也触发后端全套、4 个 shard 永远全跑」重构为「统一编排 + <strong>受影响单元</strong>门控」：一个 <code>detect-changes</code> 决策、一个 <code>required-check</code> 总 gate，按<strong>受影响单元</strong>（<code>service</code> / <code>contract</code> / <code>foundation</code> / <code>portal</code>）精确门控 unit / slice / integration / e2e。<strong>关键修正</strong>：运行时测试虽无多服务拓扑，但<strong>编译期 API 契约存在跨服务消费者</strong>（如 <code>registry-api</code> 被 catalog / ingest / expr-starter 依赖），路由必须把契约变更<strong>扇出到消费者服务</strong>，扇出关系派生自真实 Gradle 模块依赖图，未确定即保守 full-run。foundation 变更全跑、nightly cron 全量兜底。配套：CodeRabbit 关增量复评（复评改由 Claude 分批 <code>@</code> 触发）、两层 Gradle 缓存且<strong>仅 trusted CI 可写远程缓存</strong>、前端 / Docker 层缓存、pin action SHA + 最小 permissions + Dependabot。顺手修复「前端质量门未进分支保护 → 前端 lint/test 拦不住合并」与「选择性运行下 coverage 聚合语义不成立」两个隐患。分支保护配置零改动。</p>
+      <p>把后端 CI 从「前端改动也触发后端全套、4 个 shard 永远全跑」重构为「统一编排 + <strong>受影响单元</strong>门控」：一个 <code>detect-changes</code> 决策、一个 <code>required-check</code> 总 gate，按<strong>受影响单元</strong>（<code>service</code> / <code>contract</code> / <code>foundation</code> / <code>portal</code>）精确门控 unit / slice / integration / e2e。<strong>关键修正</strong>：运行时测试虽无多服务拓扑，但<strong>编译期 API 契约存在跨服务消费者</strong>（如 <code>registry-api</code> 被 catalog / ingest / expr-starter 依赖），路由必须把契约变更<strong>扇出到消费者服务</strong>，扇出关系派生自真实 Gradle 模块依赖图，未确定即保守 full-run。foundation 变更全跑、nightly cron 全量兜底。配套：CodeRabbit 关增量复评（复评改由 Claude 分批 <code>@</code> 触发）、两层 Gradle 缓存且<strong>仅 trusted CI 可写远程缓存</strong>、前端 / Docker 层缓存、pin action SHA + 最小 permissions + Dependabot。<strong>AI review 治理</strong>：CodeRabbit 配置 best-practice 化 + 刚合并的 Claude review 加固，双 reviewer 分工（CodeRabbit 广度 / Claude 深度）、各 PR 只评一次。顺手修复「前端质量门未进分支保护 → 前端 lint/test 拦不住合并」与「选择性运行下 coverage 聚合语义不成立」两个隐患。分支保护配置零改动。</p>
     </aside>
 
     <section id="background">
@@ -64,6 +64,7 @@
         <li><strong>测试全量重跑</strong>：后端 <code>unit-tests</code> 固定 4-shard matrix 永远全跑；<code>integration</code> / <code>e2e</code> 各一个 job 也全跑。改 catalog 一个文件，registry / ingest / commons 全部陪跑。</li>
         <li><strong>隐患 · 供应链</strong>：所有 action pin 到可变 tag <code>@vX</code>（非 SHA）。公开仓库——2025 年 <code>tj-actions</code> 投毒波及 2.3 万仓库。</li>
         <li><strong>隐患 · 缓存</strong>：CD 的 <code>docker build</code> 无 buildx 层缓存；<code>portal-ci</code> 无 <code>.next/cache</code> 缓存。</li>
+        <li><strong>新增 · 双 AI reviewer</strong>：刚合并的 <code>claude-code-review.yml</code>（#148）让 Claude 也自动 review PR，与 CodeRabbit 形成两个自动 reviewer；但其 <code>permissions: pull-requests: read</code> 发不了评论（静默失败）、触发含 <code>synchronize</code>（每 push 重跑）、action 未 pin SHA。CodeRabbit 现配置「只跑通」，多项最佳实践未拧紧（见 §5）。</li>
       </ol>
     </section>
 
@@ -80,7 +81,7 @@
             <li>修正<strong>选择性运行下的 coverage 语义</strong>（PR 选择性 ≠ 全仓聚合）。</li>
             <li>提取<strong>镜像版本一致性 preflight job</strong>，避免选择性跑漏掉这条 cheap governance。</li>
             <li>删除 <code>ci-docs.yml</code>、<code>portal-ci.yml</code>。</li>
-            <li>CodeRabbit：关增量复评、复评由 Claude <code>@</code> 驱动、更新评审流程文档。</li>
+            <li><strong>AI review 治理</strong>：CodeRabbit best-practice overhaul（关增量复评 + 吃进 <code>.claude/rules</code> 规约 + fbinfer/安全工具 + 降噪 + 分层 path_instructions）；Claude review 工作流加固（修 permissions、每 PR 评一次、author 门控、pin SHA）；双 reviewer 分工；复评由 Claude <code>@</code> 驱动；更新评审流程文档。</li>
             <li>两层 Gradle 缓存（GHA + Mac mini node，<strong>信任边界：仅 trusted CI 可写</strong>）、portal <code>.next/cache</code>、CD buildx 层缓存。</li>
             <li>全 workflow pin commit SHA（格式 <code>@&lt;sha&gt; # vX.Y.Z</code>）、最小 <code>permissions:</code>、新增 <code>.github/dependabot.yml</code>。</li>
             <li><code>detect-changes</code> 路由的 TDD 测试。</li>
@@ -187,12 +188,33 @@
     </section>
 
     <section id="coderabbit">
-      <h2>5. CodeRabbit rate limit 治理</h2>
+      <h2>5. AI Review 治理（CodeRabbit + Claude Code）</h2>
+      <p>仓库现有两个 AI reviewer：CodeRabbit + 新加的 Claude Code（<code>claude.yml</code> 的 <code>@claude</code> 交互 + <code>claude-code-review.yml</code> 的 PR 自动 review）。实测两者 findings ~93% 不重叠，定位为<strong>互补、分工</strong>，不是竞争：</p>
+
+      <h3>5.1 双 reviewer 分工 + 各 PR 评一次</h3>
       <ul>
-        <li><strong>论据基于配置意图、不押第三方默认值</strong>：当前 <code>.coderabbit.yaml</code> 显式 <code>auto_pause_after_reviewed_commits: 0</code> 且注释写明「保证每次 push 增量审查」——意图就是每 push 必复评，故消耗配额。（不把全部风险建立在「<code>auto_incremental_review</code> 默认 true」这个可能变动的 SaaS 默认上。）</li>
-        <li><strong>改配置</strong>：设 <code>auto_review.auto_incremental_review: false</code>，删掉 <code>auto_pause_after_reviewed_commits: 0</code>，<strong>同步更新注释</strong>（去掉「保证每次 push 增量审查」的反向说明）。保留 <code>enabled: true</code> + <code>drafts: false</code>（ready 时自动首评兜底）。</li>
-        <li><strong>复评由 Claude 驱动</strong>：开发期 PR 挂 draft（不评）→ 完工转 ready（自动首评）→ Claude 处理完<strong>一批</strong>反馈、推送后发 <code>@coderabbitai review</code> 触发复评。用户全程不参与触发。</li>
-        <li><strong>固化进规则</strong>：更新根 <code>CLAUDE.md</code>「PR 与代码评审」节，并接上既有「开 PR 后必启 Monitor」规则（Monitor 跟踪评论流不变，仅复评变手动）。</li>
+        <li><strong>CodeRabbit = 广度</strong>：行级 nitpick + lint/安全工具聚合（shellcheck / hadolint / actionlint / gitleaks / …）+ 跨文件一致性 + Linear AC 对齐 + area 标签。</li>
+        <li><strong>Claude = 深度</strong>：六边形架构纯净性、DDD 领域模型、跨服务契约、复杂重构意图。</li>
+        <li><strong>两者都「每 PR 评一次」</strong>：CodeRabbit <code>auto_incremental_review: false</code>；Claude review 触发改 <code>[opened, ready_for_review]</code>、去掉 <code>synchronize</code>（不再每 push 重跑）。复评由 Claude 分批 <code>@coderabbitai review</code> / <code>@claude</code> 手动触发，用户不参与。Monitor 覆盖三条流（CodeRabbit + Claude review + 人工）。</li>
+      </ul>
+
+      <h3>5.2 CodeRabbit 配置 overhaul（现「只跑通」，本次拧紧）</h3>
+      <ul>
+        <li><strong>rate limit</strong>：<code>auto_incremental_review: false</code>，删 <code>auto_pause_after_reviewed_commits: 0</code> 并<strong>同步改注释</strong>（去掉「保证每次 push 增量审查」反向说明）。论据基于当前配置意图（显式 <code>:0</code> + 注释），不押 SaaS 默认值。保留 <code>enabled: true</code> + <code>drafts: false</code>（ready 首评兜底）。</li>
+        <li><strong>吃进项目规约</strong>：<code>knowledge_base.code_guidelines.filePatterns: [".claude/rules/**/*.md"]</code>——现配置读不到 <code>port-service.md</code> / <code>error-handling.md</code> / <code>code-style.md</code>（<code>CLAUDE.md</code> 已默认吸收）。</li>
+        <li><strong>Java bug 检测</strong>：<code>fbinfer.enable_java: true</code>（默认 false，Java 项目不开等于没有）。</li>
+        <li><strong>安全工具显式声明</strong>：trufflehog / checkov / trivy / osv_scanner / zizmor / opengrep（公开仓库基线）；关 pmd / semgrep / biome 等重复或无关项。</li>
+        <li><strong>path_instructions</strong>：前端 <code>{ts,tsx}</code> 花括号 glob 拆两条（否则 tsx 可能没匹配上）；新增 <code>patra-common-*</code> / <code>patra-spring-boot-starter-*</code> 全局影响模块专项；各层标注「【让给 Claude】架构深评 /【不要评论】框架约定写法」以免与 Claude 叠加。</li>
+        <li><strong>降噪</strong>：关 <code>changed_files_summary</code> / <code>related_issues</code> / <code>related_prs</code>。</li>
+        <li><strong>（可选）TDD 预合并检查</strong>：<code>pre_merge_checks</code> 自定义 check（warning 级，不阻断——与 <code>request_changes_workflow: false</code> 一致），提示「production 变更须伴随测试变更」。</li>
+      </ul>
+
+      <h3>5.3 Claude review 工作流加固</h3>
+      <ul>
+        <li><strong><code>claude-code-review.yml</code></strong>：修 <code>permissions: pull-requests: write</code>（现 <code>read</code>，发不了评论、静默失败）；触发改 <code>[opened, ready_for_review]</code>；<strong>author 门控</strong>（仅 owner PR，防 prompt injection + 省 OAuth 额度）；<code>use_sticky_comment: true</code>；<code>claude_args: --max-turns N</code> 限深；pin SHA。</li>
+        <li><strong><code>claude.yml</code></strong>：pin SHA、按需 <code>pull-requests: write</code>、author 门控。</li>
+        <li><strong>安全</strong>：保持 <code>pull_request</code>（非 <code>pull_request_target</code>）——fork 拿不到 secret，安全。</li>
+        <li><strong>固化进规则</strong>：更新根 <code>CLAUDE.md</code>「PR 与代码评审」节（复评由 Claude 分批 <code>@</code> 触发、开发期 draft 降频、Monitor 覆盖三条 review 流）。</li>
       </ul>
     </section>
 
@@ -279,6 +301,13 @@
         <p>PR 服务级用 Codecov flags 上传受影响单元 coverage；foundation/full/nightly 出全仓聚合；docs-only/portal-only coverage skipped、gate 接受 skipped。</p>
         <p class="alternatives"><strong>备选：</strong>选择性跑仍走 <code>jacoco-report-aggregation</code> 全仓上传 — 否决：未运行模块被算 0 覆盖、产残报告，<code>fail_ci_if_error</code> 还可能误红。</p>
       </div>
+
+      <div class="decision">
+        <h3>决策 9：双 AI reviewer 分工 + 每 PR 评一次</h3>
+        <p>CodeRabbit 走广度（工具聚合 + 行级 + Linear AC），Claude 走深度（架构 + 领域逻辑），实测 ~93% 非重叠；两者均改「每 PR 评一次」（去每 push 复评），复评手动 <code>@</code>。CodeRabbit 同步做 best-practice overhaul，Claude review 修 permissions + author 门控 + pin SHA。</p>
+        <p class="alternatives"><strong>备选 A：</strong>只留一个自动 reviewer（Claude 仅 @mention）— 用户决策保留双 reviewer 的互补价值。<br>
+        <strong>备选 B：</strong>两个都保留每 push 复评 — 否决：噪音 / 额度叠加，违背本次降噪初衷。</p>
+      </div>
     </section>
 
     <section id="risks">
@@ -334,6 +363,16 @@
             <td>writing-plans 拆任务；可拆「①核心门控 / ②硬化」两 PR</td>
           </tr>
           <tr>
+            <td>双 AI reviewer 噪音 / OAuth 额度叠加</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>分工 path_instructions（让给 Claude / 不评框架约定）+ 两者每 PR 评一次（去 synchronize）+ 复评手动 @；Claude 额度受 once-per-PR 约束</td>
+          </tr>
+          <tr>
+            <td><code>claude-code-review</code> 权限不足静默失败 / 公开仓库 PR prompt injection</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>修 permissions read→write + author 门控（仅 owner PR）+ <code>pull_request</code>（非 target，fork 拿不到 secret）+ pin SHA + <code>--max-turns</code></td>
+          </tr>
+          <tr>
             <td>Mac mini cache node 不可达</td>
             <td><span class="pill low">low</span></td>
             <td>远程缓存 fail-soft 退化为 cache miss，GHA 缓存兜底，不阻断 CI</td>
@@ -354,14 +393,14 @@
           <tr><td>3</td><td><code>.github/workflows/portal-ci.yml</code></td><td><span class="pill delete">delete</span></td><td>前端检查（含 Playwright 信号）并入 ci.yml</td></tr>
           <tr><td>4</td><td><code>.github/workflows/cd.yml</code></td><td><span class="pill modify">modify</span></td><td>build-and-push 接 buildx 层缓存；pin SHA + 最小 permissions（部署逻辑不动）</td></tr>
           <tr><td>5</td><td><code>.github/workflows/portal-cd.yml</code></td><td><span class="pill modify">modify</span></td><td>pin SHA + 最小 permissions</td></tr>
-          <tr><td>6</td><td><code>.github/workflows/claude.yml</code></td><td><span class="pill modify">modify</span></td><td>pin SHA + 最小 permissions</td></tr>
+          <tr><td>6</td><td><code>.github/workflows/claude.yml</code> + <code>claude-code-review.yml</code></td><td><span class="pill modify">modify</span></td><td>claude.yml：pin SHA + 按需 <code>pull-requests: write</code> + author 门控；claude-code-review.yml：触发改 <code>[opened, ready_for_review]</code>（去 synchronize）+ permissions read→write + author 门控 + sticky comment + <code>--max-turns</code> + pin SHA</td></tr>
           <tr><td>7</td><td><code>patra-infra/cd/detect-changes.sh</code></td><td><span class="pill modify">modify</span></td><td>新增 <code>pr &lt;base&gt; &lt;head&gt;</code> / <code>schedule</code> 模式；输出 <code>backend_units_json</code>/<code>portal_changed</code>/<code>docs_only</code>/<code>full_run</code>/<code>coverage_mode</code>；叠加 contract 消费者扇出（读依赖图）；未识别路径全跑</td></tr>
           <tr><td>8</td><td><code>patra-infra/cd/services.json</code></td><td><span class="pill modify">modify</span></td><td>补 CI 单元定义 + 契约消费者来源（与 CD 构建任务并存的 SSOT）；契约扇出优先从 Gradle 依赖图派生</td></tr>
           <tr><td>9</td><td>模块依赖图派生机制（<code>build-logic</code> reverse-dep 任务 / 生成物 + staleness 守卫，或 detect-changes 内实时计算）</td><td><span class="pill create">create</span></td><td>为 contract 扇出提供「派生而非手维护」的 SSOT；机制在实现计划定</td></tr>
           <tr><td>10</td><td><code>patra-infra/cd/detect-changes.bats</code>（或等价测试）</td><td><span class="pill create">create</span></td><td>TDD 路由测试，覆盖六场景 + 契约扇出两例</td></tr>
           <tr><td>11</td><td><code>settings.gradle.kts</code></td><td><span class="pill modify">modify</span></td><td><code>buildCache { remote&lt;HttpBuildCache&gt; }</code>：仅 trusted CI <code>push=true</code>、PR 只读、缺 secret 禁用、fail-soft</td></tr>
           <tr><td>12</td><td><code>patra-infra/docker/docker-compose.buildcache.yaml</code> + 凭据（Secrets，非 <code>.env</code>）</td><td><span class="pill create">create</span></td><td><code>gradle/build-cache-node</code> 服务（鉴权 + 持久卷）</td></tr>
-          <tr><td>13</td><td><code>.coderabbit.yaml</code></td><td><span class="pill modify">modify</span></td><td><code>auto_incremental_review: false</code>；删 <code>auto_pause_after_reviewed_commits: 0</code> 并同步改注释</td></tr>
+          <tr><td>13</td><td><code>.coderabbit.yaml</code></td><td><span class="pill modify">modify</span></td><td>best-practice overhaul：<code>auto_incremental_review: false</code> + 删 <code>:0</code> 改注释 + <code>code_guidelines</code> 吃 <code>.claude/rules</code> + <code>fbinfer.enable_java</code> + 安全工具声明 + 前端 path 拆条 + common/starter path_instructions + 降噪 + 分工提示 +（可选）TDD pre_merge_check</td></tr>
           <tr><td>14</td><td><code>CLAUDE.md</code>（根）</td><td><span class="pill modify">modify</span></td><td>「PR 与代码评审」节固化：复评由 Claude 分批 <code>@</code> 触发、开发期 draft 降频</td></tr>
           <tr><td>15</td><td><code>.github/dependabot.yml</code></td><td><span class="pill create">create</span></td><td>github-actions / gradle / pnpm 三生态，按周分组</td></tr>
           <tr><td>16</td><td><code>docs/patra/specs/2026-06-08-cicd-production-grade-design.html</code></td><td><span class="pill create">create</span></td><td>本设计文档</td></tr>
@@ -384,6 +423,8 @@
         <li>一个 PR 内多次 push 不再触发多次增量复评；手动 <code>@coderabbitai review</code> 生效。</li>
         <li>portal lint/typecheck/test 失败能拦住合并；Playwright e2e 信号未丢（PR 非阻塞）。</li>
         <li>所有 workflow action pin SHA、<code>actionlint</code> 通过、<code>permissions</code> 最小化、preflight 镜像一致性常驻；Dependabot 正常提分组 PR。</li>
+        <li><code>claude-code-review</code> 修 permissions 后能成功发 review 评论；两个自动 reviewer 各 PR 只评一次、push 不重复触发；复评手动 <code>@</code> 生效。</li>
+        <li>CodeRabbit 吃进 <code>.claude/rules</code> 规约、<code>fbinfer.enable_java</code> Java 检测生效；双 reviewer 分工无明显噪音叠加。</li>
       </ol>
     </aside>
 
