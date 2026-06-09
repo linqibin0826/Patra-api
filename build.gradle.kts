@@ -79,7 +79,7 @@ tasks.register("dumpModuleGraph") {
     notCompatibleWithConfigurationCache("遍历整个 project 依赖图")
     val rootDirFile = rootDir
     doLast {
-        val subs = rootProject.subprojects
+        val subs = rootProject.subprojects.filter { it.tasks.findByName("check") != null }
 
         // 1) 正向依赖：project path -> 它直接依赖的 project path 集合
         val forward: Map<String, Set<String>> = subs.associate { p ->

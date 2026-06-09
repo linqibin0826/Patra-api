@@ -10,17 +10,6 @@
     ],
     "modules": [
         {
-            "dir": "linqibin-commons",
-            "project": ":linqibin-commons",
-            "unit": "foundation",
-            "impacts": [
-                "foundation"
-            ],
-            "tasks": [
-                "check"
-            ]
-        },
-        {
             "dir": "linqibin-commons/linqibin-commons-core",
             "project": ":linqibin-commons:linqibin-commons-core",
             "unit": "foundation",
@@ -207,28 +196,6 @@
             ]
         },
         {
-            "dir": "patra-api",
-            "project": ":patra-api",
-            "unit": "foundation",
-            "impacts": [
-                "foundation"
-            ],
-            "tasks": [
-                "check"
-            ]
-        },
-        {
-            "dir": "patra-api/patra-catalog",
-            "project": ":patra-api:patra-catalog",
-            "unit": "catalog",
-            "impacts": [
-                "catalog"
-            ],
-            "tasks": [
-                "check"
-            ]
-        },
-        {
             "dir": "patra-api/patra-catalog/patra-catalog-adapter",
             "project": ":patra-api:patra-catalog:patra-catalog-adapter",
             "unit": "catalog",
@@ -298,17 +265,6 @@
             ]
         },
         {
-            "dir": "patra-api/patra-common",
-            "project": ":patra-api:patra-common",
-            "unit": "foundation",
-            "impacts": [
-                "foundation"
-            ],
-            "tasks": [
-                "check"
-            ]
-        },
-        {
             "dir": "patra-api/patra-common/patra-common-enums",
             "project": ":patra-api:patra-common:patra-common-enums",
             "unit": "foundation",
@@ -366,17 +322,6 @@
             "unit": "gateway",
             "impacts": [
                 "gateway"
-            ],
-            "tasks": [
-                "check"
-            ]
-        },
-        {
-            "dir": "patra-api/patra-ingest",
-            "project": ":patra-api:patra-ingest",
-            "unit": "ingest",
-            "impacts": [
-                "ingest"
             ],
             "tasks": [
                 "check"
@@ -450,17 +395,6 @@
             ]
         },
         {
-            "dir": "patra-api/patra-object-storage",
-            "project": ":patra-api:patra-object-storage",
-            "unit": "object-storage",
-            "impacts": [
-                "object-storage"
-            ],
-            "tasks": [
-                "check"
-            ]
-        },
-        {
             "dir": "patra-api/patra-object-storage/patra-object-storage-adapter",
             "project": ":patra-api:patra-object-storage:patra-object-storage-adapter",
             "unit": "object-storage",
@@ -523,17 +457,6 @@
             "unit": "object-storage",
             "impacts": [
                 "object-storage"
-            ],
-            "tasks": [
-                "check"
-            ]
-        },
-        {
-            "dir": "patra-api/patra-registry",
-            "project": ":patra-api:patra-registry",
-            "unit": "registry",
-            "impacts": [
-                "registry"
             ],
             "tasks": [
                 "check"
@@ -608,17 +531,6 @@
             "tasks": [
                 "check",
                 "integrationTest"
-            ]
-        },
-        {
-            "dir": "patra-starters",
-            "project": ":patra-starters",
-            "unit": "foundation",
-            "impacts": [
-                "foundation"
-            ],
-            "tasks": [
-                "check"
             ]
         },
         {
