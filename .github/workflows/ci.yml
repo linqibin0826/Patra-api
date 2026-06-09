@@ -106,7 +106,7 @@ jobs:
   backend:
     name: backend (${{ matrix.unit }})
     needs: detect-changes
-    if: needs.detect-changes.outputs.backend_units != '[]'
+    if: needs.detect-changes.result == 'success' && needs.detect-changes.outputs.backend_units != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -129,6 +129,7 @@ jobs:
           LIST=$(jq -r --arg u "${{ matrix.unit }}" \
             '[.modules[] | select(.unit == $u) | .project as $p | .tasks[] | "\($p):\(.)"] | join(" ")' \
             patra-infra/cd/module-graph.json)
+          [ -n "$LIST" ] || { echo "::error::单元 ${{ matrix.unit }} 在 module-graph.json 中无任务,检查 dumpModuleGraph"; exit 1; }
           echo "list=$LIST" >> "$GITHUB_OUTPUT"
           echo "单元 ${{ matrix.unit }} 任务: $LIST"
       - name: 🐳 Pre-pull container images
@@ -163,7 +164,7 @@ jobs:
   portal:
     name: portal
     needs: detect-changes
-    if: needs.detect-changes.outputs.portal_changed == 'true'
+    if: needs.detect-changes.result == 'success' && needs.detect-changes.outputs.portal_changed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
