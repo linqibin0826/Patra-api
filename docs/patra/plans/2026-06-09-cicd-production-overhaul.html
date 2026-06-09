@@ -1342,12 +1342,16 @@ gh pr create --draft --title "feat(ci): CI/CD 生产级优化（受影响单元�
         <header><span class="note-type">CHANGE</span><time datetime="2026-06-09T12:00">06-09 12:00</time><a href="#task-7">§ Task 7</a></header>
         <p>plan 给的 buildcache compose 没对齐 patra-infra 既有约定（代码质量审查发现）：补 <code>name: patra-buildcache</code>、网络改为「重命名默认网络」（顶层 <code>networks.default.{name:patra-net, external:true}</code>，service 块删显式 networks），与 docker-compose.search.yaml 等一致。功能等价、YAML OK。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-09T12:40">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-09T12:40">06-09 12:40</time><a href="#task-1">§ Task 1 / 最终审查</a></header>
+        <p><strong>阻塞 bug（最终集成审查抓到）</strong>：dumpModuleGraph 把 8 个无 <code>check</code> 任务的聚合容器项目（<code>:patra-api</code>、<code>:patra-api:patra-catalog</code> 等）也写进了图并赋 <code>tasks:["check"]</code>，导致 ci.yml backend job 拼出 <code>:patra-api:patra-catalog:check</code> 无效任务、GHA 真跑必炸。修：dumpModuleGraph 改为 <code>subprojects.filter { it.tasks.findByName("check") != null }</code>，只保留有 check 的叶子模块。重生成 module-graph.json（-88 行），契约边/任务列表/18 断言全验证通过。（Task 1 代码质量审查 issue#5 曾提示容器噪音，当时误判为无害——最终审查纠正。）</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">4</span> changes /
+      <span data-counter="change">5</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
