@@ -106,6 +106,7 @@ class PortalVenueControllerIT {
     assertThat(captured.isOpenAccess()).isTrue();
   }
 
+  /// `sort` 参数应正确绑定到 `VenueBrowseFilter.sort`（验证 cas_quartile / cited_by）。
   @Test
   @DisplayName("GET /portal/venues sort 参数绑定：cas_quartile / cited_by 正确传入 VenueBrowseFilter")
   void shouldBindSortToFilter() {
@@ -132,6 +133,7 @@ class PortalVenueControllerIT {
     assertThat(filterCaptor2.getValue().sort()).isEqualTo(VenueBrowseSort.CITED_BY);
   }
 
+  /// `cas` / `casTop` / `doaj` / `country` 参数应正确绑定到 `VenueBrowseFilter`。
   @Test
   @DisplayName("GET /portal/venues 筛选维度绑定：cas / casTop / doaj / country 正确传入 VenueBrowseFilter")
   void shouldBindAdditionalFacetFilters() {
