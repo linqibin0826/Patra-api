@@ -21,8 +21,8 @@
       <li><a href="#file-structure">文件结构</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li data-task-status="pending"><a href="#task-1">Task 1 — 模块依赖图任务 dumpModuleGraph + module-graph.json</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — detect-changes 路由测试（Red）</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — 模块依赖图任务 dumpModuleGraph + module-graph.json</a></li>
+          <li data-task-status="in-progress"><a href="#task-2">Task 2 — detect-changes 路由测试（Red）</a></li>
           <li data-task-status="pending"><a href="#task-3">Task 3 — detect-changes.sh 重写（Green）</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — cd.yml 切到新路由输出（CD 契约漏洞同修）</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — ci.yml 统一编排全量重写（detect/preflight/backend/portal/coverage/gate/nightly）</a></li>
@@ -107,7 +107,7 @@ docs/patra/plans/2026-06-09-cicd-production-overhaul.html  [create] 本计划</p
       data-status 5 类：pending / in-progress / done / blocked / skipped
       -->
 
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：模块依赖图任务 dumpModuleGraph + module-graph.json</h2>
           <dl class="files">
@@ -217,7 +217,7 @@ git commit -m "feat(ci): dumpModuleGraph 任务 + 受影响单元图 SSOT"</code
         </ol>
       </article>
 
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="in-progress">
         <header>
           <h2>任务 2：detect-changes 路由测试（Red）</h2>
           <dl class="files">
@@ -269,9 +269,10 @@ echo "== 场景 5：object-storage-api 契约扇出 =="
 F="patra-api/patra-object-storage/patra-object-storage-api/src/main/java/X.java"
 assert_field "$F" '.backend_units' '["ingest","object-storage"]' "object-storage-api 扇出 ingest"
 
-echo "== 场景 6：foundation/全局 → 全量 =="
+echo "== 场景 6：全局 path → 全量；foundation 模块 → 扇出（非全量）=="
 assert_field "build-logic/src/main/kotlin/x.gradle.kts" '.full_run' 'true' "build-logic 全量"
-assert_field "patra-api/patra-common/patra-common-model/src/main/java/X.java" '.full_run' 'true' "common-model 全量"
+assert_field "patra-api/patra-common/patra-common-model/src/main/java/X.java" '.full_run' 'false' "common-model 非全量"
+assert_field "patra-api/patra-common/patra-common-model/src/main/java/X.java" '.backend_units' '["catalog","foundation","ingest"]' "common-model 扇出 catalog/foundation/ingest"
 
 echo "== 场景 7：workflow 自身变更 → 全量后端 + portal =="
 assert_field ".github/workflows/ci.yml" '.full_run' 'true' "workflow 全量"
@@ -408,7 +409,7 @@ esac</code></pre>
           <li class="step" data-status="pending">
             <strong>步骤 2：运行测试确认转绿（Green）</strong>
             <p>运行：<code>bash patra-infra/cd/detect-changes.test.sh; echo "exit=$?"</code></p>
-            <p>预期：<code>通过 16 / 失败 0</code>，<code>exit=0</code>。若 registry-api 场景失败，先核对 Task 1 的 module-graph.json（impacts 是否正确），分类逻辑本身依赖图数据。</p>
+            <p>预期：<code>失败 0（全绿）</code>，<code>exit=0</code>。若 registry-api 场景失败，先核对 Task 1 的 module-graph.json（impacts 是否正确），分类逻辑本身依赖图数据。</p>
           </li>
 
           <li class="step" data-status="pending">
@@ -1253,7 +1254,7 @@ git commit -m "docs: PR 评审流程更新（双 reviewer 分工 + 每 PR 一次
           <li class="step" data-status="pending">
             <strong>步骤 1：本地静态校验全套</strong>
             <pre><code class="lang-bash">actionlint .github/workflows/*.yml
-bash patra-infra/cd/detect-changes.test.sh        # 期望：通过 16 / 失败 0
+bash patra-infra/cd/detect-changes.test.sh        # 期望：失败 0（全绿）
 ./gradlew dumpModuleGraph -q &amp;&amp; git diff --quiet patra-infra/cd/module-graph.json \
   &amp;&amp; echo "module-graph 一致 ✓"
 python3 -c "import yaml; yaml.safe_load(open('.coderabbit.yaml')); print('coderabbit YAML OK')"</code></pre>
@@ -1325,14 +1326,20 @@ gh pr create --draft --title "feat(ci): CI/CD 生产级优化（受影响单元�
       </li>
       data-type 4 类：decision / change / tradeoff / other
       -->
+      <li class="note" data-type="change" data-time="2026-06-09T11:10">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-09T11:10">06-09 11:10</time><a href="#task-1">§ Task 1</a></header>
+        <p>dumpModuleGraph 的 Kotlin 片段按 Gradle 9.2.1 公开 API 适配：取被依赖 project 用 <code>ProjectDependency.path</code>（<code>dependencyProject</code> 非公开 API），并给 <code>configurations.flatMap</code> 补显式泛型 <code>&lt;Configuration, String&gt;</code> 消除类型推断歧义。输出 JSON 结构/字段名不变，三条契约边核对正确。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-06-09T11:25">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-09T11:25">06-09 11:25</time><a href="#task-2">§ Task 2</a></header>
+        <p>执行中发现 plan 的 Task 2 测试场景 6 期望有误：原断言 <code>common-model → full_run:true</code>，但实测 common-model 仅被 catalog/ingest 依赖，扇出集为 <code>["catalog","foundation","ingest"]</code>（registry/gateway/object-storage 不依赖它）。已改为断言其真实扇出集 + <code>full_run:false</code>；真·全 6 单元的模块是 linqibin-commons-core 等。已同步修正 plan 测试。</p>
+      </li>
     </ol>
-
-    <p class="empty-state">no notes yet</p>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="change">2</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
