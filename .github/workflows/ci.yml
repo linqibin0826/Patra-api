@@ -34,7 +34,7 @@ jobs:
       portal_changed: ${{ steps.detect.outputs.portal_changed }}
       coverage_mode: ${{ steps.detect.outputs.coverage_mode }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: 🔍 Verify container image versions consistency
         run: |
           set -e
@@ -84,11 +84,11 @@ jobs:
           done
           [ "$FAIL" -ne 0 ] && { echo "镜像版本治理 SSOT 失守"; exit 1; }
           echo "✓ 镜像版本一致"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           java-version: '25'
           distribution: 'temurin'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
           cache-read-only: true
@@ -114,12 +114,12 @@ jobs:
       matrix:
         unit: ${{ fromJson(needs.detect-changes.outputs.backend_units) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           java-version: '25'
           distribution: 'temurin'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
           cache-read-only: ${{ github.event_name == 'pull_request' }}
@@ -142,7 +142,7 @@ jobs:
         run: ./gradlew ${{ steps.tasks.outputs.list }} -x jacocoTestReport -x integrationTestCodeCoverageReport
       - name: 📦 Upload jacoco exec (${{ matrix.unit }})
         if: always() && needs.detect-changes.outputs.coverage_mode == 'full'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: jacoco-exec-${{ matrix.unit }}
           path: |
@@ -152,7 +152,7 @@ jobs:
           if-no-files-found: warn
       - name: 📦 Upload reports (${{ matrix.unit }})
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: reports-${{ matrix.unit }}
           path: |
@@ -171,17 +171,17 @@ jobs:
       run:
         working-directory: patra-portal
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: '10'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: 'patra-portal/.nvmrc'
           cache: 'pnpm'
           cache-dependency-path: patra-portal/pnpm-lock.yaml
       - name: 📦 Cache Next.js build cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: patra-portal/.next/cache
           key: ${{ runner.os }}-nextjs-${{ hashFiles('patra-portal/pnpm-lock.yaml') }}-${{ hashFiles('patra-portal/**/*.ts', 'patra-portal/**/*.tsx') }}
@@ -201,7 +201,7 @@ jobs:
         continue-on-error: ${{ github.event_name != 'schedule' }}
       - name: 📦 Upload Playwright report (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report
           path: patra-portal/playwright-report/
@@ -215,15 +215,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           java-version: '25'
           distribution: 'temurin'
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: jacoco-exec-*
           merge-multiple: true
@@ -231,7 +231,7 @@ jobs:
       - name: 📊 Aggregate JaCoCo
         run: ./gradlew testCodeCoverageReport integrationTestCodeCoverageReport -x test -x integrationTest
       - name: 📈 Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4.6.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml,build/reports/jacoco/integrationTestCodeCoverageReport/integrationTestCodeCoverageReport.xml
@@ -245,7 +245,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: ✓ All required checks passed (skipped 视为通过)
-        uses: re-actors/alls-green@release/v1
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # release/v1
         with:
           jobs: ${{ toJSON(needs) }}
           allowed-skips: backend, portal, coverage

@@ -5,6 +5,10 @@ name: Portal CD
 #   → deploy：Mac mini self-hosted runner 上 compose pull + up + 健康检查。
 # 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
 #       保证 self-hosted runner 永不执行未经审查的 fork PR 代码。
+
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -42,7 +46,7 @@ jobs:
       packages: write
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
@@ -79,7 +83,7 @@ jobs:
       GITHUB_SHA: ${{ github.sha }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
