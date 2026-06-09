@@ -27,9 +27,9 @@
           <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml 切到新路由输出（CD 契约漏洞同修）</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — ci.yml 统一编排全量重写（detect/preflight/backend/portal/coverage/gate/nightly）</a></li>
           <li data-task-status="done"><a href="#task-6">Task 6 — 删除 ci-docs.yml + portal-ci.yml</a></li>
-          <li data-task-status="in-progress"><a href="#task-7">Task 7 — 两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</a></li>
-          <li data-task-status="pending"><a href="#task-8">Task 8 — CD buildx 层缓存</a></li>
-          <li data-task-status="pending"><a href="#task-9">Task 9 — .coderabbit.yaml best-practice overhaul</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — CD buildx 层缓存</a></li>
+          <li data-task-status="in-progress"><a href="#task-9">Task 9 — .coderabbit.yaml best-practice overhaul</a></li>
           <li data-task-status="pending"><a href="#task-10">Task 10 — Claude review 工作流加固</a></li>
           <li data-task-status="pending"><a href="#task-11">Task 11 — pin SHA + 最小 permissions + Dependabot</a></li>
           <li data-task-status="pending"><a href="#task-12">Task 12 — CLAUDE.md 评审流程更新</a></li>
@@ -763,7 +763,7 @@ git commit -m "feat(ci): ci.yml 统一编排（受影响单元 matrix + coverage
         </ol>
       </article>
 
-      <article class="task" id="task-7" data-status="in-progress">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</h2>
           <dl class="files">
@@ -836,7 +836,7 @@ git commit -m "feat(ci): 两层 Gradle 缓存 hook + build-cache-node（信任�
         </ol>
       </article>
 
-      <article class="task" id="task-8" data-status="pending">
+      <article class="task" id="task-8" data-status="done">
         <header>
           <h2>任务 8：CD buildx 层缓存</h2>
           <dl class="files">
@@ -876,7 +876,7 @@ git commit -m "perf(cd): buildx GHCR 层缓存，分层 jar 依赖层跨 run 复
         </ol>
       </article>
 
-      <article class="task" id="task-9" data-status="pending">
+      <article class="task" id="task-9" data-status="in-progress">
         <header>
           <h2>任务 9：.coderabbit.yaml best-practice overhaul</h2>
           <dl class="files">
@@ -1338,12 +1338,16 @@ gh pr create --draft --title "feat(ci): CI/CD 生产级优化（受影响单元�
         <header><span class="note-type">CHANGE</span><time datetime="2026-06-09T11:35">06-09 11:35</time><a href="#task-3">§ Task 3</a></header>
         <p>plan 原文 classify 的 jq 有 bug：<code>$f | startswith(.dir + "/")</code> 在 <code>$f</code> 管道上下文里 <code>.dir</code> 失效（对字符串取 .dir）。实现者修为先 <code>.dir as $d</code> 绑定再用：<code>[.modules[] | .dir as $d | select(($f|startswith($d+"/")) or ($f==$d))]</code>。外部语义不变、18 断言全绿；plan 已同步为修正版（plan==code）。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-06-09T12:00">
+        <header><span class="note-type">CHANGE</span><time datetime="2026-06-09T12:00">06-09 12:00</time><a href="#task-7">§ Task 7</a></header>
+        <p>plan 给的 buildcache compose 没对齐 patra-infra 既有约定（代码质量审查发现）：补 <code>name: patra-buildcache</code>、网络改为「重命名默认网络」（顶层 <code>networks.default.{name:patra-net, external:true}</code>，service 块删显式 networks），与 docker-compose.search.yaml 等一致。功能等价、YAML OK。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">3</span> changes /
+      <span data-counter="change">4</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
