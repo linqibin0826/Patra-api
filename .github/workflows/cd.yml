@@ -7,6 +7,10 @@ name: CD
 # 服务清单 SSOT：patra-infra/cd/services.json。
 # 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
 #       保证 self-hosted runner 永不执行未经审查的 fork PR 代码。
+
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -47,7 +51,7 @@ jobs:
       services: ${{ steps.detect.outputs.services }}
     steps:
       - name: 📥 Checkout（全历史，detect 需 git diff）
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -60,13 +64,16 @@ jobs:
           EVENT_BEFORE: ${{ github.event.before }}
           EVENT_SHA: ${{ github.sha }}
         run: |
+          # 受影响单元路由（结构化对象）；CD 部署服务 = backend_units 去掉 foundation
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            SERVICES=$(bash patra-infra/cd/detect-changes.sh dispatch "$DISPATCH_SERVICE")
+            R=$(bash patra-infra/cd/detect-changes.sh dispatch "$DISPATCH_SERVICE")
           else
-            SERVICES=$(bash patra-infra/cd/detect-changes.sh push "$EVENT_BEFORE" "$EVENT_SHA")
+            R=$(bash patra-infra/cd/detect-changes.sh push "$EVENT_BEFORE" "$EVENT_SHA")
           fi
+          SERVICES=$(echo "$R" | jq -c '[.backend_units[] | select(. != "foundation")]')
           echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
-          echo "本次改动服务: $SERVICES"
+          echo "受影响单元: $R"
+          echo "本次构建/部署服务: $SERVICES"
 
   # ---- 2) 只构建改动的服务，推 GHCR（动态 matrix）----
   build-and-push:
@@ -85,7 +92,7 @@ jobs:
         service: ${{ fromJson(needs.detect-changes.outputs.services) }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
@@ -100,13 +107,13 @@ jobs:
           echo "image=$(jq -r --arg s "$SVC" '.services[]|select(.name==$s)|.image' "$J")" >> "$GITHUB_OUTPUT"
 
       - name: ☕ Setup JDK 25 (Temurin)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           java-version: '25'
           distribution: 'temurin'
 
       - name: 🐘 Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
@@ -116,17 +123,21 @@ jobs:
       - name: 🔑 Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: 🧰 Setup Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
       - name: 🐳 Build & push image (${{ matrix.service }})
         run: |
           TAG="${{ github.sha }}"
           IMG="${{ steps.meta.outputs.image }}"
-          docker build \
+          docker buildx build \
             -f patra-infra/docker/service.Dockerfile \
             --build-arg APP_PORT=${{ steps.meta.outputs.port }} \
+            --cache-from "type=registry,ref=$IMG:buildcache" \
+            --cache-to "type=registry,ref=$IMG:buildcache,mode=max" \
             -t "$IMG:$TAG" -t "$IMG:latest" \
+            --push \
             "${{ steps.meta.outputs.context }}"
-          docker push "$IMG:$TAG"
-          docker push "$IMG:latest"
 
   # ---- 3) 在 Mac mini 上选择性部署（单 job 循环，按依赖顺序）----
   deploy:
@@ -148,7 +159,7 @@ jobs:
       IMAGE_TAG_INPUT: ${{ github.event.inputs.image_tag }}
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 

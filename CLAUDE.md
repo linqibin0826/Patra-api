@@ -62,9 +62,10 @@
 
 ## PR 与代码评审
 
-每次通过 `gh pr create` 开 PR 后，必须在同一工作会话内立即启动 Monitor 并绑定该 PR（覆盖 CodeRabbit AI Review 与人工 review），杜绝 review 反馈被遗漏。
+仓库有两个 AI reviewer，分工互补：**CodeRabbit**（广度：行级 nitpick + lint/安全工具聚合 + Linear AC 对齐）与 **Claude Code Review**（深度：六边形架构 / DDD 领域逻辑）。两者均**每 PR 自动评一次**（CodeRabbit `auto_incremental_review: false`；Claude `claude-code-review.yml` 仅 `ready_for_review` 触发）。
 
-- **持续期**：Monitor 持续到 PR 合并或关闭，期间不得停止对评论流的跟踪。
+- **复评由 Claude 驱动，用户不参与**：开发期 PR 挂 `draft`（不评）→ 完工转 ready（两个 reviewer 各自动首评一次）→ 处理完**一批**反馈、推送后，由 Claude 在 PR 评论区发 `@coderabbitai review`（必要时 `@claude`）触发复评。不是每次 push 都 @。
+- **必启 Monitor**：每次 `gh pr create` 后，同一工作会话内立即启动 Monitor 并绑定该 PR，覆盖**三条流**（CodeRabbit + Claude review + 人工），持续到 PR 合并或关闭。
 - **处理状态**：对每条 review 意见必须在 PR 评论中明确给出处理状态——`已修复`（附 commit SHA）/ `不修复`（附明确理由）。
 
 ## Workspace Layout

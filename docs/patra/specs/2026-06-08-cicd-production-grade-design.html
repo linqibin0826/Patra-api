@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CI/CD 生产级优化：受影响单元门控 + 治理硬化</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题。相对路径 ../styles/ 从生成位置 docs/patra/specs/ 出发；
+       放进子目录的 spec（如 docs/patra/specs/<feature>/）改成 ../../styles/。
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 spec 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#ci-orchestration">CI 编排与 gate 语义</a></li>
+      <li><a href="#test-gating">受影响单元门控与测试矩阵</a></li>
+      <li><a href="#coderabbit">AI Review 治理（CodeRabbit + Claude）</a></li>
+      <li><a href="#caching">缓存策略与信任边界</a></li>
+      <li><a href="#hardening">安全加固</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>CI/CD 生产级优化：受影响单元门控 + 治理硬化</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-08（rev 06-09 纳入对抗式 review）</span>
+        <span>🌿 feat/cicd-production-overhaul</span>
+        <span>👤 linqibin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>把后端 CI 从「前端改动也触发后端全套、4 个 shard 永远全跑」重构为「统一编排 + <strong>受影响单元</strong>门控」：一个 <code>detect-changes</code> 决策、一个 <code>required-check</code> 总 gate，按<strong>受影响单元</strong>（<code>service</code> / <code>contract</code> / <code>foundation</code> / <code>portal</code>）精确门控 unit / slice / integration / e2e。<strong>关键修正</strong>：运行时测试虽无多服务拓扑，但<strong>编译期 API 契约存在跨服务消费者</strong>（如 <code>registry-api</code> 被 catalog / ingest / expr-starter 依赖），路由必须把契约变更<strong>扇出到消费者服务</strong>，扇出关系派生自真实 Gradle 模块依赖图，未确定即保守 full-run。foundation 变更全跑、nightly cron 全量兜底。配套：CodeRabbit 关增量复评（复评改由 Claude 分批 <code>@</code> 触发）、两层 Gradle 缓存且<strong>仅 trusted CI 可写远程缓存</strong>、前端 / Docker 层缓存、pin action SHA + 最小 permissions + Dependabot。<strong>AI review 治理</strong>：CodeRabbit 配置 best-practice 化 + 刚合并的 Claude review 加固，双 reviewer 分工（CodeRabbit 广度 / Claude 深度）、各 PR 只评一次。顺手修复「前端质量门未进分支保护 → 前端 lint/test 拦不住合并」与「选择性运行下 coverage 聚合语义不成立」两个隐患。分支保护配置零改动。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>最近 #140–147 已建成后端<strong>多服务 CD</strong>：<code>patra-infra/cd/detect-changes.sh</code> + <code>services.json</code> 作为 SSOT 路由出受影响服务 → 动态 matrix 并行 <code>bootJar</code>+<code>docker build</code> 推 GHCR → Mac mini self-hosted runner 部署；Spring Boot 4 分层 jar 让弱网部署只传 ~487KB application 层。<strong>CD 侧选择性构建已达标，本次不动它。</strong>问题集中在 <strong>CI 侧</strong>（<code>ci.yml</code> / <code>ci-docs.yml</code> / <code>portal-ci.yml</code>）：</p>
+      <ol>
+        <li><strong>CodeRabbit rate limit</strong>：<code>.coderabbit.yaml</code> 显式设 <code>auto_pause_after_reviewed_commits: 0</code>（注释写明「保证每次 push 增量审查」）——配置意图就是每 push 必复评，叠加 TDD 多碎 commit + 反复 push，配额必然打爆。</li>
+        <li><strong>前后端未隔离 + 前端门失守</strong>：<code>ci.yml</code> 的 <code>paths-ignore</code> 只排 <code>docs/**</code>，没排 <code>patra-portal/**</code>——只改前端也跑后端全套；且分支保护只 require <code>required-check</code>，<code>portal-ci-required-check</code> 未进 required 列表，<strong>前端 lint/typecheck/test 失败拦不住合并</strong>。</li>
+        <li><strong>测试全量重跑</strong>：后端 <code>unit-tests</code> 固定 4-shard matrix 永远全跑；<code>integration</code> / <code>e2e</code> 各一个 job 也全跑。改 catalog 一个文件，registry / ingest / commons 全部陪跑。</li>
+        <li><strong>隐患 · 供应链</strong>：所有 action pin 到可变 tag <code>@vX</code>（非 SHA）。公开仓库——2025 年 <code>tj-actions</code> 投毒波及 2.3 万仓库。</li>
+        <li><strong>隐患 · 缓存</strong>：CD 的 <code>docker build</code> 无 buildx 层缓存；<code>portal-ci</code> 无 <code>.next/cache</code> 缓存。</li>
+        <li><strong>新增 · 双 AI reviewer</strong>：刚合并的 <code>claude-code-review.yml</code>（#148）让 Claude 也自动 review PR，与 CodeRabbit 形成两个自动 reviewer；但其 <code>permissions: pull-requests: read</code> 发不了评论（静默失败）、触发含 <code>synchronize</code>（每 push 重跑）、action 未 pin SHA。CodeRabbit 现配置「只跑通」，多项最佳实践未拧紧（见 §5）。</li>
+      </ol>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>后端 CI 重构为<strong>单一编排 workflow</strong>：<code>detect-changes</code> → 受影响单元 matrix → <code>required-check</code> 总 gate。</li>
+            <li><strong>受影响单元门控</strong>（service / contract / foundation / portal）；<strong>contract 变更扇出到消费者服务</strong>（派生自 Gradle 依赖图）；foundation 全跑；<strong>nightly cron 全量</strong>兜底。</li>
+            <li>明确 <code>detect-changes</code> 输出模型、PR 的 base/head diff 模式、空 matrix 与 skipped job 的 Actions 语义、<code>required-check</code> 的 success/skipped 判定。</li>
+            <li>前端检查并入统一编排（含<strong>非阻塞 Playwright e2e 信号</strong>），修复 portal 质量门未被 require 的 bug。</li>
+            <li>修正<strong>选择性运行下的 coverage 语义</strong>（PR 选择性 ≠ 全仓聚合）。</li>
+            <li>提取<strong>镜像版本一致性 preflight job</strong>，避免选择性跑漏掉这条 cheap governance。</li>
+            <li>删除 <code>ci-docs.yml</code>、<code>portal-ci.yml</code>。</li>
+            <li><strong>AI review 治理</strong>：CodeRabbit best-practice overhaul（关增量复评 + 吃进 <code>.claude/rules</code> 规约 + fbinfer/安全工具 + 降噪 + 分层 path_instructions）；Claude review 工作流加固（修 permissions、每 PR 评一次、author 门控、pin SHA）；双 reviewer 分工；复评由 Claude <code>@</code> 驱动；更新评审流程文档。</li>
+            <li>两层 Gradle 缓存（GHA + Mac mini node，<strong>信任边界：仅 trusted CI 可写</strong>）、portal <code>.next/cache</code>、CD buildx 层缓存。</li>
+            <li>全 workflow pin commit SHA（格式 <code>@&lt;sha&gt; # vX.Y.Z</code>）、最小 <code>permissions:</code>、新增 <code>.github/dependabot.yml</code>。</li>
+            <li><code>detect-changes</code> 路由的 TDD 测试。</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>不动 CD 部署逻辑本身（<code>cd.yml</code> deploy job、compose、分层 jar）——已达标。</li>
+            <li>不引入 Develocity Predictive Test Selection（单人 + 私有 + 无历史，过度工程）。</li>
+            <li>不引入 Bazel / Nx / AffectedModuleDetector（只对 contract 用轻量图派生，不上通用 AMD 引擎）。</li>
+            <li>不做跨服务运行时 e2e（当前无；将来真有了再单列一档）。</li>
+            <li>不改 GitHub 分支保护设置（<code>required-check</code> 名称不变）。</li>
+            <li>Mac mini 网络层修复由用户处理，非本 PR 的工程范围。</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="ci-orchestration">
+      <h2>3. CI 编排与 gate 语义</h2>
+      <p><strong>现状结构性问题</strong>：三个 workflow + 两个 gate 名互补拼凑——<code>ci.yml</code>（除 docs 外什么都触发，含前端）+ <code>ci-docs.yml</code>（docs-only 兜底）+ <code>portal-ci.yml</code>（产出 <code>portal-ci-required-check</code>，但没进保护）。漏了前端隔离，前端门形同虚设。</p>
+      <p><strong>目标结构</strong>：合并成一个编排 workflow，一个 <code>detect-changes</code> 决策、一个 <code>required-check</code> 总 gate（分支保护那条 <code>required-check</code> 名称不动）：</p>
+      <pre><code>ci.yml  (on: pull_request + push:main + schedule[nightly])
+└─ detect-changes ──► 输出: backend_units_json, portal_changed, docs_only, full_run(+reason), coverage_mode
+   ├─ preflight     镜像版本一致性守卫（cheap，常驻跑）
+   ├─ backend  [matrix: backend_units_json]   仅当 != '[]'：每个受影响单元一个 job
+   │                 ./gradlew :&lt;unit 模块…&gt;:check :…:integrationTest :…:e2eTest（有啥跑啥）
+   ├─ portal   if portal_changed：blocking lint/typecheck/test + 非阻塞 Playwright e2e
+   ├─ coverage if coverage_mode != none：按模式上传（见 §4）
+   └─ required-check  (if: always, needs: 全部)  ← 唯一 required，真覆盖前后端</code></pre>
+
+      <h3>3.1 detect-changes 输出模型与触发模式</h3>
+      <p>把现有 <code>detect-changes.sh</code>（仅 <code>push &lt;before&gt; &lt;after&gt;</code> / <code>dispatch</code>）扩展为显式模式，并产出结构化输出，避免「一个 <code>units[]</code> 打天下」：</p>
+      <ul>
+        <li><strong>模式</strong>：<code>push &lt;before&gt; &lt;after&gt;</code>（push:main）、<code>pr &lt;base_sha&gt; &lt;head_sha&gt;</code>（pull_request，checkout 用 <code>fetch-depth: 0</code> 并以 merge-base 求 diff）、<code>dispatch &lt;service|all&gt;</code>（保留 CD 手动）、<code>schedule</code>（直接 full）。</li>
+        <li><strong>输出</strong>：<code>backend_units_json</code>（受影响后端单元数组）、<code>portal_changed</code>（bool）、<code>docs_only</code>（bool）、<code>full_run</code>+<code>full_run_reason</code>、<code>coverage_mode</code>（<code>none</code> / <code>flags</code> / <code>full</code>）。</li>
+      </ul>
+
+      <h3>3.2 Gate 语义（明确写死）</h3>
+      <ul>
+        <li><code>required-check</code>：当所有 required 依赖结果 ∈ <code>{success, skipped}</code> 即绿；任一 <code>failure</code> 或 <code>cancelled</code> 即红。docs-only / portal-only 下后端与 coverage 为 skipped，gate 仍能正确判定。</li>
+        <li><strong>空 matrix 防护</strong>：<code>backend</code> job 用 <code>if: needs.detect-changes.outputs.backend_units_json != '[]'</code> 包住，避免空 matrix 生成非法 workflow。</li>
+        <li><strong>preflight</strong>：把 <code>ci.yml</code> 现有的 <code>POSTGRES_IMAGE</code>/<code>ROCKETMQ_IMAGE</code> 与 Java 常量、compose 文件一致性守卫提成独立 cheap job，常驻跑（或至少在 workflow / starter-test / compose / full-run 时跑），不随服务门控被漏掉。</li>
+        <li><strong>删 <code>ci-docs.yml</code> / <code>portal-ci.yml</code></strong>：docs-only 由统一 gate「无失败即绿」取代；portal 检查并入主编排后 <code>required-check</code> <strong>真正覆盖前端</strong>。CD 侧（<code>cd.yml</code> / <code>portal-cd.yml</code>）保持独立。</li>
+      </ul>
+    </section>
+
+    <section id="test-gating">
+      <h2>4. 受影响单元门控与测试矩阵</h2>
+
+      <h3>4.1 受影响单元模型（替代「服务目录」）</h3>
+      <p>门控单位不是「改了哪个目录」，而是「受影响的单元」，分四类：</p>
+      <ul>
+        <li><strong><code>service</code></strong>：服务私有实现（domain / app / infra / adapter / boot，以及<strong>无跨服务消费者</strong>的 api，如 <code>catalog-api</code> / <code>ingest-api</code>）→ 只跑所属服务。</li>
+        <li><strong><code>contract</code></strong>：被别的服务<strong>编译期依赖</strong>的 api 模块 → 触发该服务 + 所有消费者服务。当前真实契约边（grep 自 <code>build.gradle.kts</code>）：
+          <ul>
+            <li><code>patra-registry-api/**</code> → registry + <strong>catalog + ingest + expr-starter</strong>（及 expr-starter 的下游消费者）</li>
+            <li><code>patra-object-storage-api/**</code> → object-storage + <strong>ingest</strong></li>
+          </ul>
+        </li>
+        <li><strong><code>foundation</code></strong>：全仓共享基础设施 → full-run（全部后端单元）。清单见 §4.4。</li>
+        <li><strong><code>portal</code></strong>：前端独立单元。</li>
+      </ul>
+      <aside class="callout info">
+        <span class="title">契约扇出的来源：派生，不手维护</span>
+        <p>消费者集<strong>派生自真实 Gradle 模块依赖图</strong>（SSOT = 实际 <code>build.gradle.kts</code>），而非手写映射——避免与代码漂移。<strong>保守兜底</strong>：任何 api / 共享 / 未识别路径在无法确定消费者集时一律 <strong>full-run</strong>（只会过度运行、绝不漏运行）。且 <code>build.gradle.kts</code> 本身变更属 foundation → full-run，因此依赖图「陈旧」是自我纠正的。具体机制（build-logic 任务生成 reverse-dep 映射并 checked-in + staleness 守卫 vs detect-changes 内实时计算）在实现计划定。</p>
+      </aside>
+
+      <h3>4.2 为什么必须有 contract 这一档</h3>
+      <p>原设计「命中服务目录就只跑该服务」会<strong>漏测跨服务消费者</strong>：只改 <code>registry-api</code> 而只跑 registry，会漏掉 catalog-infra / ingest-infra / expr-starter 的编译与测试。这不是「未来新增跨服务测试」的隐患，而是<strong>当前仓库已存在的编译期契约依赖</strong>。运行时测试无多服务拓扑（见 §4.3）≠ 编译期模块隔离。</p>
+
+      <h3>4.3 测试本身可按单元选择性执行（运行时依据）</h3>
+      <p>调查证实：Patra 后端 <code>integrationTest</code> 几乎全是 Spring slice（<code>@DataJpaTest</code>×27、<code>@WebMvcTest</code>×5、<code>@WireMockTest</code>×1、最小 <code>@SpringBootTest(classes=Job)</code>×4），<strong>运行时不启动多服务拓扑</strong>：唯一调 registry 的 <code>DictionaryResolverAdapterIT</code> 用 WireMock stub 掉 registry。e2e 仅 catalog-boot×2，只起 catalog 自身上下文、<code>@MockitoBean</code> 屏蔽外部 I/O。各服务 IT 用独立容器独立库名（<code>withReuse(false)</code>）。→ 运行时测试可按受影响单元选择性执行；但路由必须叠加 §4.1 的 contract 扇出来覆盖编译期消费者。</p>
+
+      <table>
+        <thead>
+          <tr><th>档</th><th>Gradle 源集</th><th>门控粒度</th><th>PR / push:main</th><th>nightly cron</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>unit（纯 Java）</td><td><code>test</code>（经 <code>check</code>）</td><td>按受影响单元</td><td>仅受影响单元</td><td>全量</td></tr>
+          <tr><td>slice + integration</td><td><code>integrationTest</code></td><td>按受影响单元</td><td>仅受影响单元</td><td>全量</td></tr>
+          <tr><td>e2e（单服务全上下文）</td><td><code>e2eTest</code></td><td>按受影响单元</td><td>仅受影响单元</td><td>全量</td></tr>
+          <tr><td>前端 blocking</td><td>pnpm lint/typecheck/test</td><td>portal 单元</td><td>仅 portal 受影响</td><td>全量</td></tr>
+          <tr><td>前端 e2e（Playwright）</td><td>pnpm test:e2e</td><td>portal 单元</td><td>PR 非阻塞（传报告）</td><td>阻塞（UI 回归兜底）</td></tr>
+          <tr><td><strong>contract</strong>（跨服务 api）</td><td>—</td><td>扇出消费者服务</td><td>该服务 + 消费者</td><td>全量</td></tr>
+          <tr><td><strong>foundation</strong></td><td>common / starter / build-logic / 根构建</td><td>扇出全部</td><td>全跑</td><td>全跑</td></tr>
+        </tbody>
+      </table>
+      <p><strong>为何门控才是省时杠杆（不是缓存）</strong>：Testcontainers 测试因随机端口等 volatile 输入，Gradle build cache 的 FROM-CACHE 基本不成立（Gradle issue #9151），CI 全新 runner 上 UP-TO-DATE 也帮不上。所以对 IT 唯一能省时间的，是<strong>压根不启动未受影响单元的 integrationTest</strong>——正是单元门控做的事。unit/slice 的 <code>test</code> 任务则可正常 FROM-CACHE。</p>
+
+      <h3>4.4 coverage 语义（选择性 ≠ 全仓）</h3>
+      <p>根 <code>build.gradle.kts</code> 用 <code>jacoco-report-aggregation</code> 把<strong>所有</strong> apply jacoco 的子项目纳入聚合。选择性只跑 catalog 时，全仓聚合会把未运行模块算成 0 覆盖或产出残报告；<code>portal-only</code> / <code>docs-only</code> 时根本没有 <code>jacoco-exec-*</code> artifact。<code>codecov-action</code> 又是 <code>fail_ci_if_error: true</code>。规则：</p>
+      <ul>
+        <li><code>coverage_mode = full</code>（foundation / full-run / nightly）：跑全仓聚合并上传全量 coverage。</li>
+        <li><code>coverage_mode = flags</code>（服务级 PR）：只上传受影响单元的 coverage，用 Codecov <strong>flags</strong> 区分 <code>catalog</code> / <code>registry</code> / <code>ingest</code> 等，不伪装成全仓。</li>
+        <li><code>coverage_mode = none</code>（docs-only / portal-only）：后端 coverage job <strong>skipped</strong>，<code>required-check</code> 接受 skipped。</li>
+      </ul>
+
+      <aside class="callout info">
+        <span class="title">foundation 单元的扇出清单</span>
+        <p><code>patra-common-model</code> / <code>patra-common-enums</code> / <code>patra-common-provenance-api</code>（Shared Kernel）、<code>linqibin-commons-*</code>、<code>patra-spring-boot-starter-*</code>、<code>patra-expr-kernel</code>、<code>build-logic/</code>、根 <code>build.gradle.kts</code> / <code>settings.gradle.kts</code> / <code>gradle.properties</code>、<code>gradle/</code>、<code>service.Dockerfile</code>、<code>docker-compose.apps.yaml</code>、<code>patra-infra/cd/*</code>（路由 SSOT 自身）、<code>.github/workflows/**</code> —— 任一变更即 full-run（workflow 变更额外触发 portal，以验证整条新管线）。</p>
+      </aside>
+    </section>
+
+    <section id="coderabbit">
+      <h2>5. AI Review 治理（CodeRabbit + Claude Code）</h2>
+      <p>仓库现有两个 AI reviewer：CodeRabbit + 新加的 Claude Code（<code>claude.yml</code> 的 <code>@claude</code> 交互 + <code>claude-code-review.yml</code> 的 PR 自动 review）。实测两者 findings ~93% 不重叠，定位为<strong>互补、分工</strong>，不是竞争：</p>
+
+      <h3>5.1 双 reviewer 分工 + 各 PR 评一次</h3>
+      <ul>
+        <li><strong>CodeRabbit = 广度</strong>：行级 nitpick + lint/安全工具聚合（shellcheck / hadolint / actionlint / gitleaks / …）+ 跨文件一致性 + Linear AC 对齐 + area 标签。</li>
+        <li><strong>Claude = 深度</strong>：六边形架构纯净性、DDD 领域模型、跨服务契约、复杂重构意图。</li>
+        <li><strong>两者都「每 PR 评一次」</strong>：CodeRabbit <code>auto_incremental_review: false</code>；Claude review 触发改 <code>[opened, ready_for_review]</code>、去掉 <code>synchronize</code>（不再每 push 重跑）。复评由 Claude 分批 <code>@coderabbitai review</code> / <code>@claude</code> 手动触发，用户不参与。Monitor 覆盖三条流（CodeRabbit + Claude review + 人工）。</li>
+      </ul>
+
+      <h3>5.2 CodeRabbit 配置 overhaul（现「只跑通」，本次拧紧）</h3>
+      <ul>
+        <li><strong>rate limit</strong>：<code>auto_incremental_review: false</code>，删 <code>auto_pause_after_reviewed_commits: 0</code> 并<strong>同步改注释</strong>（去掉「保证每次 push 增量审查」反向说明）。论据基于当前配置意图（显式 <code>:0</code> + 注释），不押 SaaS 默认值。保留 <code>enabled: true</code> + <code>drafts: false</code>（ready 首评兜底）。</li>
+        <li><strong>吃进项目规约</strong>：<code>knowledge_base.code_guidelines.filePatterns: [".claude/rules/**/*.md"]</code>——现配置读不到 <code>port-service.md</code> / <code>error-handling.md</code> / <code>code-style.md</code>（<code>CLAUDE.md</code> 已默认吸收）。</li>
+        <li><strong>Java bug 检测</strong>：<code>fbinfer.enable_java: true</code>（默认 false，Java 项目不开等于没有）。</li>
+        <li><strong>安全工具显式声明</strong>：trufflehog / checkov / trivy / osv_scanner / zizmor / opengrep（公开仓库基线）；关 pmd / semgrep / biome 等重复或无关项。</li>
+        <li><strong>path_instructions</strong>：前端 <code>{ts,tsx}</code> 花括号 glob 拆两条（否则 tsx 可能没匹配上）；新增 <code>patra-common-*</code> / <code>patra-spring-boot-starter-*</code> 全局影响模块专项；各层标注「【让给 Claude】架构深评 /【不要评论】框架约定写法」以免与 Claude 叠加。</li>
+        <li><strong>降噪</strong>：关 <code>changed_files_summary</code> / <code>related_issues</code> / <code>related_prs</code>。</li>
+        <li><strong>（可选）TDD 预合并检查</strong>：<code>pre_merge_checks</code> 自定义 check（warning 级，不阻断——与 <code>request_changes_workflow: false</code> 一致），提示「production 变更须伴随测试变更」。</li>
+      </ul>
+
+      <h3>5.3 Claude review 工作流加固</h3>
+      <ul>
+        <li><strong><code>claude-code-review.yml</code></strong>：修 <code>permissions: pull-requests: write</code>（现 <code>read</code>，发不了评论、静默失败）；触发改 <code>[opened, ready_for_review]</code>；<strong>author 门控</strong>（仅 owner PR，防 prompt injection + 省 OAuth 额度）；<code>use_sticky_comment: true</code>；<code>claude_args: --max-turns N</code> 限深；pin SHA。</li>
+        <li><strong><code>claude.yml</code></strong>：pin SHA、按需 <code>pull-requests: write</code>、author 门控。</li>
+        <li><strong>安全</strong>：保持 <code>pull_request</code>（非 <code>pull_request_target</code>）——fork 拿不到 secret，安全。</li>
+        <li><strong>固化进规则</strong>：更新根 <code>CLAUDE.md</code>「PR 与代码评审」节（复评由 Claude 分批 <code>@</code> 触发、开发期 draft 降频、Monitor 覆盖三条 review 流）。</li>
+      </ul>
+    </section>
+
+    <section id="caching">
+      <h2>6. 缓存策略与信任边界</h2>
+      <p><strong>fail-soft 解决可用性，trust 边界解决正确性——两件事分开。</strong></p>
+      <ul>
+        <li><strong>Gradle 第一层 · GHA 缓存</strong>：维持 <code>gradle/actions/setup-gradle</code>，PR 只读、main / nightly 写。与 runner 同地、最快、始终可用。</li>
+        <li><strong>Gradle 第二层 · Mac mini <code>build-cache-node</code></strong>：在 <code>patra-infra</code> compose 起 <code>gradle/build-cache-node</code>（鉴权 + 持久卷），价值是<strong>持久化、突破 GHA 10GB 上限的 CI 缓存</strong>。信任边界（生产级默认）：
+          <ul>
+            <li><strong>写入者仅限 trusted CI</strong>：<code>push:main</code>、<code>schedule</code>、手动 trusted dispatch。<strong>PR 默认只读。</strong></li>
+            <li><strong>本地开发默认不 push 到 CI 信任缓存</strong>（不干净/非 hermetic 环境写入会让 CI 复用错误产物 → false-pass）。如需本地远程缓存，用<strong>独立 namespace / 独立 node</strong>，不与 CI trusted cache 混用。</li>
+            <li><strong>fork PR 或 secrets 缺失时完全禁用远程缓存</strong>（拿不到 tailnet / 凭据），只保留 GHA / 依赖缓存；远程缓存 <code>fail-soft</code>，node 不可达只是 cache miss、绝不阻断 CI。</li>
+            <li><strong>凭据只走 GitHub Secrets / 本机外部 secret，绝不写入仓库 <code>.env</code>。</strong></li>
+          </ul>
+        </li>
+        <li><strong>前端</strong>：portal job 加 <code>actions/cache</code> 缓存 <code>.next/cache</code>（key = lockfile + 源码 hash）；pnpm 缓存已有。</li>
+        <li><strong>CD docker build</strong>：接 buildx <code>cache-from</code>/<code>cache-to=type=registry,mode=max</code>，让分层 jar 的 dependencies 层不再每次从零重建。</li>
+      </ul>
+    </section>
+
+    <section id="hardening">
+      <h2>7. 安全加固（公开仓库生产级）</h2>
+      <ul>
+        <li><strong>所有 action pin 到 commit SHA</strong>，格式统一 <code>uses: owner/action@&lt;sha&gt; # vX.Y.Z</code>。公开仓库 post-<code>tj-actions</code> 硬标准。</li>
+        <li><strong>最小 <code>permissions:</code></strong>：workflow 顶层默认 <code>contents: read</code>，仅需要处 job 级提权（CD 推 GHCR 才 <code>packages: write</code>）。</li>
+        <li><strong>新增 <code>.github/dependabot.yml</code></strong>：托管 <code>github-actions</code>（升 SHA）、<code>gradle</code>、<code>pnpm</code> 三生态，按周分组降噪。注意：分组 PR 仍需<strong>人工审 action 权限变化</strong>，不能只看 SHA diff。bot PR 已被 coderabbit <code>ignore_usernames</code> 排除，不加重 rate limit。（Renovate 更强但需装 App，对单人徒增装配，选原生 Dependabot。）</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：受影响单元门控 + 契约消费者扇出（派生自依赖图）</h3>
+        <p>门控单位为「受影响单元」（service / contract / foundation / portal）。contract（跨服务 api）变更扇出到消费者服务，扇出关系派生自真实 Gradle 模块依赖图，未确定即保守 full-run。</p>
+        <p class="alternatives"><strong>备选 A：</strong>按服务目录门控（原设计）— 否决：当前已存在编译期 API 契约依赖（<code>registry-api</code>→catalog/ingest/expr-starter 等），只跑所属服务会漏测消费者。<br>
+        <strong>备选 B：</strong>手维护 <code>contracts</code> 映射 — 否决：会与真实 <code>build.gradle.kts</code> 漂移；改用图派生 + full-run 兜底。<br>
+        <strong>备选 C：</strong>完整通用 AMD 引擎 — 否决：只有 contract 需要依赖图，轻量派生足矣。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：integration / e2e 按单元门控（运行时无多服务拓扑）</h3>
+        <p>测试运行时不启动多服务拓扑（跨服务交互被 WireMock / <code>@MockitoBean</code> 隔离），故可按受影响单元选择性执行；编译期契约由决策 1 的 contract 扇出覆盖。</p>
+        <p class="alternatives"><strong>备选：</strong>integration/e2e 任一后端变更就全跑 — 否决：数据不支持，违背痛点初衷。<strong>兜底：</strong>nightly 全量 + 「未来新增跨服务运行时测试时单列 e2e 档」的不变量约定。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：统一编排 + 单一 <code>required-check</code> gate（含显式语义）</h3>
+        <p>一个 <code>detect-changes</code> + 一个 <code>if: always()</code> 总 gate（名仍 <code>required-check</code>）：所有 required 依赖 ∈ {success, skipped} 即绿，任一 failure/cancelled 即红；空 matrix 用 <code>if backend_units_json != '[]'</code> 防护。分支保护零改动，且首次真正覆盖前端门。</p>
+        <p class="alternatives"><strong>备选 A：</strong>保留多 workflow + 多互补 gate（现状）— 否决：拼凑脆弱、漏前端隔离、portal gate 未进保护。<br>
+        <strong>备选 B：</strong><code>on.paths</code> workflow 级过滤 + 设 required — 否决：skipped 的 required check 让 PR 永久 pending。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：CodeRabbit 关增量复评 + Claude 分批 <code>@</code> 驱动</h3>
+        <p><code>auto_incremental_review: false</code>，保留 ready 首评；复评由 Claude 处理完一批反馈后 <code>@coderabbitai review</code> 触发，用户不参与。论据基于当前配置意图（显式 <code>:0</code> + 注释），不押 SaaS 默认值。</p>
+        <p class="alternatives"><strong>备选 A：</strong>保留增量、靠 draft/squash 纪律降频 — 否决：依赖每次自觉。<br>
+        <strong>备选 B：</strong><code>auto_pause_after_reviewed_commits: 3</code> — 否决：每 PR 仍先耗 3 次配额。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：两层缓存 + 严格信任边界</h3>
+        <p>GHA 缓存（CI↔CI）+ Mac mini 远程 node（持久化、突破 10GB）。<strong>仅 trusted CI（push:main/nightly）可写远程缓存，PR 只读，本地 dev 不混用 CI trusted cache，fork/缺 secret 时禁用远程缓存。</strong>fail-soft 仅解决可用性、不解决信任。</p>
+        <p class="alternatives"><strong>备选 A：</strong>本地 dev push=true、PR 复用本地产物（原设计）— 否决：不干净本地环境污染 CI 信任缓存 → false-pass。<br>
+        <strong>备选 B：</strong>仅 GHA 缓存、不要 node — 用户决策保留 node；网络由用户修复。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 6：Dependabot（而非 Renovate / 手动）</h3>
+        <p>原生、零 App 装配，<code>.github/dependabot.yml</code> 托管 actions(SHA)/gradle/pnpm，按周分组；分组 PR 仍人工审权限变化。</p>
+        <p class="alternatives"><strong>备选 A：</strong>Renovate — 否决：需装 GitHub App，对单人徒增装配。<br>
+        <strong>备选 B：</strong>手动升级 — 否决：pin SHA 后不托管会滞后腐化。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 7：不上 Develocity Predictive Test Selection</h3>
+        <p>PTS 需 ≥14 天历史 + 50+ 次执行冷启动、私有商业项目无免费层。单人 + 私有 + 无历史三条全不满足。单元门控 + build cache 已覆盖收益。</p>
+        <p class="alternatives"><strong>否决理由：</strong>当前阶段过度工程。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 8：选择性 coverage 不伪装成全仓</h3>
+        <p>PR 服务级用 Codecov flags 上传受影响单元 coverage；foundation/full/nightly 出全仓聚合；docs-only/portal-only coverage skipped、gate 接受 skipped。</p>
+        <p class="alternatives"><strong>备选：</strong>选择性跑仍走 <code>jacoco-report-aggregation</code> 全仓上传 — 否决：未运行模块被算 0 覆盖、产残报告，<code>fail_ci_if_error</code> 还可能误红。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 9：双 AI reviewer 分工 + 每 PR 评一次</h3>
+        <p>CodeRabbit 走广度（工具聚合 + 行级 + Linear AC），Claude 走深度（架构 + 领域逻辑），实测 ~93% 非重叠；两者均改「每 PR 评一次」（去每 push 复评），复评手动 <code>@</code>。CodeRabbit 同步做 best-practice overhaul，Claude review 修 permissions + author 门控 + pin SHA。</p>
+        <p class="alternatives"><strong>备选 A：</strong>只留一个自动 reviewer（Claude 仅 @mention）— 用户决策保留双 reviewer 的互补价值。<br>
+        <strong>备选 B：</strong>两个都保留每 push 复评 — 否决：噪音 / 额度叠加，违背本次降噪初衷。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>当前已存在</strong>的编译期 API 契约依赖被服务级门控漏测（改 <code>registry-api</code> 漏跑 catalog/ingest/expr-starter）</td>
+            <td><span class="pill high">high</span></td>
+            <td>contract 单元 + 消费者扇出（派生自依赖图）；未确定即 full-run；Done 判定显式覆盖 <code>registry-api</code> / <code>object-storage-api</code> 两例</td>
+          </tr>
+          <tr>
+            <td>选择性运行下 coverage 聚合语义不成立，全仓聚合把未跑模块算 0 / 残报告 / <code>fail_ci_if_error</code> 误红</td>
+            <td><span class="pill high">high</span></td>
+            <td><code>coverage_mode</code> 三态：full（全仓）/ flags（服务级）/ none（skipped）；PR 不伪装全仓</td>
+          </tr>
+          <tr>
+            <td>远程 Gradle 缓存被本地不干净环境污染 → CI 复用错误产物 false-pass</td>
+            <td><span class="pill high">high</span></td>
+            <td>写入者仅 trusted CI；PR 只读；本地 dev 不混用；凭据走 Secrets 不进 <code>.env</code></td>
+          </tr>
+          <tr>
+            <td><code>detect-changes</code> 路由错误 / PR diff base 取错 / 空 matrix 生成非法 workflow</td>
+            <td><span class="pill high">high</span></td>
+            <td>显式 <code>pr &lt;base&gt; &lt;head&gt;</code> 模式 + <code>fetch-depth: 0</code> + merge-base；空 matrix <code>if != '[]'</code> 防护；TDD 覆盖六场景；未识别路径全跑</td>
+          </tr>
+          <tr>
+            <td>改名/删 workflow 导致 <code>required-check</code> 失配、PR 永久 pending</td>
+            <td><span class="pill high">high</span></td>
+            <td>gate job 名严格保持 <code>required-check</code>；<code>portal-ci-required-check</code> 未进保护（已确认）；feature branch 实跑验证后再合并</td>
+          </tr>
+          <tr>
+            <td>删 <code>portal-ci.yml</code> 丢掉非阻塞 Playwright e2e 信号</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>portal job 显式保留非阻塞 Playwright（PR 传报告不阻断）；nightly 改阻塞做 UI 回归兜底</td>
+          </tr>
+          <tr>
+            <td>选择性跑漏掉镜像版本一致性 governance check</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>提成独立 <code>preflight</code> job 常驻跑（耗时低）</td>
+          </tr>
+          <tr>
+            <td>未来新增跨服务运行时测试时单元门控会漏</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>文档化不变量；nightly 全量兜底；新增时单列 e2e 档</td>
+          </tr>
+          <tr>
+            <td>大 PR 评审负担重</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>writing-plans 拆任务；可拆「①核心门控 / ②硬化」两 PR</td>
+          </tr>
+          <tr>
+            <td>双 AI reviewer 噪音 / OAuth 额度叠加</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>分工 path_instructions（让给 Claude / 不评框架约定）+ 两者每 PR 评一次（去 synchronize）+ 复评手动 @；Claude 额度受 once-per-PR 约束</td>
+          </tr>
+          <tr>
+            <td><code>claude-code-review</code> 权限不足静默失败 / 公开仓库 PR prompt injection</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>修 permissions read→write + author 门控（仅 owner PR）+ <code>pull_request</code>（非 target，fork 拿不到 secret）+ pin SHA + <code>--max-turns</code></td>
+          </tr>
+          <tr>
+            <td>Mac mini cache node 不可达</td>
+            <td><span class="pill low">low</span></td>
+            <td>远程缓存 fail-soft 退化为 cache miss，GHA 缓存兜底，不阻断 CI</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>.github/workflows/ci.yml</code></td><td><span class="pill modify">modify</span></td><td>统一编排：detect-changes（结构化输出）→ preflight + 受影响单元 matrix（含空 matrix 防护）+ portal（含非阻塞 Playwright）+ coverage（三态）+ required-check（success/skipped 语义）；on 增 schedule(nightly)；pin SHA + 最小 permissions</td></tr>
+          <tr><td>2</td><td><code>.github/workflows/ci-docs.yml</code></td><td><span class="pill delete">delete</span></td><td>由统一 gate「无失败即绿」取代</td></tr>
+          <tr><td>3</td><td><code>.github/workflows/portal-ci.yml</code></td><td><span class="pill delete">delete</span></td><td>前端检查（含 Playwright 信号）并入 ci.yml</td></tr>
+          <tr><td>4</td><td><code>.github/workflows/cd.yml</code></td><td><span class="pill modify">modify</span></td><td>build-and-push 接 buildx 层缓存；pin SHA + 最小 permissions（部署逻辑不动）</td></tr>
+          <tr><td>5</td><td><code>.github/workflows/portal-cd.yml</code></td><td><span class="pill modify">modify</span></td><td>pin SHA + 最小 permissions</td></tr>
+          <tr><td>6</td><td><code>.github/workflows/claude.yml</code> + <code>claude-code-review.yml</code></td><td><span class="pill modify">modify</span></td><td>claude.yml：pin SHA + 按需 <code>pull-requests: write</code> + author 门控；claude-code-review.yml：触发改 <code>[opened, ready_for_review]</code>（去 synchronize）+ permissions read→write + author 门控 + sticky comment + <code>--max-turns</code> + pin SHA</td></tr>
+          <tr><td>7</td><td><code>patra-infra/cd/detect-changes.sh</code></td><td><span class="pill modify">modify</span></td><td>新增 <code>pr &lt;base&gt; &lt;head&gt;</code> / <code>schedule</code> 模式；输出 <code>backend_units_json</code>/<code>portal_changed</code>/<code>docs_only</code>/<code>full_run</code>/<code>coverage_mode</code>；叠加 contract 消费者扇出（读依赖图）；未识别路径全跑</td></tr>
+          <tr><td>8</td><td><code>patra-infra/cd/services.json</code></td><td><span class="pill modify">modify</span></td><td>补 CI 单元定义 + 契约消费者来源（与 CD 构建任务并存的 SSOT）；契约扇出优先从 Gradle 依赖图派生</td></tr>
+          <tr><td>9</td><td>模块依赖图派生机制（<code>build-logic</code> reverse-dep 任务 / 生成物 + staleness 守卫，或 detect-changes 内实时计算）</td><td><span class="pill create">create</span></td><td>为 contract 扇出提供「派生而非手维护」的 SSOT；机制在实现计划定</td></tr>
+          <tr><td>10</td><td><code>patra-infra/cd/detect-changes.bats</code>（或等价测试）</td><td><span class="pill create">create</span></td><td>TDD 路由测试，覆盖六场景 + 契约扇出两例</td></tr>
+          <tr><td>11</td><td><code>settings.gradle.kts</code></td><td><span class="pill modify">modify</span></td><td><code>buildCache { remote&lt;HttpBuildCache&gt; }</code>：仅 trusted CI <code>push=true</code>、PR 只读、缺 secret 禁用、fail-soft</td></tr>
+          <tr><td>12</td><td><code>patra-infra/docker/docker-compose.buildcache.yaml</code> + 凭据（Secrets，非 <code>.env</code>）</td><td><span class="pill create">create</span></td><td><code>gradle/build-cache-node</code> 服务（鉴权 + 持久卷）</td></tr>
+          <tr><td>13</td><td><code>.coderabbit.yaml</code></td><td><span class="pill modify">modify</span></td><td>best-practice overhaul：<code>auto_incremental_review: false</code> + 删 <code>:0</code> 改注释 + <code>code_guidelines</code> 吃 <code>.claude/rules</code> + <code>fbinfer.enable_java</code> + 安全工具声明 + 前端 path 拆条 + common/starter path_instructions + 降噪 + 分工提示 +（可选）TDD pre_merge_check</td></tr>
+          <tr><td>14</td><td><code>CLAUDE.md</code>（根）</td><td><span class="pill modify">modify</span></td><td>「PR 与代码评审」节固化：复评由 Claude 分批 <code>@</code> 触发、开发期 draft 降频</td></tr>
+          <tr><td>15</td><td><code>.github/dependabot.yml</code></td><td><span class="pill create">create</span></td><td>github-actions / gradle / pnpm 三生态，按周分组</td></tr>
+          <tr><td>16</td><td><code>docs/patra/specs/2026-06-08-cicd-production-grade-design.html</code></td><td><span class="pill create">create</span></td><td>本设计文档</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>只改 <code>patra-portal/**</code>：backend 与 coverage skipped、portal blocking jobs 跑，<code>required-check</code> 能因 portal 失败而红。</li>
+        <li>只改 docs：backend / portal / coverage 全 skipped，<code>required-check</code> 绿、无测试 job。</li>
+        <li>只改 <code>patra-api/patra-catalog/**</code> 私有实现：只跑 catalog 相关后端单元。</li>
+        <li>只改 <code>patra-api/patra-registry/patra-registry-api/**</code>：跑 registry + catalog + ingest + 依赖该契约的 starter 检查。</li>
+        <li>只改 <code>patra-api/patra-object-storage/patra-object-storage-api/**</code>：跑 object-storage + ingest。</li>
+        <li>改 <code>build-logic/**</code> 或 <code>.github/workflows/**</code>：全量后端（workflow 变更额外含 portal）。</li>
+        <li><code>backend_units_json == '[]'</code> 时 workflow 不生成非法 matrix。</li>
+        <li>fork PR / 缺 secret 时不尝试访问 Mac mini cache node、不因缺 cache secret 失败；远程缓存仅 trusted CI 可写。</li>
+        <li>nightly 全量生成全仓 coverage；服务级 PR 用 flags 上传、不伪装全仓。</li>
+        <li>一个 PR 内多次 push 不再触发多次增量复评；手动 <code>@coderabbitai review</code> 生效。</li>
+        <li>portal lint/typecheck/test 失败能拦住合并；Playwright e2e 信号未丢（PR 非阻塞）。</li>
+        <li>所有 workflow action pin SHA、<code>actionlint</code> 通过、<code>permissions</code> 最小化、preflight 镜像一致性常驻；Dependabot 正常提分组 PR。</li>
+        <li><code>claude-code-review</code> 修 permissions 后能成功发 review 评论；两个自动 reviewer 各 PR 只评一次、push 不重复触发；复评手动 <code>@</code> 生效。</li>
+        <li>CodeRabbit 吃进 <code>.claude/rules</code> 规约、<code>fbinfer.enable_java</code> Java 检测生效；双 reviewer 分工无明显噪音叠加。</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       由 ../styles/user-notes.js 驱动，仅本机本浏览器、不进 git；
+       放子目录的 spec 把下方 <script src> 同改成 ../../styles/
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
