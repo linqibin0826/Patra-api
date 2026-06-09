@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CI/CD 生产级优化 — 实现计划</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题（与 spec 共享 spec-theme.css）+ plan 专属 plan-extras.css。 -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li data-task-status="pending"><a href="#task-1">Task 1 — 模块依赖图任务 dumpModuleGraph + module-graph.json</a></li>
+          <li data-task-status="pending"><a href="#task-2">Task 2 — detect-changes 路由测试（Red）</a></li>
+          <li data-task-status="pending"><a href="#task-3">Task 3 — detect-changes.sh 重写（Green）</a></li>
+          <li data-task-status="pending"><a href="#task-4">Task 4 — cd.yml 切到新路由输出（CD 契约漏洞同修）</a></li>
+          <li data-task-status="pending"><a href="#task-5">Task 5 — ci.yml 统一编排全量重写（detect/preflight/backend/portal/coverage/gate/nightly）</a></li>
+          <li data-task-status="pending"><a href="#task-6">Task 6 — 删除 ci-docs.yml + portal-ci.yml</a></li>
+          <li data-task-status="pending"><a href="#task-7">Task 7 — 两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</a></li>
+          <li data-task-status="pending"><a href="#task-8">Task 8 — CD buildx 层缓存</a></li>
+          <li data-task-status="pending"><a href="#task-9">Task 9 — .coderabbit.yaml best-practice overhaul</a></li>
+          <li data-task-status="pending"><a href="#task-10">Task 10 — Claude review 工作流加固</a></li>
+          <li data-task-status="pending"><a href="#task-11">Task 11 — pin SHA + 最小 permissions + Dependabot</a></li>
+          <li data-task-status="pending"><a href="#task-12">Task 12 — CLAUDE.md 评审流程更新</a></li>
+          <li data-task-status="pending"><a href="#task-13">Task 13 — 端到端验证（actionlint + 四场景实跑）</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>CI/CD 生产级优化 — 实现计划</h1>
+      <div class="meta-bar">
+        <span>📅 2026-06-09</span>
+        <span>🌿 feat/cicd-production-overhaul</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。每完成一个 task 立即 commit。
+        单 PR 端到端（分支 <code>feat/cicd-production-overhaul</code>），不要切新分支。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>把后端 CI 从「前端改动也触发后端全套、4 shard 永远全跑」重构为「统一编排 + 受影响单元门控」；治理双 AI reviewer；补齐缓存与公开仓库安全硬化。</dd>
+        <dt>架构</dt> <dd>build-logic 的 <code>dumpModuleGraph</code> 生成 checked-in <code>module-graph.json</code>（每模块的受影响单元集，派生自真实 Gradle 依赖图）→ <code>detect-changes.sh</code> 据此把变更映射为受影响单元（含跨服务编译期契约扇出）→ 单 <code>ci.yml</code> 编排 backend 单元 matrix + portal + coverage 三态 + 单一 <code>required-check</code> gate；CD 复用同一路由 SSOT。</dd>
+        <dt>技术栈</dt> <dd>GitHub Actions / Gradle 9 (Kotlin DSL) / bash + jq / Spring Boot 4 分层 jar / pnpm / CodeRabbit + Claude Code Action。</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-06-08-cicd-production-grade-design.html">CI/CD 生产级优化：受影响单元门控 + 治理硬化</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>本 plan 覆盖 spec 的全部 In-Scope（CI 编排重构、受影响单元门控含 contract 扇出、coverage 三态、缓存信任边界、AI review 治理、SHA/permissions/Dependabot 硬化）。用户已决定<strong>单 PR 端到端</strong>，故 13 个任务串在一个 PR 内，按依赖顺序推进：先建路由 SSOT（T1–T4），再重构 CI（T5–T7），再缓存/硬化/治理（T8–T12），最后文档与端到端验证（T13）。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>build.gradle.kts                                     [modify] 注册 dumpModuleGraph 任务（生成模块依赖图）
+patra-infra/cd/module-graph.json                     [create] 受影响单元图（dumpModuleGraph 产物，checked-in）
+patra-infra/cd/detect-changes.sh                     [modify] 新增 pr/schedule/classify 模式 + 结构化 JSON 输出 + 图驱动单元映射
+patra-infra/cd/detect-changes.test.sh                [create] 零依赖 bash 测试，覆盖六场景 + 契约扇出两例
+.github/workflows/ci.yml                             [modify] 重写为统一编排（detect-changes + preflight + backend matrix + portal + coverage + required-check + nightly）
+.github/workflows/ci-docs.yml                        [delete] 由统一 gate「无失败即绿」取代
+.github/workflows/portal-ci.yml                      [delete] 前端检查（含 Playwright）并入 ci.yml
+.github/workflows/cd.yml                             [modify] detect-changes 切新输出 + build-and-push 接 buildx 层缓存 + pin SHA + permissions
+.github/workflows/portal-cd.yml                      [modify] pin SHA + 最小 permissions
+.github/workflows/claude.yml                         [modify] pin SHA + 按需 write + author 门控
+.github/workflows/claude-code-review.yml             [modify] permissions read→write + ready_for_review 触发 + author 门控 + sticky + --max-turns + pin SHA
+settings.gradle.kts                                  [modify] buildCache { remote&lt;HttpBuildCache&gt; }（仅 trusted CI 写、PR 读、缺 secret 禁用、fail-soft）
+patra-infra/docker/docker-compose.buildcache.yaml    [create] gradle/build-cache-node 服务（鉴权 + 持久卷）
+.coderabbit.yaml                                     [modify] best-practice overhaul（code_guidelines/fbinfer/安全工具/path_instructions/降噪/分工）
+.github/dependabot.yml                               [create] github-actions / gradle / pnpm 三生态按周分组
+CLAUDE.md                                            [modify]（根）PR 与代码评审节：双 reviewer、复评由 Claude 分批 @ 触发
+docs/patra/plans/2026-06-09-cicd-production-overhaul.html  [create] 本计划</pre>
+      </div>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- TASK TEMPLATE（保留供添加）:
+      <article class="task" id="task-N" data-status="pending"> ... </article>
+      data-status 5 类：pending / in-progress / done / blocked / skipped
+      -->
+
+      <article class="task" id="task-1" data-status="pending">
+        <header>
+          <h2>任务 1：模块依赖图任务 dumpModuleGraph + module-graph.json</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>build.gradle.kts</code>（根，末尾追加 task）</dd>
+            <dt>创建</dt><dd><code>patra-infra/cd/module-graph.json</code>（任务产物，checked-in）</dd>
+          </dl>
+        </header>
+        <p>受影响单元门控的 SSOT。该任务遍历所有 Gradle 子项目，按物理目录派生「单元」（registry / object-storage / catalog / ingest / gateway / foundation），用真实 project 依赖图算出每个模块的<strong>受影响单元集</strong> <code>impacts</code>（= 自身单元 ∪ 所有传递依赖者的单元），并探测各模块存在的测试源集。这把「改 registry-api 要扇出到 catalog/ingest」从手维护变成<strong>派生自代码</strong>。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：在根 <code>build.gradle.kts</code> 末尾追加 <code>dumpModuleGraph</code> 任务</strong>
+            <pre><code class="lang-kotlin">// ============================================================================
+// CI 受影响单元门控 SSOT：把真实 Gradle 模块依赖图导出为 patra-infra/cd/module-graph.json。
+// detect-changes.sh 读它把「变更文件」映射成「受影响测试单元」（含跨服务编译期契约扇出）。
+// 改了任何 build.gradle.kts 后必须重跑：./gradlew dumpModuleGraph（CI preflight 用 git diff 守卫陈旧）。
+// ============================================================================
+tasks.register("dumpModuleGraph") {
+    group = "ci"
+    description = "导出模块依赖图到 patra-infra/cd/module-graph.json（受影响单元门控 SSOT）"
+    notCompatibleWithConfigurationCache("遍历整个 project 依赖图")
+    val rootDirFile = rootDir
+    doLast {
+        val subs = rootProject.subprojects
+
+        // 1) 正向依赖：project path -> 它直接依赖的 project path 集合
+        val forward: Map&lt;String, Set&lt;String&gt;&gt; = subs.associate { p ->
+            p.path to p.configurations.flatMap { c ->
+                c.dependencies.withType(ProjectDependency::class.java).map { it.path }
+            }.toSet()
+        }
+        // 2) 反向依赖：被依赖者 -> 依赖它的 project 集合
+        val reverse = HashMap&lt;String, MutableSet&lt;String&gt;&gt;()
+        forward.forEach { (p, deps) -> deps.forEach { d -> reverse.getOrPut(d) { mutableSetOf() }.add(p) } }
+        // 3) 传递依赖者闭包
+        fun transitiveDependents(start: String): Set&lt;String&gt; {
+            val seen = mutableSetOf&lt;String&gt;()
+            val stack = ArrayDeque(reverse[start]?.toList() ?: emptyList())
+            while (stack.isNotEmpty()) {
+                val n = stack.removeLast()
+                if (seen.add(n)) stack.addAll(reverse[n]?.toList() ?: emptyList())
+            }
+            return seen
+        }
+        // 4) 物理目录 -> 单元
+        fun unitOf(dir: String): String = when {
+            dir.startsWith("patra-api/patra-registry/") -> "registry"
+            dir.startsWith("patra-api/patra-object-storage/") -> "object-storage"
+            dir.startsWith("patra-api/patra-catalog/") -> "catalog"
+            dir.startsWith("patra-api/patra-ingest/") -> "ingest"
+            dir == "patra-api/patra-gateway-boot" -> "gateway"
+            else -> "foundation"
+        }
+        val pathToDir = subs.associate { it.path to it.projectDir.relativeTo(rootDirFile).path.replace('\\', '/') }
+
+        val modules = subs.map { p ->
+            val dir = pathToDir.getValue(p.path)
+            val selfUnit = unitOf(dir)
+            val impacts = (transitiveDependents(p.path).map { unitOf(pathToDir[it] ?: "") } + selfUnit)
+                .toSortedSet().toList()
+            val tasksList = buildList {
+                add("check")
+                if (p.file("src/integrationTest").exists()) add("integrationTest")
+                if (p.file("src/e2eTest").exists()) add("e2eTest")
+            }
+            linkedMapOf("dir" to dir, "project" to p.path, "unit" to selfUnit, "impacts" to impacts, "tasks" to tasksList)
+        }.sortedBy { it["dir"] as String }
+
+        val root = linkedMapOf(
+            "_comment" to "dumpModuleGraph 产物，勿手改。受影响单元门控 SSOT。改 build 文件后重跑 ./gradlew dumpModuleGraph。",
+            "units" to listOf("registry", "object-storage", "catalog", "ingest", "gateway", "foundation"),
+            "modules" to modules
+        )
+        val json = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(root)) + "\n"
+        file("patra-infra/cd/module-graph.json").writeText(json)
+        logger.lifecycle("✓ 写出 patra-infra/cd/module-graph.json（${'$'}{modules.size} 个模块）")
+    }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：生成 module-graph.json 并人工核对契约扇出</strong>
+            <p>运行：<code>./gradlew dumpModuleGraph -q</code></p>
+            <p>预期：生成 <code>patra-infra/cd/module-graph.json</code>。核对关键契约边——<code>jq</code> 验证：</p>
+            <pre><code class="lang-bash"># registry-api 的 impacts 必须含 catalog/ingest/foundation（跨服务契约消费者）
+jq '.modules[] | select(.dir=="patra-api/patra-registry/patra-registry-api") | .impacts' \
+  patra-infra/cd/module-graph.json
+# 预期类似：["catalog","foundation","ingest","registry"]
+
+# object-storage-api 必须含 ingest
+jq '.modules[] | select(.dir=="patra-api/patra-object-storage/patra-object-storage-api") | .impacts' \
+  patra-infra/cd/module-graph.json
+# 预期类似：["ingest","object-storage"]
+
+# catalog-infra 私有实现：impacts 只有 catalog（不外溢）
+jq '.modules[] | select(.dir=="patra-api/patra-catalog/patra-catalog-infra") | .impacts' \
+  patra-infra/cd/module-graph.json
+# 预期：["catalog"]</code></pre>
+            <p>若 registry-api 的 impacts 不含 catalog/ingest，说明 <code>ProjectDependency.path</code> 取值或 reverse 闭包有误，回步骤 1 修正。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add build.gradle.kts patra-infra/cd/module-graph.json
+git commit -m "feat(ci): dumpModuleGraph 任务 + 受影响单元图 SSOT"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-2" data-status="pending">
+        <header>
+          <h2>任务 2：detect-changes 路由测试（Red）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-infra/cd/detect-changes.test.sh</code></dd>
+          </dl>
+        </header>
+        <p>TDD 先行。零依赖 bash 测试（只需 bash + jq + 已 checked-in 的 <code>module-graph.json</code>），驱动 <code>detect-changes.sh classify</code> 子命令（从 stdin 读变更文件清单，避开 git），断言输出 JSON。此刻 <code>classify</code> 子命令尚不存在，测试必失败（Red）。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：写测试脚本</strong>
+            <pre><code class="lang-bash">#!/usr/bin/env bash
+# detect-changes.sh classify 的零依赖测试。用法：bash patra-infra/cd/detect-changes.test.sh
+set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &amp;&amp; pwd)"
+DETECT="$SCRIPT_DIR/detect-changes.sh"
+PASS=0; FAIL=0
+
+# 断言：把 $1（换行分隔的变更文件）喂给 classify，比较 jq 取出的 $2 字段 == 期望 $3
+assert_field() {
+  local files="$1" field="$2" expected="$3" desc="$4"
+  local got
+  got="$(printf '%s\n' "$files" | bash "$DETECT" classify | jq -c "$field")"
+  if [ "$got" = "$expected" ]; then PASS=$((PASS+1)); printf '  ✓ %s\n' "$desc"
+  else FAIL=$((FAIL+1)); printf '  ✗ %s\n    field %s 期望 %s 实得 %s\n' "$desc" "$field" "$expected" "$got"; fi
+}
+
+echo "== 场景 1：仅前端 =="
+assert_field "patra-portal/app/page.tsx" '.backend_units' '[]' "前端 backend_units 空"
+assert_field "patra-portal/app/page.tsx" '.portal_changed' 'true' "前端 portal_changed"
+assert_field "patra-portal/app/page.tsx" '.docs_only' 'false' "前端非 docs_only"
+
+echo "== 场景 2：仅 docs =="
+assert_field "$(printf 'README.md\ndocs/x.html')" '.docs_only' 'true' "docs_only"
+assert_field "README.md" '.backend_units' '[]' "docs backend 空"
+
+echo "== 场景 3：catalog 私有实现（不外溢）=="
+F="patra-api/patra-catalog/patra-catalog-infra/src/main/java/X.java"
+assert_field "$F" '.backend_units' '["catalog"]' "catalog 私有只跑 catalog"
+assert_field "$F" '.full_run' 'false' "catalog 私有非全量"
+assert_field "$F" '.coverage_mode' '"flags"' "catalog coverage=flags"
+
+echo "== 场景 4：registry-api 契约扇出 =="
+F="patra-api/patra-registry/patra-registry-api/src/main/java/X.java"
+assert_field "$F" '.backend_units' '["catalog","foundation","ingest","registry"]' "registry-api 扇出 consumers"
+assert_field "$F" '.full_run' 'false' "registry-api 非全量"
+
+echo "== 场景 5：object-storage-api 契约扇出 =="
+F="patra-api/patra-object-storage/patra-object-storage-api/src/main/java/X.java"
+assert_field "$F" '.backend_units' '["ingest","object-storage"]' "object-storage-api 扇出 ingest"
+
+echo "== 场景 6：foundation/全局 → 全量 =="
+assert_field "build-logic/src/main/kotlin/x.gradle.kts" '.full_run' 'true' "build-logic 全量"
+assert_field "patra-api/patra-common/patra-common-model/src/main/java/X.java" '.full_run' 'true' "common-model 全量"
+
+echo "== 场景 7：workflow 自身变更 → 全量后端 + portal =="
+assert_field ".github/workflows/ci.yml" '.full_run' 'true' "workflow 全量"
+assert_field ".github/workflows/ci.yml" '.portal_changed' 'true' "workflow 额外含 portal"
+
+echo "== 场景 8：混合（catalog + portal）=="
+F="$(printf 'patra-api/patra-catalog/patra-catalog-app/src/main/java/X.java\npatra-portal/app/x.tsx')"
+assert_field "$F" '.backend_units' '["catalog"]' "混合 backend=catalog"
+assert_field "$F" '.portal_changed' 'true' "混合 portal=true"
+
+echo
+echo "通过 $PASS / 失败 $FAIL"
+[ "$FAIL" -eq 0 ]</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行确认失败（Red）</strong>
+            <p>运行：<code>bash patra-infra/cd/detect-changes.test.sh; echo "exit=$?"</code></p>
+            <p>预期：失败（<code>classify</code> 子命令未实现，<code>detect-changes.sh</code> 报「用法」并退出非 0，断言全 ✗，最后 <code>exit=1</code>）。这是 TDD 的红灯，符合预期。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit（红灯测试）</strong>
+            <pre><code class="lang-bash">git add patra-infra/cd/detect-changes.test.sh
+git commit -m "test(ci): detect-changes 路由测试（Red，覆盖六场景+契约扇出）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-3" data-status="pending">
+        <header>
+          <h2>任务 3：detect-changes.sh 重写（Green）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-infra/cd/detect-changes.sh</code>（整文件重写）</dd>
+          </dl>
+        </header>
+        <p>把脚本从「输出服务名 JSON 数组」重写为「输出受影响单元结构化 JSON 对象」，新增 <code>pr</code> / <code>schedule</code> / <code>classify</code> 模式，分类逻辑读 <code>module-graph.json</code>。<code>classify</code> 从 stdin 读变更文件（供测试与各 git 模式复用）。让 Task 2 的测试转绿。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：整文件重写 detect-changes.sh</strong>
+            <pre><code class="lang-bash">#!/usr/bin/env bash
+# ============================================================================
+# 受影响单元路由 SSOT —— ci.yml 与 cd.yml 共用。输出一个 JSON 对象到 stdout：
+#   { "backend_units":[...], "portal_changed":bool, "docs_only":bool,
+#     "full_run":bool, "coverage_mode":"none|flags|full" }
+#   backend_units ⊆ [registry,object-storage,catalog,ingest,gateway,foundation]
+#
+# 模式：
+#   detect-changes.sh pr <BASE_SHA> <HEAD_SHA>    # pull_request：merge-base..head
+#   detect-changes.sh push <BEFORE_SHA> <AFTER_SHA># push:main
+#   detect-changes.sh schedule                     # nightly：全量
+#   detect-changes.sh dispatch <SERVICE|all|"">    # 手动（CD 回滚）
+#   detect-changes.sh classify                     # 从 stdin 读变更文件清单（测试用）
+#
+# CD 消费：services = [backend_units 去掉 "foundation"]（foundation 不可部署）。
+# 兼容 bash 3.2。依赖：git、jq、同目录 module-graph.json。
+# ============================================================================
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &amp;&amp; pwd)"
+GRAPH="$SCRIPT_DIR/module-graph.json"
+ALL_UNITS='["registry","object-storage","catalog","ingest","gateway","foundation"]'
+
+emit() { # $1=units_json $2=portal $3=docs_only $4=full_run $5=coverage_mode
+  jq -cn --argjson u "$1" --argjson p "$2" --argjson d "$3" --argjson f "$4" --arg c "$5" \
+    '{backend_units:$u, portal_changed:$p, docs_only:$d, full_run:$f, coverage_mode:$c}'
+}
+emit_full() { emit "$ALL_UNITS" "${1:-false}" false true full; }
+
+# 把 stdin 的变更文件清单分类，输出 JSON 对象。
+classify() {
+  local full=false portal=false docs_all=true
+  local units_file; units_file="$(mktemp)"; trap 'rm -f "$units_file"' RETURN
+  local saw_any=false f hit
+  while IFS= read -r f; do
+    [ -z "$f" ] &amp;&amp; continue
+    saw_any=true
+    # workflow 自身变更：全量后端 + 额外触发 portal（验证整条管线）
+    case "$f" in .github/workflows/*) full=true; portal=true; docs_all=false; continue;; esac
+    # 全局影响、模块图覆盖不到的非 project 路径 → 全量
+    case "$f" in
+      build-logic/*|gradle/*|gradlew|gradlew.bat|build.gradle.kts|settings.gradle.kts|gradle.properties) full=true; docs_all=false; continue;;
+      patra-infra/docker/service.Dockerfile|patra-infra/docker/docker-compose.apps.yaml) full=true; docs_all=false; continue;;
+      patra-infra/cd/*) full=true; docs_all=false; continue;;
+    esac
+    case "$f" in patra-portal/*) portal=true; docs_all=false; continue;; esac
+    case "$f" in *.md|docs/*|.gitignore|.editorconfig|LICENSE|.claude/*) continue;; esac
+    docs_all=false
+    # 文件落到哪个模块（module-graph dir 为其最长前缀）→ 取该模块 impacts
+    hit="$(jq -r --arg f "$f" '
+      [.modules[] | select(($f | startswith(.dir + "/")) or ($f == .dir))]
+      | sort_by(.dir | length) | last | (.impacts // []) | .[]' "$GRAPH")"
+    if [ -z "$hit" ]; then full=true; else printf '%s\n' "$hit" >> "$units_file"; fi
+  done
+
+  if [ "$saw_any" = false ]; then emit '[]' false false false none; return; fi
+  if [ "$full" = true ]; then emit "$ALL_UNITS" "$portal" false true full; return; fi
+  local units_json; units_json="$(sort -u "$units_file" | jq -cRs 'split("\n") | map(select(length > 0))')"
+  if [ "$units_json" = '[]' ]; then
+    if [ "$portal" = true ]; then emit '[]' true false false none
+    elif [ "$docs_all" = true ]; then emit '[]' false true false none
+    else emit '[]' false false false none; fi
+  else
+    emit "$units_json" "$portal" false false flags
+  fi
+}
+
+MODE="${1:-}"
+case "$MODE" in
+  schedule) emit_full true ;;   # nightly：全量 + 触发 portal（UI 回归）
+  classify) classify ;;
+  dispatch)
+    SVC="${2:-}"
+    if [ -z "$SVC" ] || [ "$SVC" = "all" ]; then emit_full
+    else emit "$(jq -cn --arg s "$SVC" '[$s]')" false false false flags; fi
+    ;;
+  pr)
+    BASE="${2:?pr 模式需 BASE_SHA}"; HEAD="${3:?pr 模式需 HEAD_SHA}"
+    git diff --name-only "$(git merge-base "$BASE" "$HEAD")" "$HEAD" | classify
+    ;;
+  push)
+    BEFORE="${2:-}"; AFTER="${3:-}"; ZERO="0000000000000000000000000000000000000000"
+    if [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ]; then emit_full
+    else git diff --name-only "$BEFORE" "$AFTER" | classify; fi
+    ;;
+  *)
+    echo "用法: detect-changes.sh pr <base> <head> | push <before> <after> | schedule | dispatch <svc|all> | classify" >&2
+    exit 1
+    ;;
+esac</code></pre>
+            <p>注：<code>classify</code> 里 <code>trap ... RETURN</code> 在函数返回时清理临时文件（bash 3.2 支持）。git 模式把 <code>git diff</code> 结果管道进 <code>classify</code>，与测试同一套分类逻辑。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行测试确认转绿（Green）</strong>
+            <p>运行：<code>bash patra-infra/cd/detect-changes.test.sh; echo "exit=$?"</code></p>
+            <p>预期：<code>通过 16 / 失败 0</code>，<code>exit=0</code>。若 registry-api 场景失败，先核对 Task 1 的 module-graph.json（impacts 是否正确），分类逻辑本身依赖图数据。</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra/cd/detect-changes.sh
+git commit -m "feat(ci): detect-changes 重写为受影响单元路由（pr/schedule/classify + 契约扇出）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-4" data-status="pending">
+        <header>
+          <h2>任务 4：cd.yml 切到新路由输出（CD 契约漏洞同修）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.github/workflows/cd.yml</code>（detect-changes job 的 detect step）</dd>
+          </dl>
+        </header>
+        <p>detect-changes.sh 现在输出结构化对象而非裸数组。CD 只需「可部署服务」= <code>backend_units</code> 去掉 <code>foundation</code>。这<strong>顺带修复了 CD 同源的契约漏洞</strong>：旧逻辑改 <code>registry-api</code> 只重建 registry，新逻辑会因图扇出重建 registry + catalog + ingest。<code>build-and-push</code> 的 <code>if: ... outputs.services != '[]'</code> 与 deploy 逻辑都不变（输出名仍叫 <code>services</code>）。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：替换 cd.yml 中 detect step 的 run 脚本</strong>
+            <p>把 <code>detect-changes</code> job 里 <code>id: detect</code> step 的 <code>run:</code> 块整体替换为：</p>
+            <pre><code class="lang-bash">          # 受影响单元路由（结构化对象）；CD 部署服务 = backend_units 去掉 foundation
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            R=$(bash patra-infra/cd/detect-changes.sh dispatch "$DISPATCH_SERVICE")
+          else
+            R=$(bash patra-infra/cd/detect-changes.sh push "$EVENT_BEFORE" "$EVENT_SHA")
+          fi
+          SERVICES=$(echo "$R" | jq -c '[.backend_units[] | select(. != "foundation")]')
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+          echo "受影响单元: $R"
+          echo "本次构建/部署服务: $SERVICES"</code></pre>
+            <p>env（<code>EVENT_NAME / DISPATCH_SERVICE / EVENT_BEFORE / EVENT_SHA</code>）与 <code>outputs.services</code> 声明保持原样不动。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：本地验证 CD 服务提取正确</strong>
+            <pre><code class="lang-bash"># dispatch catalog → 只有 catalog
+bash patra-infra/cd/detect-changes.sh dispatch catalog | jq -c '[.backend_units[]|select(.!="foundation")]'
+# 预期：["catalog"]
+# 模拟改 registry-api（classify 直接喂路径）→ CD 现在会重建 registry+catalog+ingest（契约修复）
+printf 'patra-api/patra-registry/patra-registry-api/src/main/java/X.java\n' \
+  | bash patra-infra/cd/detect-changes.sh classify | jq -c '[.backend_units[]|select(.!="foundation")]'
+# 预期：["catalog","ingest","registry"]（不再只有 registry）</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add .github/workflows/cd.yml
+git commit -m "fix(cd): detect-changes 切受影响单元输出，修复契约变更漏建消费者"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-5" data-status="pending">
+        <header>
+          <h2>任务 5：ci.yml 统一编排全量重写</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.github/workflows/ci.yml</code>（整文件重写）</dd>
+          </dl>
+        </header>
+        <p>把 <code>ci.yml</code> 重写为单一编排：<code>detect-changes</code>（受影响单元）→ <code>preflight</code>（镜像一致性 + 模块图陈旧守卫）+ <code>backend</code>（单元 matrix，按需 unit/integration/e2e）+ <code>portal</code>（lint/typecheck/test + 非阻塞 Playwright + <code>.next/cache</code>）+ <code>coverage</code>（仅全量上传）→ <code>required-check</code>（success/skipped 语义）。新增 <code>schedule</code> nightly 全量。job 名 <code>required-check</code> 不变，分支保护零改动。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：整文件重写 ci.yml</strong>
+            <pre><code class="lang-yaml">name: CI
+
+# 统一编排：detect-changes → preflight + backend(单元 matrix) + portal + coverage → required-check
+# required-check 是分支保护唯一 required check（名称勿改）。docs-only/portal-only 下后端 skipped，
+# 由 allowed-skips 让 gate 仍绿。nightly(schedule) 跑全量 + portal e2e 阻塞。
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 18 * * *'   # 每日 UTC 18:00 全量兜底 + 喂缓存
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  POSTGRES_IMAGE: postgres:17
+  ROCKETMQ_IMAGE: apache/rocketmq:5.3.1
+
+jobs:
+  # ---- 1) 受影响单元路由 ----
+  detect-changes:
+    name: detect-changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend_units: ${{ steps.detect.outputs.backend_units }}
+      portal_changed: ${{ steps.detect.outputs.portal_changed }}
+      coverage_mode: ${{ steps.detect.outputs.coverage_mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 🔍 Detect affected units
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          case "$EVENT_NAME" in
+            pull_request) R=$(bash patra-infra/cd/detect-changes.sh pr "$PR_BASE" "$PR_HEAD") ;;
+            push)         R=$(bash patra-infra/cd/detect-changes.sh push "$PUSH_BEFORE" "$PUSH_AFTER") ;;
+            *)            R=$(bash patra-infra/cd/detect-changes.sh schedule) ;;
+          esac
+          echo "受影响单元: $R"
+          echo "backend_units=$(echo "$R" | jq -c '.backend_units')" >> "$GITHUB_OUTPUT"
+          echo "portal_changed=$(echo "$R" | jq -r '.portal_changed')" >> "$GITHUB_OUTPUT"
+          echo "coverage_mode=$(echo "$R" | jq -r '.coverage_mode')" >> "$GITHUB_OUTPUT"
+
+  # ---- 2) preflight：cheap governance（常驻跑）----
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: 🔍 Verify container image versions consistency
+        run: |
+          set -e
+          FAIL=0
+          PG_FILE="linqibin-commons/linqibin-spring-boot-starter-test/src/main/java/dev/linqibin/starter/test/container/initializer/PostgreSQLContainerInitializer.java"
+          if ! grep -Fq "private static final String POSTGRESQL_IMAGE = \"$POSTGRES_IMAGE\";" "$PG_FILE"; then
+            echo "::error file=$PG_FILE::POSTGRESQL_IMAGE 常量与 workflow env POSTGRES_IMAGE=$POSTGRES_IMAGE 不一致"
+            FAIL=1
+          fi
+          for COMPOSE in \
+            "linqibin-commons/linqibin-spring-boot-starter-test/src/main/resources/docker-compose-rocketmq.yml" \
+            "patra-api/patra-ingest/patra-ingest-boot/src/test/resources/docker-compose-rocketmq.yml"; do
+            COUNT=$(grep -F -c "image: $ROCKETMQ_IMAGE" "$COMPOSE" || true)
+            if [ "$COUNT" -ne 2 ]; then
+              echo "::error file=$COMPOSE::期望 2 处 'image: $ROCKETMQ_IMAGE',实际 $COUNT 处"
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" -ne 0 ] &amp;&amp; { echo "镜像版本治理 SSOT 失守"; exit 1; }
+          echo "✓ 镜像版本一致"
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          cache-read-only: true
+      - name: 🧭 Verify module-graph.json up to date
+        run: |
+          ./gradlew dumpModuleGraph -q
+          if ! git diff --quiet patra-infra/cd/module-graph.json; then
+            echo "::error::module-graph.json 陈旧。本地跑 ./gradlew dumpModuleGraph 并提交。"
+            git --no-pager diff patra-infra/cd/module-graph.json
+            exit 1
+          fi
+          echo "✓ module-graph.json 与依赖图一致"
+
+  # ---- 3) backend：受影响单元 matrix（unit/slice/integration/e2e）----
+  backend:
+    name: backend (${{ matrix.unit }})
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend_units != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        unit: ${{ fromJson(needs.detect-changes.outputs.backend_units) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+      - name: 🧮 Compute gradle tasks for unit
+        id: tasks
+        run: |
+          LIST=$(jq -r --arg u "${{ matrix.unit }}" \
+            '[.modules[] | select(.unit == $u) | .project as $p | .tasks[] | "\($p):\(.)"] | join(" ")' \
+            patra-infra/cd/module-graph.json)
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
+          echo "单元 ${{ matrix.unit }} 任务: $LIST"
+      - name: 🐳 Pre-pull container images
+        if: contains(steps.tasks.outputs.list, 'integrationTest') || contains(steps.tasks.outputs.list, 'e2eTest')
+        run: |
+          docker pull "$POSTGRES_IMAGE" &amp; pid_pg=$!
+          docker pull "$ROCKETMQ_IMAGE" &amp; pid_mq=$!
+          wait "$pid_pg"; wait "$pid_mq"
+      - name: ✅ Test unit (check + integrationTest + e2eTest)
+        run: ./gradlew ${{ steps.tasks.outputs.list }} -x jacocoTestReport -x integrationTestCodeCoverageReport
+      - name: 📦 Upload jacoco exec (${{ matrix.unit }})
+        if: always() &amp;&amp; needs.detect-changes.outputs.coverage_mode == 'full'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-exec-${{ matrix.unit }}
+          path: |
+            **/build/jacoco/test.exec
+            **/build/jacoco/integrationTest.exec
+          retention-days: 7
+          if-no-files-found: warn
+      - name: 📦 Upload reports (${{ matrix.unit }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ matrix.unit }}
+          path: |
+            **/build/reports/
+            **/build/test-results/
+          retention-days: 7
+
+  # ---- 4) portal：仅 portal 变更时（合并原 4 job 为 1，e2e 非阻塞）----
+  portal:
+    name: portal
+    needs: detect-changes
+    if: needs.detect-changes.outputs.portal_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: patra-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: 'patra-portal/.nvmrc'
+          cache: 'pnpm'
+          cache-dependency-path: patra-portal/pnpm-lock.yaml
+      - name: 📦 Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: patra-portal/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('patra-portal/pnpm-lock.yaml') }}-${{ hashFiles('patra-portal/**/*.ts', 'patra-portal/**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('patra-portal/pnpm-lock.yaml') }}-
+      - run: pnpm install --frozen-lockfile
+      - name: 🔍 Lint (Biome)
+        run: pnpm lint
+      - name: 🔎 Type check
+        run: pnpm typecheck
+      - name: 🧪 Unit test (Vitest)
+        run: pnpm test
+      - name: 🎭 Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - name: 🧪 E2E (Playwright; PR 非阻塞 / nightly 阻塞)
+        run: pnpm test:e2e
+        continue-on-error: ${{ github.event_name != 'schedule' }}
+      - name: 📦 Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: patra-portal/playwright-report/
+          retention-days: 7
+
+  # ---- 5) coverage：仅全量（full_run/nightly）聚合上传，服务级 PR 不伪装全仓 ----
+  coverage:
+    name: coverage
+    needs: [detect-changes, backend]
+    if: always() &amp;&amp; needs.detect-changes.outputs.coverage_mode == 'full' &amp;&amp; needs.backend.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: jacoco-exec-*
+          merge-multiple: true
+          path: .
+      - name: 📊 Aggregate JaCoCo
+        run: ./gradlew testCodeCoverageReport integrationTestCodeCoverageReport -x test -x integrationTest
+      - name: 📈 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build/reports/jacoco/testCodeCoverageReport/testCodeCoverageReport.xml,build/reports/jacoco/integrationTestCodeCoverageReport/integrationTestCodeCoverageReport.xml
+          fail_ci_if_error: true
+
+  # ---- 6) required-check：唯一 required（分支保护认这个名）----
+  required-check:
+    name: required-check
+    needs: [detect-changes, preflight, backend, portal, coverage]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: ✓ All required checks passed (skipped 视为通过)
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: backend, portal, coverage</code></pre>
+            <p>要点：<code>backend</code> 用 <code>if: backend_units != '[]'</code> 防空 matrix；每单元的 gradle 任务从 <code>module-graph.json</code> 按 <code>unit</code> 过滤拼出（只跑该单元存在的 <code>check/integrationTest/e2eTest</code>）；<code>coverage</code> 只在 <code>coverage_mode == 'full'</code>（全量/nightly）跑，服务级 PR 不上传以免把未跑模块算成 0；<code>required-check</code> 的 <code>allowed-skips</code> 让 docs-only/portal-only 时 skipped 的后端 job 不拖红 gate。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：actionlint 校验</strong>
+            <p>运行：<code>actionlint .github/workflows/ci.yml</code>（无 actionlint 时：<code>docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color .github/workflows/ci.yml</code>）</p>
+            <p>预期：无错误。重点确认 <code>fromJson</code>、matrix、<code>${{ }}</code> 表达式、<code>allowed-skips</code> 语法通过。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add .github/workflows/ci.yml
+git commit -m "feat(ci): ci.yml 统一编排（受影响单元 matrix + coverage 三态 + gate 语义 + nightly）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-6" data-status="pending">
+        <header>
+          <h2>任务 6：删除 ci-docs.yml + portal-ci.yml</h2>
+          <dl class="files">
+            <dt>删除</dt><dd><code>.github/workflows/ci-docs.yml</code>、<code>.github/workflows/portal-ci.yml</code></dd>
+          </dl>
+        </header>
+        <p>统一 gate 接管后，docs-only PR 由 <code>required-check</code> 的 <code>allowed-skips</code>「无失败即绿」覆盖，不再需要 <code>ci-docs.yml</code> 兜底；前端检查并入 <code>ci.yml</code> 的 <code>portal</code> job，<code>portal-ci.yml</code>（及其从未进保护的 <code>portal-ci-required-check</code>）废弃。分支保护仍只 require <code>required-check</code>，名称不变 → GitHub 设置零改动。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：删除两个 workflow</strong>
+            <pre><code class="lang-bash">git rm .github/workflows/ci-docs.yml .github/workflows/portal-ci.yml</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：确认无残留引用</strong>
+            <p>运行：<code>grep -rn "portal-ci-required-check\|ci-docs" .github/ docs/ || echo "无残留引用 ✓"</code></p>
+            <p>预期：仅本计划文档可能提及（说明性），workflow 间无依赖残留。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git commit -m "refactor(ci): 删除 ci-docs.yml/portal-ci.yml（并入统一编排）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-7" data-status="pending">
+        <header>
+          <h2>任务 7：两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>settings.gradle.kts</code></dd>
+            <dt>创建</dt><dd><code>patra-infra/docker/docker-compose.buildcache.yaml</code></dd>
+          </dl>
+        </header>
+        <p>第一层 GHA 缓存已在 T5 各 Gradle job 生效。本任务加第二层 Mac mini 远程节点的<strong>消费侧 hook</strong>（settings.gradle.kts，fail-soft：无 URL/凭据时自动只用本地/GHA 缓存）+ 节点 compose。<strong>信任边界写死在 hook 里</strong>：仅 <code>GRADLE_CACHE_PUSH=true</code> 的 trusted 环境可写，缺凭据则远程禁用（fork PR 安全）。<strong>CI 启用远程节点（tailnet 连通 + 注入 env）是网络修复后的 ops 跟进步骤</strong>——在那之前 CI 走 GHA 缓存，hook inert，互不影响。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：在 settings.gradle.kts 追加 buildCache 块</strong>
+            <p>在 <code>dependencyResolutionManagement { ... }</code> 块之后、模块 <code>include(...)</code> 之前追加：</p>
+            <pre><code class="lang-kotlin">// ============================================================================
+// 两层构建缓存。第一层=CI 的 GHA 缓存（gradle/actions）。第二层=Mac mini 远程节点。
+// 信任边界：仅 trusted 环境（GRADLE_CACHE_PUSH=true：push:main / nightly / 本地 dev 显式）可写；
+// PR 只读；缺凭据（fork PR）→ 远程禁用，退化为本地/GHA 缓存。fail-soft 仅解可用性，写权限由此控。
+// ============================================================================
+buildCache {
+    local {
+        isEnabled = true
+    }
+    remote(HttpBuildCache::class) {
+        val url = providers.environmentVariable("GRADLE_REMOTE_CACHE_URL").orNull
+        val user = providers.environmentVariable("GRADLE_CACHE_USERNAME").orNull
+        val pass = providers.environmentVariable("GRADLE_CACHE_PASSWORD").orNull
+        // 无 URL 或无凭据 → 远程缓存禁用（fork PR / 未配置环境安全退化）
+        isEnabled = url != null &amp;&amp; user != null &amp;&amp; pass != null
+        if (isEnabled) {
+            this.url = uri(url!!)
+            isAllowInsecureProtocol = true   // tailnet 内网 http
+            isPush = providers.environmentVariable("GRADLE_CACHE_PUSH").orElse("false").get().toBoolean()
+            credentials {
+                username = user
+                password = pass
+            }
+        }
+    }
+}</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：创建 build-cache-node compose（Mac mini）</strong>
+            <pre><code class="lang-yaml"># Gradle 远程构建缓存节点（patra-buildcache project）。Mac mini 上跑。
+# 凭据走 .env.buildcache.secret（被 .gitignore 的 .env.*.secret 挡住，绝不进仓库）。
+# 启用：scripts/compose-all.sh 纳入 patra-buildcache；CI 侧注入 GRADLE_REMOTE_CACHE_URL/凭据为网络修复后跟进。
+services:
+  gradle-build-cache:
+    image: gradle/build-cache-node:18
+    container_name: patra-gradle-build-cache
+    restart: unless-stopped
+    ports:
+      - "5071:5071"
+    env_file:
+      - .env.buildcache.secret   # BUILD_CACHE_USERNAME / BUILD_CACHE_PASSWORD（authenticated write）
+    volumes:
+      - ${PATRA_DOCKER_ROOT:-${HOME}/.patra/docker}/gradle-build-cache:/data
+    networks:
+      - patra-net
+
+networks:
+  patra-net:
+    external: true</code></pre>
+            <p>节点的「匿名读 + 鉴权写」通过 build-cache-node 自身的 config（用户名/密码来自 <code>.env.buildcache.secret</code>）设定。该 <code>.secret</code> 文件由用户在 Mac mini 上创建，不进仓库（遵循 patra-infra 既有 <code>.env.*.secret</code> 约定）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：验证 settings 不破坏构建 + Commit</strong>
+            <p>运行：<code>./gradlew help -q</code>（无 env 时远程缓存应 <code>isEnabled=false</code>，构建正常）。预期：BUILD SUCCESSFUL，无远程缓存连接尝试。</p>
+            <pre><code class="lang-bash">git add settings.gradle.kts patra-infra/docker/docker-compose.buildcache.yaml
+git commit -m "feat(ci): 两层 Gradle 缓存 hook + build-cache-node（信任边界：trusted 才写）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-8" data-status="pending">
+        <header>
+          <h2>任务 8：CD buildx 层缓存</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.github/workflows/cd.yml</code>（build-and-push job 的构建步）</dd>
+          </dl>
+        </header>
+        <p>CD 现用裸 <code>docker build</code> 每次从零重建镜像层。改用 buildx + GHCR registry 缓存（<code>type=registry,mode=max</code>），让分层 jar 的 dependencies 层跨 CI run 复用，省构建时间（push 因 GHCR 去重本就小）。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：在 GHCR 登录步之后加 setup-buildx</strong>
+            <p>在 <code>🔑 Log in to GHCR</code> 步之后插入：</p>
+            <pre><code class="lang-yaml">      - name: 🧰 Setup Buildx
+        uses: docker/setup-buildx-action@v3</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：把 <code>🐳 Build &amp; push image</code> 步的 run 换成 buildx + 层缓存</strong>
+            <pre><code class="lang-yaml">      - name: 🐳 Build &amp; push image (${{ matrix.service }})
+        run: |
+          TAG="${{ github.sha }}"
+          IMG="${{ steps.meta.outputs.image }}"
+          docker buildx build \
+            -f patra-infra/docker/service.Dockerfile \
+            --build-arg APP_PORT=${{ steps.meta.outputs.port }} \
+            --cache-from "type=registry,ref=$IMG:buildcache" \
+            --cache-to "type=registry,ref=$IMG:buildcache,mode=max" \
+            -t "$IMG:$TAG" -t "$IMG:latest" \
+            --push \
+            "${{ steps.meta.outputs.context }}"</code></pre>
+            <p>注：<code>--push</code> 直接推送（替代原先分开的 <code>docker push</code> 两行，一并删除）。<code>buildcache</code> tag 是缓存 manifest，与 <code>latest</code>/<code>$TAG</code> 互不干扰。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：actionlint + Commit</strong>
+            <pre><code class="lang-bash">actionlint .github/workflows/cd.yml
+git add .github/workflows/cd.yml
+git commit -m "perf(cd): buildx GHCR 层缓存，分层 jar 依赖层跨 run 复用"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-9" data-status="pending">
+        <header>
+          <h2>任务 9：.coderabbit.yaml best-practice overhaul</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.coderabbit.yaml</code>（整文件替换）</dd>
+          </dl>
+        </header>
+        <p>把「只跑通」的配置拧成生产级：关增量复评治 rate limit、吃进 <code>.claude/rules</code> 规约、开 Java bug 检测、显式声明安全工具、按六边形分层 + common/starter 写 path_instructions（含与 Claude 的分工提示）、降噪、可选 TDD 预合并检查。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：整文件替换 .coderabbit.yaml</strong>
+            <pre><code class="lang-yaml"># yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Patra CodeRabbit 配置。原则：降 rate limit（关增量）+ 降噪 + 工具聚合 + TDD 约束 + Linear。
+# 与 Claude Code /review 分工：CodeRabbit=广度（行级 nitpick + lint/安全工具聚合 + AC），
+# Claude=深度（六边形架构 + DDD 领域逻辑）。各 PR 评一次，复评由 Claude 手动 @ 触发。
+language: zh-CN
+tone_instructions: 用中文 review；工程师同事语气，直接指出 bug 与设计风险；如无明确问题不发表评论；避免礼貌性赞美。
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+
+  high_level_summary: true
+  high_level_summary_instructions: |
+    摘要聚焦：① 变更了哪个六边形层（domain/app/adapter/infra/portal）；
+    ② 涉及哪个领域概念或外部数据源；③ 是否含 Flyway 迁移或破坏性 schema 变更。不要重复文件列表。
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: false
+  related_prs: false
+  poem: false
+  review_status: false
+  commit_status: false
+  fail_commit_status: false
+  auto_apply_labels: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: false        # 关增量复评：只在 PR 开/转 ready 时评一次，省 quota
+    drafts: false
+    ignore_title_keywords:
+      - WIP
+      - DO NOT MERGE
+      - SKIP REVIEW
+    ignore_usernames:
+      - dependabot[bot]
+      - renovate[bot]
+
+  pre_merge_checks:
+    custom_checks:
+      - name: "TDD-测试先行"
+        mode: warning   # request_changes_workflow=false 下只能 warning（提示，不阻断）
+        instructions: |
+          每个新增 production class 或 public method 应有对应 *Test.java 或 *IT.java 变更。
+          只含测试文件变更（Red 阶段）视为合规；含 production 代码但零测试变更 → 标记违反。
+          例外：patra-*-api 的 DTO/Contract record 不强制单测。
+
+  finishing_touches:
+    docstrings:
+      enabled: false   # TDD：禁止 AI 事后补 JavaDoc
+    unit_tests:
+      enabled: false   # TDD：禁止 AI 事后补测试
+
+  path_filters:
+    - "!**/build/**"
+    - "!**/.gradle/**"
+    - "!**/node_modules/**"
+    - "!**/.next/**"
+    - "!**/src/main/generated/**"
+    - "!**/*.generated.java"
+    - "!**/__snapshots__/**"
+    - "!**/*.lock"
+    - "!**/pnpm-lock.yaml"
+    - "!**/gradle/wrapper/**"
+    - "!gradlew"
+    - "!gradlew.bat"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!**/CHANGELOG.md"
+
+  path_instructions:
+    - path: "**/patra-*-domain/**/*.java"
+      instructions: |
+        DDD domain 层：禁止依赖 Spring/JPA/任何框架。关注充血模型、不变量、领域事件；
+        指出贫血实体、跨聚合直接引用、把基础设施类型暴露到 domain。
+        【让给 Claude】聚合边界等深层架构评审由 Claude 负责，此处聚焦框架依赖污染。
+    - path: "**/patra-*-app/**/*.java"
+      instructions: |
+        Application 层：用例编排与事务边界，不放业务规则。
+        【不要评论】@Transactional 放 Service 而非 Repository 的框架约定写法。
+    - path: "**/patra-*-adapter/**/*.java"
+      instructions: |
+        Adapter 层：指出 DTO ↔ 领域模型双向耦合、领域类型外泄到对外契约、缺输入校验。
+    - path: "**/patra-*-infra/**/*.java"
+      instructions: |
+        Infrastructure 层：指出实体直接外泄、N+1、资源未释放。
+        【不要评论】Spring Data JPA 标准 Repository 继承写法。
+    - path: "**/patra-common-*/**/*.java"
+      instructions: |
+        通用模块：所有 public API 变更须评估对全部消费服务的破坏性影响；禁止引入重型框架依赖。
+    - path: "**/patra-spring-boot-starter-*/**/*.java"
+      instructions: |
+        Starter：AutoConfiguration 须有 @ConditionalOn* 保护；评估与其他 starter 的 Bean 冲突；
+        META-INF/spring 注册文件须与 AutoConfiguration 同步。
+    - path: "patra-portal/**/*.ts"
+      instructions: |
+        Next.js 15 / React 19 / TS strict / Tailwind v4 / shadcn/ui。指出 any、未处理 Promise、
+        客户端组件泄漏 Server Action。text-fg-3/border-border-default 是空操作，用 text-[var(--fg-3)]。
+    - path: "patra-portal/**/*.tsx"
+      instructions: |
+        同 .ts：Next.js 15 / React 19 / TS strict。指出 any、未处理 Promise、Server Action 泄漏、
+        违反 shadcn/ui 样式约定。
+    - path: "**/db/migration/**/*.sql"
+      instructions: |
+        Flyway 迁移：检查索引、可空性、默认值、可逆性、大表 ALTER 锁表风险；提交后禁止改（checksum）。
+    - path: "**/*Test.java"
+      instructions: |
+        断言须覆盖失败路径与边界值；测试名表达 given/when/then；禁止空测试体、Thread.sleep 等待。
+    - path: "**/*IT.java"
+      instructions: |
+        集成测试：不要 mock 内部实现；DB 测试用 @Transactional 回滚或 Testcontainers 隔离。
+    - path: "**/*.gradle.kts"
+      instructions: |
+        依赖 scope 是否正确（implementation/testImplementation/runtimeOnly/compileOnly）；避免重复依赖。
+    - path: ".github/workflows/**/*.yml"
+      instructions: |
+        禁止硬编码 secret（须 ${{ secrets.X }}）；禁止 permissions: write-all；action 须 pin 到 SHA；
+        Java 步骤用 JDK 25 + gradlew。
+    - path: ".github/workflows/**/*.yaml"
+      instructions: |
+        同 .yml：禁硬编码 secret、禁 write-all、pin SHA、JDK 25 + gradlew。
+
+tools:
+  fbinfer:
+    enabled: true
+    enable_java: true        # 默认 false，Java 项目必须显式开
+  gitleaks:
+    enabled: true
+  trufflehog:
+    enabled: true
+  checkov:
+    enabled: true
+  trivy:
+    enabled: true
+  hadolint:
+    enabled: true
+  shellcheck:
+    enabled: true
+  yamllint:
+    enabled: true
+  actionlint:
+    enabled: true
+  zizmor:
+    enabled: true
+  osv_scanner:
+    enabled: true
+  opengrep:
+    enabled: true
+  ast-grep:
+    essential_rules: true
+  pmd:
+    enabled: false           # CI 已有 SpotBugs
+  semgrep:
+    enabled: false           # opengrep 覆盖
+  biome:
+    enabled: false
+  detekt:
+    enabled: false
+  markdownlint:
+    enabled: false
+  languagetool:
+    enabled: false
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - ".claude/rules/**/*.md"   # 吸收 code-style/port-service/error-handling 规约
+  learnings:
+    scope: local
+  linear:
+    usage: enabled
+    team_keys:
+      - PAP
+  jira:
+    usage: disabled
+
+chat:
+  auto_reply: false</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：YAML 合法性校验</strong>
+            <p>运行：<code>python3 -c "import yaml,sys; yaml.safe_load(open('.coderabbit.yaml')); print('YAML OK')"</code></p>
+            <p>预期：<code>YAML OK</code>。（CodeRabbit 的 schema 校验在 PR 上由其自身完成；本地先确保 YAML 不报错。）</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add .coderabbit.yaml
+git commit -m "chore(review): CodeRabbit best-practice overhaul（关增量+规约吸收+工具+分层指令+分工）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-10" data-status="pending">
+        <header>
+          <h2>任务 10：Claude review 工作流加固</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.github/workflows/claude-code-review.yml</code>、<code>.github/workflows/claude.yml</code></dd>
+          </dl>
+        </header>
+        <p>修 <code>claude-code-review.yml</code> 的「<code>pull-requests: read</code> 发不了评论」静默 bug；触发改每 PR 一次；author 门控防注入 + 省 OAuth 额度；sticky + 限深。<code>claude.yml</code> 加 author 门控 + 按需 write。（SHA pin 在 T11 统一做，本任务先用 tag。）</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：重写 claude-code-review.yml</strong>
+            <pre><code class="lang-yaml">name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]   # 去掉 synchronize：每 PR 评一次，不随每 push 重跑
+
+jobs:
+  claude-review:
+    # author 门控：只评 owner 自己的 PR（防 prompt injection + 省 OAuth 额度）
+    if: github.event.pull_request.user.login == 'linqibin0826'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write    # 修复：原 read 发不了 review 评论（静默失败）
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          use_sticky_comment: true        # 同一 PR 复用一条评论，不堆叠
+          claude_args: '--max-turns 8'    # 限深控额度</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：claude.yml 加 author 门控 + 提权</strong>
+            <p>把 <code>if:</code> 整体用 author 门控包住（在现有 @claude mention 判断外层加 <code>github.actor</code> 限制）：</p>
+            <pre><code class="lang-yaml">    if: |
+      github.actor == 'linqibin0826' &amp;&amp; (
+        (github.event_name == 'issue_comment' &amp;&amp; contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' &amp;&amp; contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' &amp;&amp; contains(github.event.review.body, '@claude')) ||
+        (github.event_name == 'issues' &amp;&amp; (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      )</code></pre>
+            <p>并把 <code>permissions</code> 改为按需可写（让 @claude 能 commit 修复 / 发评论）：</p>
+            <pre><code class="lang-yaml">    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：actionlint + Commit</strong>
+            <pre><code class="lang-bash">actionlint .github/workflows/claude-code-review.yml .github/workflows/claude.yml
+git add .github/workflows/claude-code-review.yml .github/workflows/claude.yml
+git commit -m "chore(review): Claude review 加固（修 permissions + 每 PR 一次 + author 门控 + sticky）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-11" data-status="pending">
+        <header>
+          <h2>任务 11：pin SHA + 最小 permissions + Dependabot</h2>
+          <dl class="files">
+            <dt>修改</dt><dd>全部 <code>.github/workflows/*.yml</code>（pin SHA + 顶层 permissions）</dd>
+            <dt>创建</dt><dd><code>.github/dependabot.yml</code></dd>
+          </dl>
+        </header>
+        <p>公开仓库硬化：所有 action pin 到 commit SHA（格式 <code>@&lt;sha&gt; # vX.Y.Z</code>）、每个 workflow 顶层最小 <code>permissions</code>、Dependabot 托管三生态按周分组更新（含自动升 SHA）。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：用 pinact 自动 pin 全部 action 到 SHA</strong>
+            <p>SHA 必须在实现时<strong>解析真实值</strong>（勿手写臆造）。用 <code>pinact</code> 扫描并就地 pin（保留 <code># vX.Y.Z</code> 注释）：</p>
+            <pre><code class="lang-bash"># 安装：go install github.com/suzuki-shunsuke/pinact/v2/cmd/pinact@latest（或 brew install pinact）
+pinact run
+# 校验：确认所有 uses: 都变成 owner/action@<40位sha> # vX.Y.Z
+grep -rnE 'uses: .+@[a-f0-9]{40}' .github/workflows/ | wc -l   # 应等于 uses 总数
+grep -rnE 'uses: .+@v[0-9]' .github/workflows/ || echo "无残留浮动 tag ✓"</code></pre>
+            <p>备选（无 pinact 时逐个解析）：<code>gh api repos/&lt;owner&gt;/&lt;repo&gt;/commits/&lt;tag&gt; --jq .sha</code> 取 SHA 手动替换。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：每个 workflow 顶层加最小 permissions</strong>
+            <p>确认每个 workflow 文件顶层有 <code>permissions:</code>（ci.yml 已在 T5 加 <code>contents: read</code>）。给 <code>cd.yml</code>、<code>portal-cd.yml</code> 顶层加默认只读（job 级已有的 <code>packages: write/read</code> 保持）：</p>
+            <pre><code class="lang-yaml"># 紧跟 name: 之后、on: 之前（或 on: 之后）加：
+permissions:
+  contents: read</code></pre>
+            <p>逐个核对：<code>grep -L "^permissions:" .github/workflows/*.yml</code> 应为空（每个文件都有顶层 permissions）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：创建 .github/dependabot.yml</strong>
+            <pre><code class="lang-yaml">version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      gradle:
+        patterns: ["*"]
+  - package-ecosystem: npm          # 含 pnpm（Dependabot 经 npm ecosystem 支持 pnpm-lock）
+    directory: "/patra-portal"
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：actionlint + Commit</strong>
+            <pre><code class="lang-bash">actionlint .github/workflows/*.yml
+git add .github/workflows/ .github/dependabot.yml
+git commit -m "chore(ci): pin action 到 SHA + 最小 permissions + Dependabot 周更"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-12" data-status="pending">
+        <header>
+          <h2>任务 12：CLAUDE.md 评审流程更新</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>CLAUDE.md</code>（根，「PR 与代码评审」节）</dd>
+          </dl>
+        </header>
+        <p>把「双 AI reviewer 分工 + 每 PR 评一次 + 复评由 Claude 分批 @ 触发 + 开发期 draft 降频」固化进流程规则。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：替换「PR 与代码评审」节正文</strong>
+            <p>把该节内容替换为：</p>
+            <pre><code class="lang-markdown">## PR 与代码评审
+
+仓库有两个 AI reviewer，分工互补：**CodeRabbit**（广度：行级 nitpick + lint/安全工具聚合 + Linear AC 对齐）与 **Claude Code Review**（深度：六边形架构 / DDD 领域逻辑）。两者均**每 PR 自动评一次**（CodeRabbit `auto_incremental_review: false`；Claude `claude-code-review.yml` 仅 `ready_for_review` 触发）。
+
+- **复评由 Claude 驱动，用户不参与**：开发期 PR 挂 `draft`（不评）→ 完工转 ready（两个 reviewer 各自动首评一次）→ 处理完**一批**反馈、推送后，由 Claude 在 PR 评论区发 `@coderabbitai review`（必要时 `@claude`）触发复评。不是每次 push 都 @。
+- **必启 Monitor**：每次 `gh pr create` 后，同一工作会话内立即启动 Monitor 并绑定该 PR，覆盖**三条流**（CodeRabbit + Claude review + 人工），持续到 PR 合并或关闭。
+- **处理状态**：对每条 review 意见必须在 PR 评论中明确给出处理状态——`已修复`（附 commit SHA）/ `不修复`（附明确理由）。</code></pre>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：Commit</strong>
+            <pre><code class="lang-bash">git add CLAUDE.md
+git commit -m "docs: PR 评审流程更新（双 reviewer 分工 + 每 PR 一次 + Claude 驱动复评）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-13" data-status="pending">
+        <header>
+          <h2>任务 13：端到端验证（actionlint + 四场景实跑）</h2>
+          <dl class="files">
+            <dt>验证</dt><dd>全部 workflow + detect-changes 路由 + 真实 PR 管线</dd>
+          </dl>
+        </header>
+        <p>本地静态校验全过后，推分支开 PR，在 Actions UI 观测统一编排端到端跑通。四场景的路由正确性由 <code>detect-changes.test.sh</code>（确定性单元级）+ 真实 PR 运行共同保证。</p>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：本地静态校验全套</strong>
+            <pre><code class="lang-bash">actionlint .github/workflows/*.yml
+bash patra-infra/cd/detect-changes.test.sh        # 期望：通过 16 / 失败 0
+./gradlew dumpModuleGraph -q &amp;&amp; git diff --quiet patra-infra/cd/module-graph.json \
+  &amp;&amp; echo "module-graph 一致 ✓"
+python3 -c "import yaml; yaml.safe_load(open('.coderabbit.yaml')); print('coderabbit YAML OK')"</code></pre>
+            <p>预期：actionlint 无错；detect 测试全绿；module-graph 一致；coderabbit YAML OK。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：推分支、开 draft PR、观测全量管线</strong>
+            <p>本 PR 改了 <code>.github/workflows/**</code> → detect-changes 判 <code>full_run</code> → backend matrix 起<strong>全部单元</strong> + portal + coverage，正好端到端验证新管线。</p>
+            <pre><code class="lang-bash">git push -u origin feat/cicd-production-overhaul
+gh pr create --draft --title "feat(ci): CI/CD 生产级优化（受影响单元门控 + 治理硬化）" \
+  --body "见 docs/patra/specs/2026-06-08-cicd-production-grade-design.html"</code></pre>
+            <p>在 Actions UI 确认：<code>detect-changes</code> 输出 full_run、<code>preflight</code> 绿（镜像一致 + module-graph 一致）、<code>backend</code> matrix 6 单元全跑、<code>portal</code> 跑（e2e 非阻塞）、<code>coverage</code> 上传、<code>required-check</code> 绿。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：四场景门控验证（throwaway 提交，观测后回退）</strong>
+            <p>在该 PR 分支上依次做最小提交并观察 Actions 的 backend matrix（看完即 <code>git reset --hard</code> 回退，不进最终 PR）：</p>
+            <pre><code class="lang-bash"># ① 仅前端：改 patra-portal 一个文件 → 期望 backend 全 skipped、只 portal 跑、required-check 绿
+# ② 仅 catalog 私有：改 patra-catalog-infra 一个 .java → 期望 backend 只起 catalog 单元
+# ③ registry-api 契约：改 patra-registry-api 一个 .java → 期望 backend 起 catalog+foundation+ingest+registry
+# ④ 仅 docs：改一个 .md → 期望 backend/portal/coverage 全 skipped、required-check 仍绿
+# 每次：编辑→commit→push→看 Actions→git reset --hard HEAD~1 &amp;&amp; git push -f</code></pre>
+            <p>预期与注释一致。若某场景 matrix 不符，回 T1/T3 核对 module-graph.json 与 classify 逻辑。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：转 ready + 启 Monitor</strong>
+            <p>四场景验证通过、PR 内容定稿后，<code>gh pr ready</code> 转就绪（触发 CodeRabbit + Claude 各首评一次），并按 CLAUDE.md 规则<strong>立即启动 Monitor</strong> 绑定该 PR（覆盖 CodeRabbit + Claude review + 人工三条流），持续到合并。复评由 Claude 分批 <code>@coderabbitai review</code> 触发。</p>
+          </li>
+        </ol>
+      </article>
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec In-Scope 逐项对应：统一编排 + 受影响单元门控 → T1–T3、T5；contract 扇出（派生自依赖图）→ T1（dumpModuleGraph）+ T3（classify）；gate success/skipped 语义 + 空 matrix 防护 + coverage 三态 + preflight 镜像一致性 + 图陈旧守卫 + portal .next/cache → T5；删 ci-docs/portal-ci + 修 portal gate bug → T6；两层缓存信任边界 + build-cache-node → T7；CD buildx 层缓存 → T8；CodeRabbit overhaul → T9；Claude review 加固 → T10；SHA pin + permissions + Dependabot → T11；CLAUDE.md 评审流程 → T12；端到端验证 → T13。CD 契约漏洞同修 → T4。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无 TODO / 待定 / 「类似任务 N」。每个代码步骤含完整可粘贴代码；契约扇出机制已在 T1 定为 dumpModuleGraph 派生（spec 留的 plan 级取舍已落定，非占位）。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>跨任务契约统一：单元名 <code>registry/object-storage/catalog/ingest/gateway/foundation</code>；detect-changes 输出字段 <code>backend_units/portal_changed/docs_only/full_run/coverage_mode</code>；module-graph 字段 <code>dir/project/unit/impacts/tasks</code>；ci.yml job 名 <code>detect-changes/preflight/backend/portal/coverage/required-check</code>。T3 的输出被 T5/T6/T7（CI）与 T4（CD）一致消费。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>13 个 <code>&lt;article class="task"&gt;</code> 各有唯一 <code>id="task-N"</code> 与初始 <code>data-status="pending"</code>；每 <code>&lt;li class="step"&gt;</code> 初始 <code>data-status="pending"</code>；header <code>&lt;dl class="meta"&gt;</code> 含目标/架构/技术栈/关联 spec 四项；<code>&lt;head&gt;</code> 两个 <code>&lt;link&gt;</code> 指向 <code>../styles/spec-theme.css</code> + <code>../styles/plan-extras.css</code>，无 inline <code>&lt;style&gt;</code>；TOC <code>toc-tasks</code> 13 条与 13 个 article 一一对应。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE:
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header><span class="note-type">DECISION</span><time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time><a href="#task-N">§ Task N</a></header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+      data-type 4 类：decision / change / tradeoff / other
+      -->
+    </ol>
+
+    <p class="empty-state">no notes yet</p>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">0</span> decisions /
+      <span data-counter="change">0</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>
