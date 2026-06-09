@@ -33,7 +33,7 @@
           <li data-task-status="done"><a href="#task-10">Task 10 — Claude review 工作流加固</a></li>
           <li data-task-status="done"><a href="#task-11">Task 11 — pin SHA + 最小 permissions + Dependabot</a></li>
           <li data-task-status="done"><a href="#task-12">Task 12 — CLAUDE.md 评审流程更新</a></li>
-          <li data-task-status="in-progress"><a href="#task-13">Task 13 — 端到端验证（actionlint + 四场景实跑）</a></li>
+          <li data-task-status="done"><a href="#task-13">Task 13 — 端到端验证（actionlint + 四场景实跑）</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -48,7 +48,7 @@
         <span>📅 2026-06-09</span>
         <span>🌿 feat/cicd-production-overhaul</span>
         <span>📋 plan</span>
-        <span class="status-pill">draft</span>
+        <span class="status-pill">done</span>
       </div>
 
       <aside class="for-ai-worker">
@@ -118,7 +118,7 @@ docs/patra/plans/2026-06-09-cicd-production-overhaul.html  [create] 本计划</p
         <p>受影响单元门控的 SSOT。该任务遍历所有 Gradle 子项目，按物理目录派生「单元」（registry / object-storage / catalog / ingest / gateway / foundation），用真实 project 依赖图算出每个模块的<strong>受影响单元集</strong> <code>impacts</code>（= 自身单元 ∪ 所有传递依赖者的单元），并探测各模块存在的测试源集。这把「改 registry-api 要扇出到 catalog/ingest」从手维护变成<strong>派生自代码</strong>。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：在根 <code>build.gradle.kts</code> 末尾追加 <code>dumpModuleGraph</code> 任务</strong>
             <pre><code class="lang-kotlin">// ============================================================================
 // CI 受影响单元门控 SSOT：把真实 Gradle 模块依赖图导出为 patra-infra/cd/module-graph.json。
@@ -188,7 +188,7 @@ tasks.register("dumpModuleGraph") {
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：生成 module-graph.json 并人工核对契约扇出</strong>
             <p>运行：<code>./gradlew dumpModuleGraph -q</code></p>
             <p>预期：生成 <code>patra-infra/cd/module-graph.json</code>。核对关键契约边——<code>jq</code> 验证：</p>
@@ -209,7 +209,7 @@ jq '.modules[] | select(.dir=="patra-api/patra-catalog/patra-catalog-infra") | .
             <p>若 registry-api 的 impacts 不含 catalog/ingest，说明 <code>ProjectDependency.path</code> 取值或 reverse 闭包有误，回步骤 1 修正。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add build.gradle.kts patra-infra/cd/module-graph.json
 git commit -m "feat(ci): dumpModuleGraph 任务 + 受影响单元图 SSOT"</code></pre>
@@ -227,7 +227,7 @@ git commit -m "feat(ci): dumpModuleGraph 任务 + 受影响单元图 SSOT"</code
         <p>TDD 先行。零依赖 bash 测试（只需 bash + jq + 已 checked-in 的 <code>module-graph.json</code>），驱动 <code>detect-changes.sh classify</code> 子命令（从 stdin 读变更文件清单，避开 git），断言输出 JSON。此刻 <code>classify</code> 子命令尚不存在，测试必失败（Red）。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写测试脚本</strong>
             <pre><code class="lang-bash">#!/usr/bin/env bash
 # detect-changes.sh classify 的零依赖测试。用法：bash patra-infra/cd/detect-changes.test.sh
@@ -288,13 +288,13 @@ echo "通过 $PASS / 失败 $FAIL"
 [ "$FAIL" -eq 0 ]</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败（Red）</strong>
             <p>运行：<code>bash patra-infra/cd/detect-changes.test.sh; echo "exit=$?"</code></p>
             <p>预期：失败（<code>classify</code> 子命令未实现，<code>detect-changes.sh</code> 报「用法」并退出非 0，断言全 ✗，最后 <code>exit=1</code>）。这是 TDD 的红灯，符合预期。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit（红灯测试）</strong>
             <pre><code class="lang-bash">git add patra-infra/cd/detect-changes.test.sh
 git commit -m "test(ci): detect-changes 路由测试（Red，覆盖六场景+契约扇出）"</code></pre>
@@ -312,7 +312,7 @@ git commit -m "test(ci): detect-changes 路由测试（Red，覆盖六场景+契
         <p>把脚本从「输出服务名 JSON 数组」重写为「输出受影响单元结构化 JSON 对象」，新增 <code>pr</code> / <code>schedule</code> / <code>classify</code> 模式，分类逻辑读 <code>module-graph.json</code>。<code>classify</code> 从 stdin 读变更文件（供测试与各 git 模式复用）。让 Task 2 的测试转绿。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：整文件重写 detect-changes.sh</strong>
             <pre><code class="lang-bash">#!/usr/bin/env bash
 # ============================================================================
@@ -406,13 +406,13 @@ esac</code></pre>
             <p>注：<code>classify</code> 里 <code>trap ... RETURN</code> 在函数返回时清理临时文件（bash 3.2 支持）。git 模式把 <code>git diff</code> 结果管道进 <code>classify</code>，与测试同一套分类逻辑。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行测试确认转绿（Green）</strong>
             <p>运行：<code>bash patra-infra/cd/detect-changes.test.sh; echo "exit=$?"</code></p>
             <p>预期：<code>失败 0（全绿）</code>，<code>exit=0</code>。若 registry-api 场景失败，先核对 Task 1 的 module-graph.json（impacts 是否正确），分类逻辑本身依赖图数据。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add patra-infra/cd/detect-changes.sh
 git commit -m "feat(ci): detect-changes 重写为受影响单元路由（pr/schedule/classify + 契约扇出）"</code></pre>
@@ -429,7 +429,7 @@ git commit -m "feat(ci): detect-changes 重写为受影响单元路由（pr/sche
         </header>
         <p>detect-changes.sh 现在输出结构化对象而非裸数组。CD 只需「可部署服务」= <code>backend_units</code> 去掉 <code>foundation</code>。这<strong>顺带修复了 CD 同源的契约漏洞</strong>：旧逻辑改 <code>registry-api</code> 只重建 registry，新逻辑会因图扇出重建 registry + catalog + ingest。<code>build-and-push</code> 的 <code>if: ... outputs.services != '[]'</code> 与 deploy 逻辑都不变（输出名仍叫 <code>services</code>）。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：替换 cd.yml 中 detect step 的 run 脚本</strong>
             <p>把 <code>detect-changes</code> job 里 <code>id: detect</code> step 的 <code>run:</code> 块整体替换为：</p>
             <pre><code class="lang-bash">          # 受影响单元路由（结构化对象）；CD 部署服务 = backend_units 去掉 foundation
@@ -444,7 +444,7 @@ git commit -m "feat(ci): detect-changes 重写为受影响单元路由（pr/sche
           echo "本次构建/部署服务: $SERVICES"</code></pre>
             <p>env（<code>EVENT_NAME / DISPATCH_SERVICE / EVENT_BEFORE / EVENT_SHA</code>）与 <code>outputs.services</code> 声明保持原样不动。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：本地验证 CD 服务提取正确</strong>
             <pre><code class="lang-bash"># dispatch catalog → 只有 catalog
 bash patra-infra/cd/detect-changes.sh dispatch catalog | jq -c '[.backend_units[]|select(.!="foundation")]'
@@ -454,7 +454,7 @@ printf 'patra-api/patra-registry/patra-registry-api/src/main/java/X.java\n' \
   | bash patra-infra/cd/detect-changes.sh classify | jq -c '[.backend_units[]|select(.!="foundation")]'
 # 预期：["catalog","ingest","registry"]（不再只有 registry）</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add .github/workflows/cd.yml
 git commit -m "fix(cd): detect-changes 切受影响单元输出，修复契约变更漏建消费者"</code></pre>
@@ -471,7 +471,7 @@ git commit -m "fix(cd): detect-changes 切受影响单元输出，修复契约�
         </header>
         <p>把 <code>ci.yml</code> 重写为单一编排：<code>detect-changes</code>（受影响单元）→ <code>preflight</code>（镜像一致性 + 模块图陈旧守卫）+ <code>backend</code>（单元 matrix，按需 unit/integration/e2e）+ <code>portal</code>（lint/typecheck/test + 非阻塞 Playwright + <code>.next/cache</code>）+ <code>coverage</code>（仅全量上传）→ <code>required-check</code>（success/skipped 语义）。新增 <code>schedule</code> nightly 全量。job 名 <code>required-check</code> 不变，分支保护零改动。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：整文件重写 ci.yml</strong>
             <pre><code class="lang-yaml">name: CI
 
@@ -725,12 +725,12 @@ jobs:
           allowed-skips: backend, portal, coverage</code></pre>
             <p>要点：<code>backend</code> 用 <code>if: backend_units != '[]'</code> 防空 matrix；每单元的 gradle 任务从 <code>module-graph.json</code> 按 <code>unit</code> 过滤拼出（只跑该单元存在的 <code>check/integrationTest/e2eTest</code>）；<code>coverage</code> 只在 <code>coverage_mode == 'full'</code>（全量/nightly）跑，服务级 PR 不上传以免把未跑模块算成 0；<code>required-check</code> 的 <code>allowed-skips</code> 让 docs-only/portal-only 时 skipped 的后端 job 不拖红 gate。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：actionlint 校验</strong>
             <p>运行：<code>actionlint .github/workflows/ci.yml</code>（无 actionlint 时：<code>docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color .github/workflows/ci.yml</code>）</p>
             <p>预期：无错误。重点确认 <code>fromJson</code>、matrix、<code>${{ }}</code> 表达式、<code>allowed-skips</code> 语法通过。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add .github/workflows/ci.yml
 git commit -m "feat(ci): ci.yml 统一编排（受影响单元 matrix + coverage 三态 + gate 语义 + nightly）"</code></pre>
@@ -747,16 +747,16 @@ git commit -m "feat(ci): ci.yml 统一编排（受影响单元 matrix + coverage
         </header>
         <p>统一 gate 接管后，docs-only PR 由 <code>required-check</code> 的 <code>allowed-skips</code>「无失败即绿」覆盖，不再需要 <code>ci-docs.yml</code> 兜底；前端检查并入 <code>ci.yml</code> 的 <code>portal</code> job，<code>portal-ci.yml</code>（及其从未进保护的 <code>portal-ci-required-check</code>）废弃。分支保护仍只 require <code>required-check</code>，名称不变 → GitHub 设置零改动。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：删除两个 workflow</strong>
             <pre><code class="lang-bash">git rm .github/workflows/ci-docs.yml .github/workflows/portal-ci.yml</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：确认无残留引用</strong>
             <p>运行：<code>grep -rn "portal-ci-required-check\|ci-docs" .github/ docs/ || echo "无残留引用 ✓"</code></p>
             <p>预期：仅本计划文档可能提及（说明性），workflow 间无依赖残留。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git commit -m "refactor(ci): 删除 ci-docs.yml/portal-ci.yml（并入统一编排）"</code></pre>
           </li>
@@ -773,7 +773,7 @@ git commit -m "feat(ci): ci.yml 统一编排（受影响单元 matrix + coverage
         </header>
         <p>第一层 GHA 缓存已在 T5 各 Gradle job 生效。本任务加第二层 Mac mini 远程节点的<strong>消费侧 hook</strong>（settings.gradle.kts，fail-soft：无 URL/凭据时自动只用本地/GHA 缓存）+ 节点 compose。<strong>信任边界写死在 hook 里</strong>：仅 <code>GRADLE_CACHE_PUSH=true</code> 的 trusted 环境可写，缺凭据则远程禁用（fork PR 安全）。<strong>CI 启用远程节点（tailnet 连通 + 注入 env）是网络修复后的 ops 跟进步骤</strong>——在那之前 CI 走 GHA 缓存，hook inert，互不影响。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：在 settings.gradle.kts 追加 buildCache 块</strong>
             <p>在 <code>dependencyResolutionManagement { ... }</code> 块之后、模块 <code>include(...)</code> 之前追加：</p>
             <pre><code class="lang-kotlin">// ============================================================================
@@ -803,7 +803,7 @@ buildCache {
     }
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：创建 build-cache-node compose（Mac mini）</strong>
             <pre><code class="lang-yaml"># Gradle 远程构建缓存节点（patra-buildcache project）。Mac mini 上跑。
 # 凭据走 .env.buildcache.secret（被 .gitignore 的 .env.*.secret 挡住，绝不进仓库）。
@@ -827,7 +827,7 @@ networks:
     external: true</code></pre>
             <p>节点的「匿名读 + 鉴权写」通过 build-cache-node 自身的 config（用户名/密码来自 <code>.env.buildcache.secret</code>）设定。该 <code>.secret</code> 文件由用户在 Mac mini 上创建，不进仓库（遵循 patra-infra 既有 <code>.env.*.secret</code> 约定）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证 settings 不破坏构建 + Commit</strong>
             <p>运行：<code>./gradlew help -q</code>（无 env 时远程缓存应 <code>isEnabled=false</code>，构建正常）。预期：BUILD SUCCESSFUL，无远程缓存连接尝试。</p>
             <pre><code class="lang-bash">git add settings.gradle.kts patra-infra/docker/docker-compose.buildcache.yaml
@@ -845,13 +845,13 @@ git commit -m "feat(ci): 两层 Gradle 缓存 hook + build-cache-node（信任�
         </header>
         <p>CD 现用裸 <code>docker build</code> 每次从零重建镜像层。改用 buildx + GHCR registry 缓存（<code>type=registry,mode=max</code>），让分层 jar 的 dependencies 层跨 CI run 复用，省构建时间（push 因 GHCR 去重本就小）。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：在 GHCR 登录步之后加 setup-buildx</strong>
             <p>在 <code>🔑 Log in to GHCR</code> 步之后插入：</p>
             <pre><code class="lang-yaml">      - name: 🧰 Setup Buildx
         uses: docker/setup-buildx-action@v3</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：把 <code>🐳 Build &amp; push image</code> 步的 run 换成 buildx + 层缓存</strong>
             <pre><code class="lang-yaml">      - name: 🐳 Build &amp; push image (${{ matrix.service }})
         run: |
@@ -867,7 +867,7 @@ git commit -m "feat(ci): 两层 Gradle 缓存 hook + build-cache-node（信任�
             "${{ steps.meta.outputs.context }}"</code></pre>
             <p>注：<code>--push</code> 直接推送（替代原先分开的 <code>docker push</code> 两行，一并删除）。<code>buildcache</code> tag 是缓存 manifest，与 <code>latest</code>/<code>$TAG</code> 互不干扰。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：actionlint + Commit</strong>
             <pre><code class="lang-bash">actionlint .github/workflows/cd.yml
 git add .github/workflows/cd.yml
@@ -885,7 +885,7 @@ git commit -m "perf(cd): buildx GHCR 层缓存，分层 jar 依赖层跨 run 复
         </header>
         <p>把「只跑通」的配置拧成生产级：关增量复评治 rate limit、吃进 <code>.claude/rules</code> 规约、开 Java bug 检测、显式声明安全工具、按六边形分层 + common/starter 写 path_instructions（含与 Claude 的分工提示）、降噪、可选 TDD 预合并检查。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：整文件替换 .coderabbit.yaml</strong>
             <pre><code class="lang-yaml"># yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 # Patra CodeRabbit 配置。原则：降 rate limit（关增量）+ 降噪 + 工具聚合 + TDD 约束 + Linear。
@@ -1069,12 +1069,12 @@ knowledge_base:
 chat:
   auto_reply: false</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：YAML 合法性校验</strong>
             <p>运行：<code>python3 -c "import yaml,sys; yaml.safe_load(open('.coderabbit.yaml')); print('YAML OK')"</code></p>
             <p>预期：<code>YAML OK</code>。（CodeRabbit 的 schema 校验在 PR 上由其自身完成；本地先确保 YAML 不报错。）</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add .coderabbit.yaml
 git commit -m "chore(review): CodeRabbit best-practice overhaul（关增量+规约吸收+工具+分层指令+分工）"</code></pre>
@@ -1091,7 +1091,7 @@ git commit -m "chore(review): CodeRabbit best-practice overhaul（关增量+规�
         </header>
         <p>修 <code>claude-code-review.yml</code> 的「<code>pull-requests: read</code> 发不了评论」静默 bug；触发改每 PR 一次；author 门控防注入 + 省 OAuth 额度；sticky + 限深。<code>claude.yml</code> 加 author 门控 + 按需 write。（SHA pin 在 T11 统一做，本任务先用 tag。）</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：重写 claude-code-review.yml</strong>
             <pre><code class="lang-yaml">name: Claude Code Review
 
@@ -1124,7 +1124,7 @@ jobs:
           use_sticky_comment: true        # 同一 PR 复用一条评论，不堆叠
           claude_args: '--max-turns 8'    # 限深控额度</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：claude.yml 加 author 门控 + 提权</strong>
             <p>把 <code>if:</code> 整体用 author 门控包住（在现有 @claude mention 判断外层加 <code>github.actor</code> 限制）：</p>
             <pre><code class="lang-yaml">    if: |
@@ -1142,7 +1142,7 @@ jobs:
       id-token: write
       actions: read</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：actionlint + Commit</strong>
             <pre><code class="lang-bash">actionlint .github/workflows/claude-code-review.yml .github/workflows/claude.yml
 git add .github/workflows/claude-code-review.yml .github/workflows/claude.yml
@@ -1161,7 +1161,7 @@ git commit -m "chore(review): Claude review 加固（修 permissions + 每 PR �
         </header>
         <p>公开仓库硬化：所有 action pin 到 commit SHA（格式 <code>@&lt;sha&gt; # vX.Y.Z</code>）、每个 workflow 顶层最小 <code>permissions</code>、Dependabot 托管三生态按周分组更新（含自动升 SHA）。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：用 pinact 自动 pin 全部 action 到 SHA</strong>
             <p>SHA 必须在实现时<strong>解析真实值</strong>（勿手写臆造）。用 <code>pinact</code> 扫描并就地 pin（保留 <code># vX.Y.Z</code> 注释）：</p>
             <pre><code class="lang-bash"># 安装：go install github.com/suzuki-shunsuke/pinact/v2/cmd/pinact@latest（或 brew install pinact）
@@ -1171,7 +1171,7 @@ grep -rnE 'uses: .+@[a-f0-9]{40}' .github/workflows/ | wc -l   # 应等于 uses 
 grep -rnE 'uses: .+@v[0-9]' .github/workflows/ || echo "无残留浮动 tag ✓"</code></pre>
             <p>备选（无 pinact 时逐个解析）：<code>gh api repos/&lt;owner&gt;/&lt;repo&gt;/commits/&lt;tag&gt; --jq .sha</code> 取 SHA 手动替换。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：每个 workflow 顶层加最小 permissions</strong>
             <p>确认每个 workflow 文件顶层有 <code>permissions:</code>（ci.yml 已在 T5 加 <code>contents: read</code>）。给 <code>cd.yml</code>、<code>portal-cd.yml</code> 顶层加默认只读（job 级已有的 <code>packages: write/read</code> 保持）：</p>
             <pre><code class="lang-yaml"># 紧跟 name: 之后、on: 之前（或 on: 之后）加：
@@ -1179,7 +1179,7 @@ permissions:
   contents: read</code></pre>
             <p>逐个核对：<code>grep -L "^permissions:" .github/workflows/*.yml</code> 应为空（每个文件都有顶层 permissions）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：创建 .github/dependabot.yml</strong>
             <pre><code class="lang-yaml">version: 2
 updates:
@@ -1205,7 +1205,7 @@ updates:
       npm:
         patterns: ["*"]</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：actionlint + Commit</strong>
             <pre><code class="lang-bash">actionlint .github/workflows/*.yml
 git add .github/workflows/ .github/dependabot.yml
@@ -1223,7 +1223,7 @@ git commit -m "chore(ci): pin action 到 SHA + 最小 permissions + Dependabot �
         </header>
         <p>把「双 AI reviewer 分工 + 每 PR 评一次 + 复评由 Claude 分批 @ 触发 + 开发期 draft 降频」固化进流程规则。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：替换「PR 与代码评审」节正文</strong>
             <p>把该节内容替换为：</p>
             <pre><code class="lang-markdown">## PR 与代码评审
@@ -1234,7 +1234,7 @@ git commit -m "chore(ci): pin action 到 SHA + 最小 permissions + Dependabot �
 - **必启 Monitor**：每次 `gh pr create` 后，同一工作会话内立即启动 Monitor 并绑定该 PR，覆盖**三条流**（CodeRabbit + Claude review + 人工），持续到 PR 合并或关闭。
 - **处理状态**：对每条 review 意见必须在 PR 评论中明确给出处理状态——`已修复`（附 commit SHA）/ `不修复`（附明确理由）。</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：Commit</strong>
             <pre><code class="lang-bash">git add CLAUDE.md
 git commit -m "docs: PR 评审流程更新（双 reviewer 分工 + 每 PR 一次 + Claude 驱动复评）"</code></pre>
@@ -1242,7 +1242,7 @@ git commit -m "docs: PR 评审流程更新（双 reviewer 分工 + 每 PR 一次
         </ol>
       </article>
 
-      <article class="task" id="task-13" data-status="in-progress">
+      <article class="task" id="task-13" data-status="done">
         <header>
           <h2>任务 13：端到端验证（actionlint + 四场景实跑）</h2>
           <dl class="files">
@@ -1251,7 +1251,7 @@ git commit -m "docs: PR 评审流程更新（双 reviewer 分工 + 每 PR 一次
         </header>
         <p>本地静态校验全过后，推分支开 PR，在 Actions UI 观测统一编排端到端跑通。四场景的路由正确性由 <code>detect-changes.test.sh</code>（确定性单元级）+ 真实 PR 运行共同保证。</p>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：本地静态校验全套</strong>
             <pre><code class="lang-bash">actionlint .github/workflows/*.yml
 bash patra-infra/cd/detect-changes.test.sh        # 期望：失败 0（全绿）
@@ -1260,7 +1260,7 @@ bash patra-infra/cd/detect-changes.test.sh        # 期望：失败 0（全绿�
 python3 -c "import yaml; yaml.safe_load(open('.coderabbit.yaml')); print('coderabbit YAML OK')"</code></pre>
             <p>预期：actionlint 无错；detect 测试全绿；module-graph 一致；coderabbit YAML OK。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：推分支、开 draft PR、观测全量管线</strong>
             <p>本 PR 改了 <code>.github/workflows/**</code> → detect-changes 判 <code>full_run</code> → backend matrix 起<strong>全部单元</strong> + portal + coverage，正好端到端验证新管线。</p>
             <pre><code class="lang-bash">git push -u origin feat/cicd-production-overhaul
@@ -1268,7 +1268,7 @@ gh pr create --draft --title "feat(ci): CI/CD 生产级优化（受影响单元�
   --body "见 docs/patra/specs/2026-06-08-cicd-production-grade-design.html"</code></pre>
             <p>在 Actions UI 确认：<code>detect-changes</code> 输出 full_run、<code>preflight</code> 绿（镜像一致 + module-graph 一致）、<code>backend</code> matrix 6 单元全跑、<code>portal</code> 跑（e2e 非阻塞）、<code>coverage</code> 上传、<code>required-check</code> 绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：四场景门控验证（throwaway 提交，观测后回退）</strong>
             <p>在该 PR 分支上依次做最小提交并观察 Actions 的 backend matrix（看完即 <code>git reset --hard</code> 回退，不进最终 PR）：</p>
             <pre><code class="lang-bash"># ① 仅前端：改 patra-portal 一个文件 → 期望 backend 全 skipped、只 portal 跑、required-check 绿
@@ -1278,7 +1278,7 @@ gh pr create --draft --title "feat(ci): CI/CD 生产级优化（受影响单元�
 # 每次：编辑→commit→push→看 Actions→git reset --hard HEAD~1 &amp;&amp; git push -f</code></pre>
             <p>预期与注释一致。若某场景 matrix 不符，回 T1/T3 核对 module-graph.json 与 classify 逻辑。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：转 ready + 启 Monitor</strong>
             <p>四场景验证通过、PR 内容定稿后，<code>gh pr ready</code> 转就绪（触发 CodeRabbit + Claude 各首评一次），并按 CLAUDE.md 规则<strong>立即启动 Monitor</strong> 绑定该 PR（覆盖 CodeRabbit + Claude review + 人工三条流），持续到合并。复评由 Claude 分批 <code>@coderabbitai review</code> 触发。</p>
           </li>
