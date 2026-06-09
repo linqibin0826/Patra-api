@@ -119,17 +119,21 @@ jobs:
       - name: 🔑 Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: 🧰 Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: 🐳 Build & push image (${{ matrix.service }})
         run: |
           TAG="${{ github.sha }}"
           IMG="${{ steps.meta.outputs.image }}"
-          docker build \
+          docker buildx build \
             -f patra-infra/docker/service.Dockerfile \
             --build-arg APP_PORT=${{ steps.meta.outputs.port }} \
+            --cache-from "type=registry,ref=$IMG:buildcache" \
+            --cache-to "type=registry,ref=$IMG:buildcache,mode=max" \
             -t "$IMG:$TAG" -t "$IMG:latest" \
+            --push \
             "${{ steps.meta.outputs.context }}"
-          docker push "$IMG:$TAG"
-          docker push "$IMG:latest"
 
   # ---- 3) 在 Mac mini 上选择性部署（单 job 循环，按依赖顺序）----
   deploy:
