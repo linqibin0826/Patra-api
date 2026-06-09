@@ -24,10 +24,10 @@
           <li data-task-status="done"><a href="#task-1">Task 1 — 模块依赖图任务 dumpModuleGraph + module-graph.json</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — detect-changes 路由测试（Red）</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — detect-changes.sh 重写（Green）</a></li>
-          <li data-task-status="in-progress"><a href="#task-4">Task 4 — cd.yml 切到新路由输出（CD 契约漏洞同修）</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — ci.yml 统一编排全量重写（detect/preflight/backend/portal/coverage/gate/nightly）</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — 删除 ci-docs.yml + portal-ci.yml</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — 两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — cd.yml 切到新路由输出（CD 契约漏洞同修）</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — ci.yml 统一编排全量重写（detect/preflight/backend/portal/coverage/gate/nightly）</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 删除 ci-docs.yml + portal-ci.yml</a></li>
+          <li data-task-status="in-progress"><a href="#task-7">Task 7 — 两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</a></li>
           <li data-task-status="pending"><a href="#task-8">Task 8 — CD buildx 层缓存</a></li>
           <li data-task-status="pending"><a href="#task-9">Task 9 — .coderabbit.yaml best-practice overhaul</a></li>
           <li data-task-status="pending"><a href="#task-10">Task 10 — Claude review 工作流加固</a></li>
@@ -420,7 +420,7 @@ git commit -m "feat(ci): detect-changes 重写为受影响单元路由（pr/sche
         </ol>
       </article>
 
-      <article class="task" id="task-4" data-status="in-progress">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：cd.yml 切到新路由输出（CD 契约漏洞同修）</h2>
           <dl class="files">
@@ -462,7 +462,7 @@ git commit -m "fix(cd): detect-changes 切受影响单元输出，修复契约�
         </ol>
       </article>
 
-      <article class="task" id="task-5" data-status="pending">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：ci.yml 统一编排全量重写</h2>
           <dl class="files">
@@ -738,7 +738,7 @@ git commit -m "feat(ci): ci.yml 统一编排（受影响单元 matrix + coverage
         </ol>
       </article>
 
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：删除 ci-docs.yml + portal-ci.yml</h2>
           <dl class="files">
@@ -763,7 +763,7 @@ git commit -m "feat(ci): ci.yml 统一编排（受影响单元 matrix + coverage
         </ol>
       </article>
 
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="in-progress">
         <header>
           <h2>任务 7：两层 Gradle 缓存（HttpBuildCache 信任边界 + build-cache-node）</h2>
           <dl class="files">
