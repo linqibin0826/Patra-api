@@ -51,7 +51,7 @@ export function JournalDetailView({ venue }: { venue: VenueDetail }) {
           </li>
           <li className="max-[720px]:hidden">
             <Link
-              href="/"
+              href="/journals"
               className="rounded-sm px-1 py-0.5 text-(--fg-2) hover:bg-paper-200 hover:text-clay-700"
             >
               期刊

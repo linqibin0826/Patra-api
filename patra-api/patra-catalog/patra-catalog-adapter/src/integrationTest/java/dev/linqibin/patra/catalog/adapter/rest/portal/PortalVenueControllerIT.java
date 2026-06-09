@@ -2,6 +2,7 @@ package dev.linqibin.patra.catalog.adapter.rest.portal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -13,6 +14,7 @@ import dev.linqibin.patra.catalog.app.usecase.portal.query.PortalVenueDetailQuer
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFacets;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseFilter;
 import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseReadModel;
+import dev.linqibin.patra.catalog.domain.model.read.portal.VenueBrowseSort;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -102,6 +104,57 @@ class PortalVenueControllerIT {
     assertThat(captured.subjects()).containsExactlyInAnyOrder("Medicine", "Oncology");
     assertThat(captured.jcrQuartiles()).containsExactlyInAnyOrder("Q1", "Q2");
     assertThat(captured.isOpenAccess()).isTrue();
+  }
+
+  /// `sort` 参数应正确绑定到 `VenueBrowseFilter.sort`（验证 cas_quartile / cited_by）。
+  @Test
+  @DisplayName("GET /portal/venues sort 参数绑定：cas_quartile / cited_by 正确传入 VenueBrowseFilter")
+  void shouldBindSortToFilter() {
+    when(portalVenueBrowseQueryService.browse(any(), any())).thenReturn(PageResult.empty(1, 12));
+
+    ArgumentCaptor<VenueBrowseFilter> filterCaptor =
+        ArgumentCaptor.forClass(VenueBrowseFilter.class);
+
+    // cas_quartile → VenueBrowseSort.CAS_QUARTILE
+    restClient.get().uri("/portal/venues?sort=cas_quartile").exchange().expectStatus().isOk();
+
+    verify(portalVenueBrowseQueryService).browse(filterCaptor.capture(), any());
+    assertThat(filterCaptor.getValue().sort()).isEqualTo(VenueBrowseSort.CAS_QUARTILE);
+
+    reset(portalVenueBrowseQueryService);
+    when(portalVenueBrowseQueryService.browse(any(), any())).thenReturn(PageResult.empty(1, 12));
+
+    // cited_by → VenueBrowseSort.CITED_BY
+    restClient.get().uri("/portal/venues?sort=cited_by").exchange().expectStatus().isOk();
+
+    ArgumentCaptor<VenueBrowseFilter> filterCaptor2 =
+        ArgumentCaptor.forClass(VenueBrowseFilter.class);
+    verify(portalVenueBrowseQueryService).browse(filterCaptor2.capture(), any());
+    assertThat(filterCaptor2.getValue().sort()).isEqualTo(VenueBrowseSort.CITED_BY);
+  }
+
+  /// `cas` / `casTop` / `doaj` / `country` 参数应正确绑定到 `VenueBrowseFilter`。
+  @Test
+  @DisplayName("GET /portal/venues 筛选维度绑定：cas / casTop / doaj / country 正确传入 VenueBrowseFilter")
+  void shouldBindAdditionalFacetFilters() {
+    when(portalVenueBrowseQueryService.browse(any(), any())).thenReturn(PageResult.empty(1, 12));
+
+    ArgumentCaptor<VenueBrowseFilter> filterCaptor =
+        ArgumentCaptor.forClass(VenueBrowseFilter.class);
+
+    restClient
+        .get()
+        .uri("/portal/venues?cas=Q1,Q2&casTop=true&doaj=false&country=CN,US")
+        .exchange()
+        .expectStatus()
+        .isOk();
+
+    verify(portalVenueBrowseQueryService).browse(filterCaptor.capture(), any());
+    VenueBrowseFilter captured = filterCaptor.getValue();
+    assertThat(captured.casQuartiles()).containsExactlyInAnyOrder("Q1", "Q2");
+    assertThat(captured.casTop()).isTrue();
+    assertThat(captured.doaj()).isFalse();
+    assertThat(captured.countryCodes()).containsExactlyInAnyOrder("CN", "US");
   }
 
   @Test

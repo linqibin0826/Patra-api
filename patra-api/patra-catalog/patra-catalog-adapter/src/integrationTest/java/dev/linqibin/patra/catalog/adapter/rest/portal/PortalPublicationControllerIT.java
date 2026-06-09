@@ -143,6 +143,7 @@ class PortalPublicationControllerIT {
             .evidenceLevel(EvidenceLevel.RANDOMIZED_CONTROLLED_TRIAL)
             .doi("10.1056/NEJMoa2401234")
             .pmid("38012044")
+            .pmcid("PMC123456")
             .isOa(true)
             .provenanceCode("PUBMED")
             .fullTextUrl("https://x/full")
@@ -183,7 +184,9 @@ class PortalPublicationControllerIT {
         .jsonPath("$.bookmarks")
         .isEqualTo(0)
         .jsonPath("$.estimatedReadMin")
-        .isEmpty();
+        .isEmpty()
+        .jsonPath("$.pmcid")
+        .isEqualTo("PMC123456");
   }
 
   @Test
