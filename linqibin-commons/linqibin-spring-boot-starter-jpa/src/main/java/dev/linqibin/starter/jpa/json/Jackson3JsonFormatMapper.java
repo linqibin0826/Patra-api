@@ -1,5 +1,6 @@
 package dev.linqibin.starter.jpa.json;
 
+import java.lang.reflect.Type;
 import org.hibernate.type.descriptor.WrapperOptions;
 import org.hibernate.type.descriptor.java.JavaType;
 import org.hibernate.type.format.FormatMapper;
@@ -50,20 +51,32 @@ public class Jackson3JsonFormatMapper implements FormatMapper {
   }
 
   @Override
+  @SuppressWarnings("unchecked")
   public <T> T fromString(
       CharSequence charSequence, JavaType<T> javaType, WrapperOptions wrapperOptions) {
     if (charSequence == null) {
       return null;
     }
+    // 与 Hibernate 官方 AbstractJsonFormatMapper 对齐：String/Object 目标类型透传原始 JSON 文本，
+    // 不经 Jackson 反序列化——否则 JSONB 对象读进 String 字段（如 BaseJpaEntity.recordRemarks）
+    // 会抛 "Cannot deserialize value of type String from Object value"
+    final Type type = javaType.getJavaType();
+    if (type == String.class || type == Object.class) {
+      return (T) charSequence.toString();
+    }
     // Jackson 3.x 的 readValue 不再抛出检查型异常，而是抛出 JacksonException（运行时异常）
-    return objectMapper.readValue(
-        charSequence.toString(), objectMapper.constructType(javaType.getJavaType()));
+    return objectMapper.readValue(charSequence.toString(), objectMapper.constructType(type));
   }
 
   @Override
   public <T> String toString(T value, JavaType<T> javaType, WrapperOptions wrapperOptions) {
     if (value == null) {
       return null;
+    }
+    // 对称透传：String 属性本身承载 JSON 文本，直接写出，不做二次序列化（会变成带引号的 JSON 字符串）
+    final Type type = javaType.getJavaType();
+    if (type == String.class || (type == Object.class && value instanceof String)) {
+      return (String) value;
     }
     // Jackson 3.x 的 writeValueAsString 不再抛出检查型异常
     return objectMapper.writeValueAsString(value);
