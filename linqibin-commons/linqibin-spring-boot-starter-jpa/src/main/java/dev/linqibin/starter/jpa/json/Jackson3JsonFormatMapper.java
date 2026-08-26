@@ -50,6 +50,15 @@ public class Jackson3JsonFormatMapper implements FormatMapper {
     this.objectMapper = objectMapper;
   }
 
+  /// 将 JSON 文本反序列化为目标类型的值。
+  ///
+  /// String/Object 目标类型直接透传原始 JSON 文本（与 Hibernate 官方
+  /// `AbstractJsonFormatMapper` 对齐），其余类型经 Jackson 反序列化。
+  ///
+  /// @param charSequence JSON 文本，可为 null
+  /// @param javaType Hibernate 目标类型描述
+  /// @param wrapperOptions Hibernate 包装选项（未使用）
+  /// @return 反序列化后的值；入参为 null 时返回 null
   @Override
   @SuppressWarnings("unchecked")
   public <T> T fromString(
@@ -68,6 +77,15 @@ public class Jackson3JsonFormatMapper implements FormatMapper {
     return objectMapper.readValue(charSequence.toString(), objectMapper.constructType(type));
   }
 
+  /// 将值序列化为 JSON 文本。
+  ///
+  /// String 值（含 Object 目标类型下的 String 值）直接透传，避免二次序列化成
+  /// 带引号的 JSON 字符串；其余类型经 Jackson 序列化。
+  ///
+  /// @param value 待序列化的值，可为 null
+  /// @param javaType Hibernate 目标类型描述
+  /// @param wrapperOptions Hibernate 包装选项（未使用）
+  /// @return JSON 文本；入参为 null 时返回 null
   @Override
   public <T> String toString(T value, JavaType<T> javaType, WrapperOptions wrapperOptions) {
     if (value == null) {
