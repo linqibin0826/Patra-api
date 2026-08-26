@@ -27,8 +27,8 @@ reviews:
   auto_apply_labels: true
 
   auto_review:
-    enabled: true
-    auto_incremental_review: false        # 关增量复评：只在 PR 开/转 ready 时评一次，省 quota
+    enabled: false                        # 关自动评审：首评与复评均由 @coderabbitai review 手动触发
+    auto_incremental_review: false        # 关增量复评（enabled: false 时冗余，双保险留着）
     drafts: false
     ignore_title_keywords:
       - WIP

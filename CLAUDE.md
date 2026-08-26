@@ -62,7 +62,7 @@
 
 ## PR 与代码评审
 
-仓库唯一 AI reviewer 为 **CodeRabbit**（行级 nitpick + lint/安全工具聚合 + Linear AC 对齐）。仓库不自动评审（`auto_incremental_review: false`），首评与复评均由 Claude 在 PR 评论区发 `@coderabbitai review` 触发。
+仓库唯一 AI reviewer 为 **CodeRabbit**（行级 nitpick + lint/安全工具聚合 + Linear AC 对齐）。仓库不自动评审（`auto_review.enabled: false`），首评与复评均由 Claude 在 PR 评论区发 `@coderabbitai review` 触发。
 
 - **评审由 Claude 驱动，用户不参与**：开发期 PR 挂 `draft`（不评）→ 完工转 ready 后发 `@coderabbitai review` 触发首评 → 处理完**一批**反馈、推送后再 @ 触发复评。不是每次 push 都 @。
 - **必启 Monitor**：每次 `gh pr create` 后，同一工作会话内立即启动 Monitor 并绑定该 PR，覆盖**两条流**（CodeRabbit + 人工），持续到 PR 合并或关闭。
