@@ -53,7 +53,8 @@ jobs:
           CURRENT="$("$HOME/actions-runner/bin/Runner.Listener" --version)"
           LATEST="$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r '.tag_name | ltrimstr("v")')"
           echo "当前: $CURRENT / 最新: $LATEST"
-          [ "$CURRENT" = "$LATEST" ] || { echo "::error::runner 版本过期（当前 $CURRENT，最新 $LATEST）。30 天内不升级 GitHub 将停止派发任务，闲时重跑 install-github-runner.sh"; exit 1; }
+          # 注意 ${VAR} 必须带大括号：macOS bash 3.2 会把紧跟的全角字符并入变量名（unbound variable 实际踩坑）
+          [ "$CURRENT" = "$LATEST" ] || { echo "::error::runner 版本过期（当前 ${CURRENT}，最新 ${LATEST}）。30 天内不升级 GitHub 将停止派发任务，闲时重跑 install-github-runner.sh"; exit 1; }
       - name: 💾 磁盘余量 ≥ 20G
         run: |
           AVAIL=$(df -g / | awk 'NR==2{print $4}')
