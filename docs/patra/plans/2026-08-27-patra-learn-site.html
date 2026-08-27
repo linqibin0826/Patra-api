@@ -24,8 +24,8 @@
           <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
           -->
           <li data-task-status="done"><a href="#task-1">Task 1 — 工程脚手架</a></li>
-          <li data-task-status="in-progress"><a href="#task-2">Task 2 — 设计系统 token 与全局布局</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 设计系统 token 与全局布局</a></li>
+          <li data-task-status="in-progress"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
@@ -281,7 +281,7 @@ git commit -m "feat(learn): 工程脚手架——Next.js 15 骨架 + 健康检�
         </ol>
       </article>
 
-      <article class="task" id="task-2" data-status="in-progress">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：设计系统 token 与全局布局</h2>
           <dl class="files">
@@ -290,7 +290,7 @@ git commit -m "feat(learn): 工程脚手架——Next.js 15 骨架 + 健康检�
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：globals.css 写入 @theme token（唯一视觉规范来源=画布 Tokens 页）</strong>
             <pre><code class="lang-css">@import "tailwindcss";
 
@@ -314,7 +314,7 @@ git commit -m "feat(learn): 工程脚手架——Next.js 15 骨架 + 健康检�
   --font-mono: var(--font-jetbrains-mono), "SF Mono", monospace;
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：layout.tsx 接入 next/font 与 TopBar</strong>
             <pre><code class="lang-tsx">// patra-learn/src/app/layout.tsx
 import type { Metadata } from "next";
@@ -351,7 +351,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：TopBar 组件（画布各页顶栏的统一实现）</strong>
             <pre><code class="lang-tsx">// patra-learn/src/components/top-bar.tsx
 import Link from "next/link";
@@ -377,12 +377,12 @@ export function TopBar() {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：验证 token 非死类（spec 风险#2 的验收）</strong>
             <p>运行：<code>cd patra-learn &amp;&amp; pnpm build &amp;&amp; grep -l 'fafaf8' .next/static/css/*.css &amp;&amp; grep -l 'cc4747\|2c9457' .next/static/css/*.css || echo TOKEN-DEAD</code></p>
             <p>预期：两个 grep 都命中文件名（<code>--color-ok/danger</code> 此时可能尚未被消费——若 grep 落空，在 TopBar 里临时加一个 <code>text-ok</code>/<code>text-danger</code> 的元素不算数，正确做法是接受「Task 11/12 消费后复验」：本步只强制 <code>bg-bg</code>/<code>border-line</code>/<code>bg-surface</code>/<code>text-ink</code>/<code>text-slate</code> 对应的 hex 出现在产物 CSS；语义色的复验写进 Task 12 步骤 5）。<code>pnpm typecheck &amp;&amp; pnpm lint</code> 通过。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn
 git commit -m "feat(learn): 设计系统 @theme token + 字体 + 顶栏（任务 2/16）"</code></pre>
@@ -390,7 +390,7 @@ git commit -m "feat(learn): 设计系统 @theme token + 字体 + 顶栏（任务
         </ol>
       </article>
 
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="in-progress">
         <header>
           <h2>任务 3：内容模型与线路拓扑（TDD）</h2>
           <dl class="files">
@@ -2038,14 +2038,38 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>环境怪事：这台 MacBook 上 QQ 客户端占用 127.0.0.1:4001（IPv4），next dev 监听 IPv6 通配，curl 127.0.0.1:4001 会打到 QQ；本机验证需用 [::1]:4001。Mac mini 上是否有同样冲突未验证——Task 15 部署验证时留意，若 mini 也冲突则届时换端口。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T00:25">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T00:25">08-28 00:25</time>
+          <a href="#task-2">&sect; Task 2</a>
+        </header>
+        <p>Biome formatter 拒绝 plan 给定代码的两处排版（globals.css 注释列对齐、top-bar.tsx 中文 Link 单行 JSX），已按仓库格式化规则重排——纯空白/换行变更，语义与 class 不变。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T00:25">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T00:25">08-28 00:25</time>
+          <a href="#task-2">&sect; Task 2</a>
+        </header>
+        <p>验收里 grep ffffff 因 CSS minifier 缩写为 #fff 不适用，改以「产物含 bg-surface utility + --color-surface:#fff 定义」双重 grep 证明 surface 非死类。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T00:25">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T00:25">08-28 00:25</time>
+          <a href="#task-2">&sect; Task 2</a>
+        </header>
+        <p>lint 仍有 biome schema 版本 info 提示（Task 1 已记录的同一事项），info 级非 error，保持与 portal 同构不动 biome.json。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">1</span> decisions /
-      <span data-counter="change">1</span> changes /
+      <span data-counter="change">2</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">2</span> others
+      <span data-counter="other">4</span> others
     </footer>
   </aside>
 
