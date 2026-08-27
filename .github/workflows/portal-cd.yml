@@ -3,7 +3,6 @@ name: Portal CD
 # 前端 portal 持续部署（Mac mini 原生构建）：merge 到 main（或手动触发）
 #   → build-deploy（Mac mini runner）：原生 arm64 docker build（pnpm 构建全在 Dockerfile 内）
 #     → deploy.sh（部署+健康检查+部署后验证+自动回滚）→ GHCR 归档推送（best-effort）
-#   → notify（ubuntu）：失败推 ntfy 通知。
 # 架构决策（2026-08-27）：与 cd.yml 同步改为 mini 原生构建——旧 ubuntu 构建产物是
 #   amd64、在 mini 上靠 Rosetta 跑，就此消灭；GHCR 降级为「归档/回滚备源」。
 # 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
@@ -83,22 +82,3 @@ jobs:
       - name: 🧹 清理 GHCR 凭据（self-hosted 持久 workspace，防 config.json 落盘残留）
         if: always()
         run: rm -rf "$DOCKER_CONFIG"
-
-  # ---- 失败通知（ntfy；NTFY_TOPIC 未配置则告警跳过）----
-  notify:
-    name: notify
-    needs: build-deploy
-    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - name: 📣 推送失败通知
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-        run: |
-          [ -n "$NTFY_TOPIC" ] || { echo "::warning::NTFY_TOPIC 未配置，跳过通知"; exit 0; }
-          SHA="${{ github.sha }}"
-          curl -fsS -m 10 \
-            -H "Title: Patra Portal CD failed" -H "Priority: high" -H "Tags: rotating_light" \
-            -d "Portal CD 失败 @ ${SHA:0:9} — https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            "https://ntfy.sh/$NTFY_TOPIC"

@@ -61,7 +61,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **共享分层 Dockerfile**：`patra-infra/docker/service.Dockerfile` 一份供 5 服务共用（`--build-arg APP_PORT` 区分端口）；5 服务都用 `linqibin.hexagonal-boot` 打 fat jar，Spring Boot 4 `jarmode=tools` 分层结构通用，依赖层在本机 daemon 长期缓存。
 - **触发与回滚**：push main 命中相关 paths 自动跑；`workflow_dispatch` 填 `service`（单服务名）+ `image_tag`（旧 sha）即回滚（跳过构建，本地镜像缓存优先、缺失才拉 GHCR）。健康检查失败时 deploy.sh 也会自动回滚。安全：不监听 `pull_request`，self-hosted runner 绝不跑 fork PR 代码；对 GitHub 出向长轮询、无入站端口。
 - **构建环境（mini）**：与 MacBook 同套——Homebrew + brew 装 mise + `java@zulu-25.30.17.0` 全局钉版（升级时两台一起升）；`JAVA_HOME` 固化在 `~/actions-runner/.env`（连同 Clash 代理变量，launchd 不继承 shell 环境）；docker PATH 靠 `~/actions-runner/.path` 补 `/usr/local/bin` 与 `/opt/homebrew/bin`；Gradle/镜像层缓存常驻本机。
-- **失败通知**：CD / watchdog 任一失败经 ntfy 推手机（secrets `NTFY_TOPIC`，未配置则跳过）。
+- **失败通知**：走 GitHub 原生（失败 run 推 App/邮件给触发者），不设自建通知通道——单人 dev 环境，自己 push 自己看结果（2026-08-28 决策，曾配过 ntfy 后拆除）。
 - **runner 看门狗**：`runner-watchdog.yml` 每日 API 查在线 + mini canary（docker/磁盘/unhealthy 容器）。防「离线 30 天被 GitHub 注销」（2026-08 实际发生）。需 secrets `RUNNER_ADMIN_TOKEN`（fine-grained PAT，仅本仓库 Administration:Read）。
 - **运维红线**：派发任务期间严禁重启 runner（杀 Worker）；runner 自更新已禁用（`--disableupdate`），升级=闲时重跑 `install-github-runner.sh`。
 - **容器内 Nacos 无需 ssh tunnel**：应用容器和 nacos 同在 `patra-net`，gRPC 走 Docker bridge 不经 tailscale，直接 `NACOS_HOST=nacos`。
