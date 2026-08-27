@@ -1,0 +1,70 @@
+name: Runner Watchdog
+
+# Mac mini runner 每日看门狗：
+#   check-runner（ubuntu）：API 查 macmini runner 是否 online——防「静默离线 30 天
+#     被 GitHub 自动注销」（2026-08 实际发生，离线 2 个月 registration 被删）。
+#   canary（macmini）：docker 可用性 / 磁盘余量 / 无 unhealthy 容器——防「在线但不可用」。
+#   notify：任一失败推 ntfy。
+# 需要 secrets：
+#   RUNNER_ADMIN_TOKEN  fine-grained PAT，仅本仓库 Administration:Read-only
+#                       （GITHUB_TOKEN 无权列 self-hosted runners，必须 PAT）
+#   NTFY_TOPIC          可选，失败通知
+# runner 离线时 check-runner 直接失败告警，canary 被跳过（不会滞留 queued）。
+
+permissions: {}
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # 每日 UTC 23:00（北京 07:00）
+  workflow_dispatch:
+
+jobs:
+  check-runner:
+    name: check-runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 🔎 检查 macmini runner 在线状态
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::error::RUNNER_ADMIN_TOKEN 未配置（fine-grained PAT，Administration:Read）"; exit 1; }
+          STATUS=$(gh api "repos/${{ github.repository }}/actions/runners" \
+            --jq '.runners[] | select(.name=="macmini") | .status')
+          echo "macmini runner status: ${STATUS:-未注册}"
+          [ "$STATUS" = "online" ] || { echo "::error::macmini runner 不在线（${STATUS:-registration 已被 GitHub 移除，需重装}）"; exit 1; }
+
+  canary:
+    name: canary
+    needs: check-runner
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 5
+    steps:
+      - name: 🐳 Docker 可用性
+        run: docker info --format 'server={{.ServerVersion}}' && docker ps --format '{{.Names}}' | wc -l
+      - name: 💾 磁盘余量 ≥ 20G
+        run: |
+          AVAIL=$(df -g / | awk 'NR==2{print $4}')
+          echo "可用: ${AVAIL}G"
+          [ "$AVAIL" -ge 20 ] || { echo "::error::磁盘余量不足 20G，清理镜像/日志"; exit 1; }
+      - name: 🩺 无 unhealthy 容器
+        run: |
+          UNHEALTHY=$(docker ps --filter health=unhealthy --format '{{.Names}}')
+          [ -z "$UNHEALTHY" ] || { echo "::error::存在 unhealthy 容器: $UNHEALTHY"; exit 1; }
+
+  notify:
+    name: notify
+    needs: [check-runner, canary]
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 📣 推送巡检告警
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          [ -n "$NTFY_TOPIC" ] || { echo "::warning::NTFY_TOPIC 未配置，跳过通知"; exit 0; }
+          curl -fsS -m 10 \
+            -H "Title: Patra runner watchdog" -H "Priority: high" -H "Tags: warning" \
+            -d "runner 巡检失败（离线/docker/磁盘/unhealthy）— https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "https://ntfy.sh/$NTFY_TOPIC"
