@@ -1,5 +1,6 @@
 // patra-learn/src/content/integrity.test.ts
 import { describe, expect, it } from "vitest";
+import { ARTICLES } from "./articles";
 import { LINES, TRANSFER_NODE } from "./lines";
 
 const openLines = LINES.filter((l) => l.status === "open");
@@ -36,6 +37,15 @@ describe("线路拓扑完整性", () => {
     for (const l of LINES) {
       expect(l.color).toMatch(/^#[0-9a-f]{6}$/i);
       expect(l.softColor).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+});
+
+describe("文章注册表完整性", () => {
+  it("每个开通站都有文章组件，注册表无多余键", () => {
+    expect(Object.keys(ARTICLES).sort()).toEqual([...openStations].sort());
+    for (const ref of openStations) {
+      expect(typeof ARTICLES[ref as keyof typeof ARTICLES]).toBe("function");
     }
   });
 });
