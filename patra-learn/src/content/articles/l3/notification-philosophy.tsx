@@ -54,9 +54,9 @@ export default function NotificationPhilosophyArticle() {
           </div>
         </div>
         <p>
-          这次决策还被写进了案发地本身：<InlineCode>cd.yml</InlineCode> 和{" "}
-          <InlineCode>runner-watchdog.yml</InlineCode> 的头注释里都留了一句"失败通知走 GitHub
-          原生，不设自建通知通道"，连日期一起记着——防的是几个月后的自己手痒，又想把它建回来。
+          这次决策还被写进了案发地本身：<InlineCode>cd.yml</InlineCode>{" "}
+          的头注释里连日期一起记着这次决策，<InlineCode>runner-watchdog.yml</InlineCode>{" "}
+          的头注释也留了一句"不设自建通知通道"——防的是几个月后的自己手痒，又想把它建回来。
         </p>
       </ArticleSection>
 

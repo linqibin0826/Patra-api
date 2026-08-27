@@ -283,7 +283,7 @@ export default function FourChecksArticle() {
           炸掉。写英文脚本一辈子遇不到这个坑，一写中文文案就撞上，而且报错信息完全不指向真正的病因。
         </p>
         <p>
-          最气人的是密度：<strong className="text-ink">同一天，在两个不同文件里，踩中两次</strong>
+          最气人的是它会重犯：<strong className="text-ink">在两个不同文件里，前后各踩了一次</strong>
           。第二次踩的时候才确认这不是手滑，是环境级的规律。从此立了一条铁律：凡是带中文文案的脚本，变量一律写{" "}
           <InlineCode>{`$\{VAR}`}</InlineCode>，大括号把边界钉死，bash 想歪都歪不了。现在打开
           watchdog
