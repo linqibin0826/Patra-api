@@ -31,4 +31,8 @@ describe("content 助手", () => {
     expect(firstUnvisited(["l1/write-code"])).toBe("l1/open-pr");
     expect(firstUnvisited(openStationRefs())).toBeUndefined();
   });
+
+  it("firstUnvisited 不受打卡顺序影响：只打了后面的站仍返回最前面的未打卡站", () => {
+    expect(firstUnvisited(["l3/notification-philosophy"])).toBe("l1/write-code");
+  });
 });
