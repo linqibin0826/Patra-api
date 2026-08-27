@@ -1,6 +1,7 @@
 // patra-learn/src/content/articles/l1/parallel-exams.tsx —— 1 号线第 4 站：并行考试
 import { ArticleSection } from "@/components/article-section";
 import { CodeBlock } from "@/components/code-block";
+import { InlineCode } from "@/components/inline-code";
 import { Term } from "@/components/term";
 
 export default function ParallelExamsArticle() {
@@ -51,13 +52,31 @@ export default function ParallelExamsArticle() {
               <polygon points="355,102 360,111 365,102" fill="#8b929b" />
               <line x1="410" y1="60" x2="580" y2="102" stroke="#8b929b" strokeWidth="1.8" />
               <polygon points="574,107 589,104 578,97" fill="#8b929b" />
-              <text x="200" y="88" textAnchor="middle" fontSize="11.5" fill="#8b929b">
+              <text
+                x="200"
+                y="88"
+                textAnchor="middle"
+                fontSize="11.5"
+                fill="#8b929b"
+                stroke="#fff"
+                strokeWidth="3"
+                style={{ paintOrder: "stroke" }}
+              >
                 总是考
               </text>
               <text x="392" y="88" textAnchor="start" fontSize="11.5" fill="#8b929b">
                 只考改过的单元
               </text>
-              <text x="530" y="88" textAnchor="middle" fontSize="11.5" fill="#8b929b">
+              <text
+                x="530"
+                y="88"
+                textAnchor="middle"
+                fontSize="11.5"
+                fill="#8b929b"
+                stroke="#fff"
+                strokeWidth="3"
+                style={{ paintOrder: "stroke" }}
+              >
                 改了前端才考
               </text>
               {/* 三考场 */}
@@ -146,7 +165,16 @@ export default function ParallelExamsArticle() {
               <polygon points="355,266 360,275 365,266" fill="#8b929b" />
               <line x1="593" y1="208" x2="420" y2="270" stroke="#8b929b" strokeWidth="1.8" />
               <polygon points="422,263 411,273 426,272" fill="#8b929b" />
-              <text x="520" y="246" textAnchor="middle" fontSize="11.5" fill="#8b929b">
+              <text
+                x="520"
+                y="246"
+                textAnchor="middle"
+                fontSize="11.5"
+                fill="#8b929b"
+                stroke="#fff"
+                strokeWidth="3"
+                style={{ paintOrder: "stroke" }}
+              >
                 覆盖率顺路汇总（仅全量时）
               </text>
               {/* 总闸灯 */}
@@ -182,9 +210,9 @@ export default function ParallelExamsArticle() {
         </p>
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
           <li>
-            <strong className="text-ink">容器镜像版本三处一致。</strong>集成测试用的 PostgreSQL{" "}
-            <Term>Docker 镜像</Term>版本，在 <Term>workflow</Term> 的环境变量、Java
-            测试基建的常量、RocketMQ 的 compose 文件里都会出现。preflight
+            <strong className="text-ink">容器镜像版本三处一致。</strong>集成测试用的容器{" "}
+            <Term>Docker 镜像</Term>版本（PostgreSQL 和 RocketMQ），散落在 <Term>workflow</Term>{" "}
+            的环境变量、Java 测试基建的常量、RocketMQ 的 compose 文件三处。preflight
             逐处核对，防止"升级时改了一处忘了另两处"——版本号只有一个事实源，其他地方必须跟它对齐。
           </li>
           <li>
@@ -226,9 +254,8 @@ export default function ParallelExamsArticle() {
 
       <ArticleSection title="required-check：唯一的总闸灯">
         <p>
-          所有科目最后汇入一个叫{" "}
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">required-check</code>{" "}
-          的收尾 job。它自己不考任何东西，只做一件事：收齐各科成绩单，
+          所有科目最后汇入一个叫 <InlineCode>required-check</InlineCode> 的收尾
+          job。它自己不考任何东西，只做一件事：收齐各科成绩单，
           <strong className="text-ink">全部是"通过"或"合法免考"才亮绿灯</strong>
           。免考名单（allowed-skips）里是 backend、portal、coverage 三科——上一站讲过的 docs-only
           放行就靠它。

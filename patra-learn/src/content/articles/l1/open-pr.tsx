@@ -1,6 +1,7 @@
 // patra-learn/src/content/articles/l1/open-pr.tsx —— 1 号线第 2 站：开 PR
 import { ArticleSection } from "@/components/article-section";
 import { CodeBlock } from "@/components/code-block";
+import { InlineCode } from "@/components/inline-code";
 import { Term } from "@/components/term";
 
 export default function OpenPrArticle() {
@@ -29,8 +30,8 @@ export default function OpenPrArticle() {
           <li>
             <strong className="text-ink">required-check 必须绿</strong>——
             <Term>GitHub Actions</Term> 里跑的一堆检查，分支保护只认{" "}
-            <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">required-check</code>{" "}
-            这一盏总闸灯（它汇总了所有科目的成绩，第 4 站细讲）。任何一科挂了，灯就是红的。
+            <InlineCode>required-check</InlineCode> 这一盏总闸灯（它汇总了所有科目的成绩，第 4
+            站细讲）。任何一科挂了，灯就是红的。
           </li>
           <li>
             <strong className="text-ink">review 对话必须全部 resolve</strong>
@@ -154,10 +155,7 @@ export default function OpenPrArticle() {
       <ArticleSection title="AI 评审员：CodeRabbit">
         <p>
           这个仓库是单人项目，没有同事帮你看代码——但评审环节没有省掉，替补上场的是 CodeRabbit，一个
-          AI 评审员。PR 完工转 ready 后在评论区喊一声{" "}
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">
-            @coderabbitai review
-          </code>
+          AI 评审员。PR 完工转 ready 后在评论区喊一声 <InlineCode>@coderabbitai review</InlineCode>
           ，它就逐行挑毛病：可疑的空指针、漏掉的边界条件、不一致的命名，都会以行级评论的形式贴出来。
         </p>
         <p>

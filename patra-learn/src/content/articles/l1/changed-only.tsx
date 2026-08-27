@@ -1,6 +1,7 @@
 // patra-learn/src/content/articles/l1/changed-only.tsx —— 1 号线第 3 站：只考改过的
 import { ArticleSection } from "@/components/article-section";
 import { CodeBlock } from "@/components/code-block";
+import { InlineCode } from "@/components/inline-code";
 import { Term } from "@/components/term";
 
 export default function ChangedOnlyArticle() {
@@ -15,9 +16,7 @@ export default function ChangedOnlyArticle() {
         </p>
         <p>
           干这件事的裁判是一个 shell 脚本：
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">
-            patra-infra/cd/detect-changes.sh
-          </code>
+          <InlineCode>patra-infra/cd/detect-changes.sh</InlineCode>
           。它是 CI <Term>workflow</Term> 开考后的第一个 job，也是整条流水线的"判卷范围 SSOT"——CI（1
           号线）和 CD（2 号线）用的是<strong className="text-ink">同一份脚本</strong>
           ，"只考改过的"和"只发改过的"因此永远口径一致。它自己还有一套单元测试保护，判卷逻辑改错了会先被测试抓住。
@@ -206,8 +205,8 @@ export default function ChangedOnlyArticle() {
             commons、starters 这些公共模块并不是一律全量：像 commons-core
             这样人人依赖的地基，模块图会算出它波及全部单元、全员重考；而 starter-batch
             这类只有两个单元用到的，就只考那两科。真正写死"必全量"的是 Gradle 构建脚本、共享的
-            Dockerfile 和 <Term>docker compose</Term>{" "}
-            编排文件——它们决定每个服务怎么编译、怎么打包、怎么落座，模块图管不到。
+            Dockerfile 和 <Term>docker compose</Term> 编排文件，以及 cd
+            判卷脚本自己那个目录——前几样决定每个服务怎么编译、怎么打包、怎么落座，最后一样是裁判改了判卷规则，得全量重验。
           </li>
           <li>
             <strong className="text-ink">workflow 自身变更 = 全量 + 前端也考。</strong>
@@ -234,7 +233,7 @@ export default function ChangedOnlyArticle() {
         </p>
         <p>
           答案在总闸灯的配置里：它把 backend、portal、coverage 三科列进了{" "}
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">allowed-skips</code>
+          <InlineCode>allowed-skips</InlineCode>
           ——<strong className="text-ink">这几科"没考"视为通过，"考挂了"才算失败</strong>。于是
           docs-only 的 PR
           几十秒就能绿灯合并，而任何真实的考试失败依然会把灯打红。免考和不及格，制度上是两回事。

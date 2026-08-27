@@ -1,6 +1,7 @@
 // patra-learn/src/content/articles/l1/write-code.tsx —— 1 号线第 1 站：写代码
 import { ArticleSection } from "@/components/article-section";
 import { CodeBlock } from "@/components/code-block";
+import { InlineCode } from "@/components/inline-code";
 import { Term } from "@/components/term";
 
 export default function WriteCodeArticle() {
@@ -10,7 +11,7 @@ export default function WriteCodeArticle() {
         <p>
           在这个仓库里，你永远碰不到"直接把代码写进 main"这个选项——不是自觉，是物理上做不到。 main
           分支装了<Term>分支保护</Term>
-          ：想让代码进去，必须走 PR、必须指定的检查全绿、review
+          ：想让代码进去，必须走 PR、指定的检查必须全绿、review
           对话必须全部处理完，否则合并按钮就是灰的。直接 push？会被闸机原地弹回来。
         </p>
         <p>
@@ -22,8 +23,7 @@ export default function WriteCodeArticle() {
       <ArticleSection title="开一条自己的作业分支">
         <p>
           既然 main 碰不得，写代码的第一步永远是：从 main 切一条自己的分支。分支名带上类型前缀（
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">feat/</code>、
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">fix/</code>
+          <InlineCode>feat/</InlineCode>、<InlineCode>fix/</InlineCode>
           之类），一眼能看出这条分支在干什么：
         </p>
         <CodeBlock command="git switch -c feat/journal-search" />
@@ -177,12 +177,9 @@ export default function WriteCodeArticle() {
 
       <ArticleSection title="commit：本地钩子是第一道考场">
         <p>
-          你以为考试从开 PR 才开始？其实每次{" "}
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">git commit</code>
+          你以为考试从开 PR 才开始？其实每次 <InlineCode>git commit</InlineCode>
           ，本地的 pre-commit 钩子就已经开考了（配置在仓库根的{" "}
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">
-            .pre-commit-config.yaml
-          </code>
+          <InlineCode>.pre-commit-config.yaml</InlineCode>
           ）。它拦四类东西：
         </p>
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
@@ -200,11 +197,9 @@ export default function WriteCodeArticle() {
           </li>
           <li>
             <strong className="text-ink">提交信息格式</strong>——commitlint 盯着 commit
-            message：类型必须是{" "}
-            <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">feat</code> /{" "}
-            <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">fix</code> /{" "}
-            <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">docs</code>{" "}
-            等白名单里的小写词，标题不超过 100 个字符。标题用中文是这个仓库的约定：
+            message：类型必须是 <InlineCode>feat</InlineCode> / <InlineCode>fix</InlineCode> /{" "}
+            <InlineCode>docs</InlineCode> 等白名单里的小写词，标题不超过 100
+            个字符。标题用中文是这个仓库的约定：
           </li>
         </ul>
         <CodeBlock command='git commit -m "feat(catalog): 新增期刊检索接口"' />
@@ -216,11 +211,9 @@ export default function WriteCodeArticle() {
 
       <ArticleSection title="push：把卷子交上去，但还没开考">
         <p>
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">git push</code>{" "}
-          把你的分支传到 GitHub。有个容易误会的点：
+          <InlineCode>git push</InlineCode> 把你的分支传到 GitHub。有个容易误会的点：
           <strong className="text-ink">推一条 feature 分支本身并不会触发任何考试</strong>——
-          <Term>GitHub Actions</Term> 的 CI <Term>workflow</Term>（
-          <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">ci.yml</code>
+          <Term>GitHub Actions</Term> 的 CI <Term>workflow</Term>（<InlineCode>ci.yml</InlineCode>
           ）对你手上这条改动而言只在两个时刻开工：你开了指向 main 的 PR，或者代码合并进了
           main（此外它还有每晚的定时全量考和手动触发按钮，到「并行考试」站细讲）。
         </p>
