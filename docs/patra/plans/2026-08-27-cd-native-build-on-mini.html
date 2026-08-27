@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CD 原生化改造 — 构建搬回 Mac mini</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <li class="note" data-type="decision" data-time="2026-08-27T20:25">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-27T20:25">08-27 20:25</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>plan 未规定：actionlint 将自定义 runner label "macmini" 报为未知，新增 .github/actionlint.yaml 声明 self-hosted-runner labels（一劳永逸，后续 workflow 校验不再误报）；cd.yml 构建步骤 ./gradlew $TASKS 加内联 shellcheck disable=SC2086（有意词拆分）。</p>
+      </li>
+      <!-- ENTRY TEMPLATE:
+          <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
+          -->
+          <li data-task-status="in-progress"><a href="#task-1">Task 1 — Mac mini 构建环境准备</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — services.json 补健康元数据 + portal 条目</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — deploy.test.sh（TDD 红）</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — deploy.sh 实现（TDD 绿）</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — cd.yml 重构（原生构建）</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — portal-cd.yml 重构</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — runner-watchdog.yml</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — install-github-runner.sh 回写</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — 文档同步与归档</a></li>
+          <li data-task-status="in-progress"><a href="#task-10">Task 10 — Secrets 配置 + PR</a></li>
+          <li data-task-status="pending"><a href="#task-11">Task 11 — 合并后 E2E 验证</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>CD 原生化改造 — 构建搬回 Mac mini</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-27</span>
+        <span>🌿 feat/cd-native-build-on-mini</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>把后端与 portal 的镜像构建从 ubuntu(QEMU 交叉编译→GHCR→翻墙拉回) 搬到 Mac mini 原生 arm64，并补齐失败通知、runner 看门狗、部署后验证、自动回滚与 runner 安装脚本固化。</dd>
+        <dt>架构</dt> <dd>detect-changes 保留在 ubuntu；build-deploy 单 job 跑在 macmini runner 上（gradlew bootJar → 原生 docker build → deploy.sh 部署+健康检查+验证+自动回滚 → GHCR 归档推送 best-effort）。GHCR 从「部署必经之路」降级为「归档/回滚备源」。新增 runner-watchdog 每日巡检与 ntfy 失败通知。</dd>
+        <dt>技术栈</dt> <dd>GitHub Actions / bash（macOS bash 3.2 兼容）/ jq / OrbStack docker / Homebrew + mise + Zulu 25（与 MacBook 完全同套）/ ntfy.sh</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-06-08-backend-multiservice-cd-design.html">后端多服务 CD 设计</a>（本计划是其构建位置的架构修订；方案定稿于 2026-08-27 会话「CI/CD 优化方案」，动因见 <a href="../specs/2026-06-08-cicd-production-grade-review.md">production-grade review</a> 归档）</dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>所有改动共享同一条 CD 链路（services.json → deploy.sh → 两个 CD workflow → runner 环境），拆开会造成中间态不可部署，故单 plan 覆盖。Task 1（mini 现场 ops）与 Task 11（合并后 E2E）不产出仓库代码但是链路成立的前置/收尾，计入本 plan。</p>
+      </aside>
+      <aside class="callout">
+        <span class="title">背景速览（供零上下文工程师）</span>
+        <p>部署目标是家中 Apple Silicon Mac mini（M4/16GB，OrbStack，self-hosted runner，labels <code>self-hosted,macmini</code>）。旧架构在 ubuntu-latest(amd64) 上 QEMU 交叉构建 arm64 镜像推 GHCR，mini 经 Clash 代理（127.0.0.1:7897）拉回部署——曾发生 amd64 镜像事故（数月无人察觉）、GHCR EOF 抖动、20 分钟超时。mini 出网必须经代理（直连到不了 GitHub/GHCR）；runner 的代理 env 已手工写入 <code>~/actions-runner/.env</code>。mini 上目前<strong>没有</strong> brew / mise / JDK；MacBook 侧为 Homebrew + brew 装的 mise + <code>java@zulu-25.30.17.0</code>（<code>mise use -g</code> 全局钉版，JAVA_HOME 无 Contents/Home——mise 已展平）。<strong>用户要求两台 Mac 环境安装方式保持一致，mini 照 MacBook 对齐。</strong>仓库是公开仓库，CD 只监听 push:main 与 workflow_dispatch（绝不跑 fork PR 代码）。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>.github/workflows/
+  cd.yml                     [modify] 删 build-and-push(ubuntu+QEMU+buildcache)；新 build-deploy(macmini 原生构建+deploy.sh) + notify job；paths 排除 *.md
+  portal-cd.yml              [modify] 同模式重构（顺带消灭 portal 至今仍是 amd64 的隐患）
+  runner-watchdog.yml        [create] 每日巡检：runner 在线（API）+ 宿主 canary（docker/磁盘/unhealthy 容器）+ 失败通知
+patra-infra/cd/
+  services.json              [modify] 每服务补 healthPath/healthMatch；新增 portal 条目（deploy-only）
+  deploy.sh                  [create] 部署执行器：镜像就位→arm64 断言→按序 up→健康检查→部署后验证→自动回滚→last-good 记录
+  deploy.test.sh             [create] stub docker/curl 单测（3 场景），风格对齐 detect-changes.test.sh
+patra-infra/scripts/
+  install-github-runner.sh   [modify] --disableupdate、.env(代理+JAVA_HOME) 固化、运维 runbook 头注释
+patra-infra/CLAUDE.md        [modify] 「Self-hosted Runner 与 CD」节重写为原生构建架构
+docs/patra/specs/
+  2026-06-08-cicd-production-grade-review.md   [commit] 已存在但未跟踪，归档入库
+docs/patra/plans/
+  2026-08-27-cd-native-build-on-mini.html      [create] 本计划
+—— Mac mini 现场（非仓库文件，Task 1 via ssh）——
+  Homebrew + mise + zulu-25.30.17.0            安装（与 MacBook 同套同版本）
+  ~/actions-runner/.env                        追加 JAVA_HOME</pre>
+      </div>
+      <aside class="callout warning">
+        <span class="title">职责边界</span>
+        <p>deploy.sh 只管「镜像已存在（本地或 GHCR）之后」的部署闭环；构建（gradlew / docker build）留在 workflow step 里以保持 Actions 日志分段可读。services.json 仍是服务元数据 SSOT——deploy.sh 与两个 workflow 都按 name 查询它，绝不枚举（portal 条目因此不会被后端 CD 误捞）。</p>
+      </aside>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- TASK TEMPLATE:
+      <article class="task" id="task-N" data-status="pending"> ... </article>
+      data-status 5 类：pending / in-progress / done / blocked / skipped
+      -->
+
+      <article class="task" id="task-1" data-status="in-progress">
+        <header>
+          <h2>任务 1：Mac mini 构建环境准备（ssh 现场操作，与 MacBook 同套）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>mini:~/actions-runner/.env</code>（追加 JAVA_HOME）、<code>mini:~/actions-runner/.path</code>（补 /opt/homebrew/bin，对齐安装脚本）</dd>
+            <dt>安装</dt><dd>Homebrew → <code>/opt/homebrew/bin/mise</code> → <code>java@zulu-25.30.17.0</code>（与 MacBook 逐项一致）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="skipped">
+            <strong>步骤 1：装 Homebrew（MacBook 的包管理基座，mini 对齐；经代理，非交互）</strong>
+            <pre><code class="lang-bash">ssh linqibin@100.103.73.27 '
+  export http_proxy=http://127.0.0.1:7897 https_proxy=http://127.0.0.1:7897
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  /opt/homebrew/bin/brew --version
+'</code></pre>
+            <p>预期：输出 Homebrew 版本。mini 已有 git（runner checkout 在用）说明 Xcode CLT 在位；若脚本仍要求 CLT，按提示装完重跑。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：brew 装 mise，安装并全局钉 Zulu 25（与 MacBook 同版本 <code>zulu-25.30.17.0</code>、同 <code>mise use -g</code> 方式）</strong>
+            <pre><code class="lang-bash">ssh linqibin@100.103.73.27 '
+  export http_proxy=http://127.0.0.1:7897 https_proxy=http://127.0.0.1:7897
+  /opt/homebrew/bin/brew install mise
+  /opt/homebrew/bin/mise install java@zulu-25.30.17.0
+  /opt/homebrew/bin/mise use -g java@zulu-25.30.17.0
+  /opt/homebrew/bin/mise where java
+'</code></pre>
+            <p>预期：最后一行输出 <code>/Users/linqibin/.local/share/mise/installs/java/zulu-25.30.17.0</code>（与 MacBook 相同的路径结构；mise 已展平 macOS 的 Contents/Home）。今后升级 JDK 时两台机器一起 <code>mise install + use -g</code> 同一版本。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：验证 java 并把 JAVA_HOME 写入 runner .env（幂等：先删旧行再追加）；.path 补 /opt/homebrew/bin 对齐安装脚本</strong>
+            <pre><code class="lang-bash">ssh linqibin@100.103.73.27 '
+  JH=$(/opt/homebrew/bin/mise where java)
+  [ -x "$JH/bin/java" ] || { echo "✗ 未找到 java 可执行文件"; exit 1; }
+  "$JH/bin/java" -version
+  sed -i "" "/^JAVA_HOME=/d" ~/actions-runner/.env
+  echo "JAVA_HOME=$JH" &gt;&gt; ~/actions-runner/.env
+  echo "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" &gt; ~/actions-runner/.path
+  cat ~/actions-runner/.env ~/actions-runner/.path
+'</code></pre>
+            <p>预期：<code>openjdk version "25...</code>（Zulu）；.env 含 LANG、http_proxy、https_proxy、no_proxy、JAVA_HOME 共 5 行；.path 与 install-github-runner.sh 写的一致（昨天手工重注册时 config.sh 重新生成过 .path、丢了 /opt/homebrew/bin，此处一并对齐）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：确认无进行中的 CD run，再重启 runner 使 .env/.path 生效（⚠ 派发任务期间重启会杀死 Worker）</strong>
+            <pre><code class="lang-bash">gh run list -R linqibin0826/patra --status in_progress --limit 5
+# 输出必须为空，才执行：
+ssh linqibin@100.103.73.27 'cd ~/actions-runner &amp;&amp; ./svc.sh stop &amp;&amp; ./svc.sh start &amp;&amp; ./svc.sh status'</code></pre>
+            <p>预期：status 显示服务运行中；GitHub → Settings → Actions → Runners 中 macmini 保持 online。</p>
+          </li>
+          <li class="step" data-status="in-progress">
+            <strong>步骤 5：预热——runner 工作区跑一次 bootJar（灌 Gradle wrapper/依赖缓存）+ 预拉基础镜像</strong>
+            <pre><code class="lang-bash">ssh linqibin@100.103.73.27 '
+  export http_proxy=http://127.0.0.1:7897 https_proxy=http://127.0.0.1:7897
+  export JAVA_HOME=$(/opt/homebrew/bin/mise where java)
+  cd ~/actions-runner/_work/patra/patra &amp;&amp; git fetch origin main &amp;&amp; git checkout -f origin/main
+  ./gradlew :patra-api:patra-registry:patra-registry-boot:bootJar
+  docker pull eclipse-temurin:25-jre &amp;&amp; docker pull node:24-alpine
+'</code></pre>
+            <p>预期：BUILD SUCCESSFUL（首次含依赖下载，10-30 分钟属正常）；两个基础镜像 pull 成功。此步同时验证了「mini 经代理跑 Gradle 全链路可行」——这是整个方案 A 的可行性前提，若此步失败则停下评估（阻塞时在右栏记 note）。</p>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：services.json 补健康元数据 + portal 条目</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-infra/cd/services.json</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：每个后端条目追加 healthPath/healthMatch，新增 portal 条目，更新 _comment</strong>
+            <p>_comment 改为：</p>
+            <pre><code class="lang-text">后端服务 CD 单一事实源（SSOT）。cd.yml 的 detect-changes / build / deploy 与 deploy.sh 都从这里按 name 查询（绝不枚举）。加新服务=加一个条目，不改 workflow 逻辑。healthPath/healthMatch 供 deploy.sh 健康检查（healthMatch 缺省=仅要求 HTTP 成功）。portal 条目为 deploy-only（gradleTask=null，构建在 portal-cd.yml 的 docker build 内完成，勿在 cd.yml dispatch 填 portal）。srcPrefix 保留供人工查阅路径归属。</code></pre>
+            <p>每个后端服务条目在 <code>"image"</code> 字段后追加（5 个条目相同）：</p>
+            <pre><code class="lang-json">      "healthPath": "/actuator/health",
+      "healthMatch": "\"status\":\"UP\""</code></pre>
+            <p>services 数组末尾新增：</p>
+            <pre><code class="lang-json">    {
+      "name": "portal",
+      "gradleTask": null,
+      "context": "patra-portal",
+      "srcPrefix": "patra-portal/",
+      "port": 4000,
+      "image": "ghcr.io/linqibin0826/patra-portal",
+      "healthPath": "/api/health"
+    }</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：验证 JSON 合法 + 既有消费方（cd.yml meta 查询、detect-changes 测试）不受影响</strong>
+            <pre><code class="lang-bash">jq -e '.services | length == 6' patra-infra/cd/services.json
+jq -r '.services[] | select(.name=="catalog") | .healthMatch' patra-infra/cd/services.json
+bash patra-infra/cd/detect-changes.test.sh</code></pre>
+            <p>预期：<code>true</code>；<code>"status":"UP"</code>；detect-changes 测试全绿（它不读 services.json，跑一遍确认无意外耦合）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra/cd/services.json
+git commit -m "feat(infra): services.json 补 healthPath/healthMatch 并新增 portal deploy-only 条目"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：deploy.test.sh — 先写失败的测试（TDD 红）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-infra/cd/deploy.test.sh</code></dd>
+          </dl>
+        </header>
+        <p>deploy.sh 的回滚/断言逻辑是本次改造最容易写错的部分，用 stub docker/curl 把它锁住。stub 原理：PATH 前置假 <code>docker</code>/<code>curl</code>；假 docker 把 <code>compose up</code> 时的 <code>{SVC}_IMAGE_TAG</code> 环境变量记为该服务「当前运行 tag」；假 curl 按「当前 tag 是否在 healthy-tags 白名单」决定健康与否。</p>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写测试文件（完整内容）</strong>
+            <pre><code class="lang-bash">#!/usr/bin/env bash
+# ============================================================================
+# deploy.sh 单测 —— stub docker/curl，不碰真实 Docker。
+#   场景1 全健康部署：exit 0，last-good 记录新 tag
+#   场景2 部署后不健康：自动回滚到 last-good 并复检通过，但整体 exit 1
+#   场景3 镜像架构为 amd64：拦截，不执行 compose up，exit 1
+# 运行：bash patra-infra/cd/deploy.test.sh
+# ============================================================================
+set -uo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &amp;&amp; pwd)"
+PASS=0; FAIL=0
+
+setup() { # 每场景独立沙箱；导出全部 stub 控制变量与 deploy.sh 注入点
+  TMP="$(mktemp -d)"
+  export STUB_LOG="$TMP/calls.log" STUB_IMAGES="$TMP/images" \
+         STUB_ARCH="$TMP/arch" STUB_HEALTHY="$TMP/healthy" STUB_STATE="$TMP/state"
+  export SERVICES_FILE="$SCRIPT_DIR/services.json"
+  export LAST_GOOD_DIR="$TMP/last-good" COMPOSE_DIR="$TMP"
+  export HEALTH_RETRIES=2 HEALTH_INTERVAL=0 PULL_BACKOFFS="0"
+  mkdir -p "$STUB_STATE" "$LAST_GOOD_DIR" "$TMP/bin"
+  : &gt; "$STUB_LOG"; : &gt; "$STUB_IMAGES"; : &gt; "$STUB_HEALTHY"
+  echo arm64 &gt; "$STUB_ARCH"
+
+  cat &gt; "$TMP/bin/docker" &lt;&lt;'EOF'
+#!/usr/bin/env bash
+echo "docker $*" &gt;&gt; "$STUB_LOG"
+case "$1" in
+  image)
+    shift
+    case "$1" in
+      inspect)
+        shift
+        FMT=""; if [ "$1" = "--format" ]; then FMT="$2"; shift 2; fi
+        grep -qxF "$1" "$STUB_IMAGES" || exit 1
+        [ "$FMT" = "{{.Architecture}}" ] &amp;&amp; cat "$STUB_ARCH"
+        exit 0 ;;
+      prune) exit 0 ;;
+    esac ;;
+  pull) echo "$2" &gt;&gt; "$STUB_IMAGES" ;;
+  compose)
+    # compose ... up -d &lt;svc&gt;：从环境变量取 tag，记录为该服务当前运行 tag
+    svc="${!#}"
+    var="$(echo "$svc" | tr 'a-z-' 'A-Z_')_IMAGE_TAG"
+    echo "${!var:-latest}" &gt; "$STUB_STATE/current-$svc" ;;
+  inspect)
+    # inspect --format {{.Config.Image}} patra-&lt;svc&gt;
+    svc="${!#}"; svc="${svc#patra-}"
+    img="$(jq -r --arg s "$svc" '.services[]|select(.name==$s)|.image' "$SERVICES_FILE")"
+    echo "$img:$(cat "$STUB_STATE/current-$svc")" ;;
+  logs) exit 0 ;;
+esac
+exit 0
+EOF
+  cat &gt; "$TMP/bin/curl" &lt;&lt;'EOF'
+#!/usr/bin/env bash
+url="${!#}"
+port="${url#http://127.0.0.1:}"; port="${port%%/*}"
+svc="$(jq -r --arg p "$port" '.services[]|select((.port|tostring)==$p)|.name' "$SERVICES_FILE")"
+cur="$(cat "$STUB_STATE/current-$svc" 2&gt;/dev/null || echo none)"
+grep -qxF "$cur" "$STUB_HEALTHY" || exit 1
+echo '{"status":"UP"}'
+EOF
+  chmod +x "$TMP/bin/docker" "$TMP/bin/curl"
+  export PATH="$TMP/bin:$PATH"
+}
+
+check() { # $1=场景名 $2=期望退出码 $3=实际退出码 $4...=断言命令
+  local name="$1" want="$2" got="$3"; shift 3
+  local ok=1
+  [ "$got" = "$want" ] || { echo "  ✗ 退出码 got=$got want=$want"; ok=0; }
+  local a; for a in "$@"; do
+    eval "$a" || { echo "  ✗ 断言失败: $a"; ok=0; }
+  done
+  if [ "$ok" = 1 ]; then echo "✓ $name"; PASS=$((PASS+1)); else echo "✗ $name"; FAIL=$((FAIL+1)); fi
+}
+
+# ---- 场景1：全健康部署 ----
+setup
+echo "ghcr.io/linqibin0826/patra-catalog:newsha" &gt;&gt; "$STUB_IMAGES"
+echo newsha &gt;&gt; "$STUB_HEALTHY"
+bash "$SCRIPT_DIR/deploy.sh" newsha '["catalog"]' &gt; "$TMP/out" 2&gt;&amp;1; rc=$?
+check "场景1 全健康部署" 0 "$rc" \
+  '[ "$(cat "$LAST_GOOD_DIR/last-good-catalog")" = newsha ]' \
+  'grep -q "up -d catalog" "$STUB_LOG"'
+
+# ---- 场景2：不健康 → 自动回滚 ----
+setup
+echo oldsha &gt; "$LAST_GOOD_DIR/last-good-catalog"
+echo "ghcr.io/linqibin0826/patra-catalog:newsha" &gt;&gt; "$STUB_IMAGES"
+echo "ghcr.io/linqibin0826/patra-catalog:oldsha" &gt;&gt; "$STUB_IMAGES"
+echo oldsha &gt;&gt; "$STUB_HEALTHY"   # 只有旧 tag 健康
+bash "$SCRIPT_DIR/deploy.sh" newsha '["catalog"]' &gt; "$TMP/out" 2&gt;&amp;1; rc=$?
+check "场景2 不健康自动回滚" 1 "$rc" \
+  '[ "$(cat "$STUB_STATE/current-catalog")" = oldsha ]' \
+  'grep -q "自动回滚" "$TMP/out"' \
+  '[ "$(cat "$LAST_GOOD_DIR/last-good-catalog")" = oldsha ]'
+
+# ---- 场景3：amd64 镜像拦截 ----
+setup
+echo "ghcr.io/linqibin0826/patra-catalog:newsha" &gt;&gt; "$STUB_IMAGES"
+echo newsha &gt;&gt; "$STUB_HEALTHY"
+echo amd64 &gt; "$STUB_ARCH"
+bash "$SCRIPT_DIR/deploy.sh" newsha '["catalog"]' &gt; "$TMP/out" 2&gt;&amp;1; rc=$?
+check "场景3 amd64 拦截" 1 "$rc" \
+  '! grep -q "up -d catalog" "$STUB_LOG"'
+
+echo "----"
+echo "PASS=$PASS FAIL=$FAIL"
+[ "$FAIL" = 0 ]</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行确认失败（deploy.sh 尚不存在）</strong>
+            <p>运行：<code>bash patra-infra/cd/deploy.test.sh</code></p>
+            <p>预期：3 个场景全 ✗（deploy.sh: No such file or directory），<code>FAIL=3</code>，退出码非 0。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit（红测试单独入库，保留 TDD 轨迹）</strong>
+            <pre><code class="lang-bash">git add patra-infra/cd/deploy.test.sh
+git commit -m "test(infra): deploy.sh 部署执行器单测（stub docker/curl，3 场景，当前红）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：deploy.sh 实现（TDD 绿）+ shellcheck</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-infra/cd/deploy.sh</code></dd>
+            <dt>测试</dt><dd><code>patra-infra/cd/deploy.test.sh</code>（Task 3 已建）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 deploy.sh（完整内容；bash 3.2 兼容，禁用 mapfile/关联数组）</strong>
+            <pre><code class="lang-bash">#!/usr/bin/env bash
+# ============================================================================
+# Mac mini 部署执行器 —— cd.yml / portal-cd.yml 的 deploy step 共用。
+#   deploy.sh &lt;TAG&gt; &lt;SERVICES_JSON&gt;
+#     TAG            镜像 tag（commit sha 或回滚目标）
+#     SERVICES_JSON  要部署的服务名 JSON 数组，如 '["catalog","ingest"]'
+#
+# 职责（按序）：
+#   1. 镜像就位：本地缺失才从 GHCR 拉（指数退避 30/60/120s）。正常部署时镜像
+#      已由本机原生构建、天然命中；仅回滚且本地缓存被清时回源 GHCR。
+#   2. 架构断言：必须 arm64（防止历史 amd64 归档被回滚拉回；2026-08 事故复盘）
+#   3. 按依赖顺序 compose up（object-storage 优先，catalog/ingest 运行时依赖它）
+#   4. 健康检查：轮询 127.0.0.1:&lt;port&gt;&lt;healthPath&gt;（127.0.0.1 而非 localhost——
+#      后者可解析到 ::1 导致误报，portal healthcheck 实际踩坑）
+#   5. 部署后验证：运行容器镜像 == 期望 tag（防 up 静默落到旧镜像）
+#   6. 自动回滚：某服务不健康 → 回滚该服务到 last-good 并复检；整体仍 exit 1
+#   7. 服务级 last-good 记录：每个服务验证通过即记录（不等整批）
+#
+# 元数据来自同目录 services.json（healthMatch 缺省=仅要求 HTTP 成功）。
+# 测试注入点（deploy.test.sh 用，均带生产默认值）：
+#   SERVICES_FILE / COMPOSE_DIR / LAST_GOOD_DIR / DOCKER / CURL
+#   HEALTH_RETRIES / HEALTH_INTERVAL / PULL_BACKOFFS
+# ============================================================================
+set -euo pipefail
+
+TAG="${1:?用法: deploy.sh &lt;TAG&gt; &lt;SERVICES_JSON&gt;}"
+SERVICES_JSON="${2:?用法: deploy.sh &lt;TAG&gt; &lt;SERVICES_JSON&gt;}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &amp;&amp; pwd)"
+SERVICES_FILE="${SERVICES_FILE:-$SCRIPT_DIR/services.json}"
+COMPOSE_DIR="${COMPOSE_DIR:-$SCRIPT_DIR/../docker}"
+LAST_GOOD_DIR="${LAST_GOOD_DIR:-$HOME/.patra/cd}"
+DOCKER="${DOCKER:-docker}"
+CURL="${CURL:-curl}"
+HEALTH_RETRIES="${HEALTH_RETRIES:-30}"
+HEALTH_INTERVAL="${HEALTH_INTERVAL:-5}"
+PULL_BACKOFFS="${PULL_BACKOFFS:-30 60 120}"
+
+meta() { # $1=svc $2=field → 值（字段缺省输出空）
+  jq -r --arg s "$1" --arg f "$2" '.services[] | select(.name==$s) | .[$f] // empty' "$SERVICES_FILE"
+}
+
+tag_var() { echo "$(echo "$1" | tr 'a-z-' 'A-Z_')_IMAGE_TAG"; }
+
+ensure_image() { # $1=img $2=tag → 0 就位
+  $DOCKER image inspect "$1:$2" &gt;/dev/null 2&gt;&amp;1 &amp;&amp; return 0
+  echo "本地无 $1:$2，从 GHCR 回源拉取"
+  local d
+  for d in $PULL_BACKOFFS; do
+    $DOCKER pull "$1:$2" &amp;&amp; return 0
+    echo "pull 失败，${d}s 后重试..."; sleep "$d"
+  done
+  return 1
+}
+
+assert_arm64() { # $1=img:tag
+  local arch; arch="$($DOCKER image inspect --format '{{.Architecture}}' "$1")"
+  [ "$arch" = "arm64" ] || { echo "✗ $1 架构为 ${arch}（期望 arm64）"; return 1; }
+}
+
+up_service() { # $1=svc $2=tag
+  local var; var="$(tag_var "$1")"
+  (cd "$COMPOSE_DIR" &amp;&amp; env "$var=$2" $DOCKER compose -f docker-compose.apps.yaml up -d "$1")
+}
+
+health_ok() { # $1=svc
+  local port path match out
+  port="$(meta "$1" port)"; path="$(meta "$1" healthPath)"; match="$(meta "$1" healthMatch)"
+  out="$($CURL -fs "http://127.0.0.1:${port}${path}")" || return 1
+  [ -z "$match" ] || echo "$out" | grep -q "$match"
+}
+
+wait_healthy() { # $1=svc
+  local i
+  for i in $(seq 1 "$HEALTH_RETRIES"); do
+    health_ok "$1" &amp;&amp; { echo "✓ $1 健康"; return 0; }
+    echo "等待 $1 健康... ($i/$HEALTH_RETRIES)"; sleep "$HEALTH_INTERVAL"
+  done
+  return 1
+}
+
+verify_running_tag() { # $1=svc $2=img $3=tag
+  local actual; actual="$($DOCKER inspect --format '{{.Config.Image}}' "patra-$1")"
+  [ "$actual" = "$2:$3" ] || { echo "✗ patra-$1 运行镜像为 ${actual}（期望 $2:$3）"; return 1; }
+}
+
+rollback() { # $1=svc → 0 已回滚且健康
+  local lg_file="$LAST_GOOD_DIR/last-good-$1" lg img
+  [ -f "$lg_file" ] || { echo "⚠ $1 无 last-good 记录，无法自动回滚"; return 1; }
+  lg="$(cat "$lg_file")"; img="$(meta "$1" image)"
+  [ "$lg" != "$TAG" ] || { echo "⚠ $1 的 last-good 即当前 tag，跳过回滚"; return 1; }
+  echo "⟲ $1 自动回滚到 last-good ${lg}"
+  ensure_image "$img" "$lg" &amp;&amp; up_service "$1" "$lg" &amp;&amp; wait_healthy "$1"
+}
+
+# ---- 主流程 ----
+mkdir -p "$LAST_GOOD_DIR"
+ORDER='object-storage registry gateway catalog ingest portal'
+fail=0
+deployed=""
+for svc in $ORDER; do
+  echo "$SERVICES_JSON" | jq -e --arg s "$svc" 'index($s) != null' &gt;/dev/null || continue
+  img="$(meta "$svc" image)"
+  echo "===== deploy ${svc} (${img}:${TAG}) ====="
+  if ! ensure_image "$img" "$TAG" || ! assert_arm64 "$img:$TAG"; then
+    echo "✗ ${svc} 镜像未就位或架构错误，跳过部署（现行版本不受影响）"; fail=1; continue
+  fi
+  if ! up_service "$svc" "$TAG"; then
+    echo "✗ ${svc} compose up 失败"; fail=1; continue
+  fi
+  if wait_healthy "$svc" &amp;&amp; verify_running_tag "$svc" "$img" "$TAG"; then
+    echo "$TAG" &gt; "$LAST_GOOD_DIR/last-good-$svc"
+    deployed="$deployed $svc"
+  else
+    echo "✗ ${svc} 部署后不健康/验证失败，最近日志："
+    $DOCKER logs "patra-$svc" --tail 80 2&gt;&amp;1 || true
+    fail=1
+    if rollback "$svc"; then echo "⟲ ${svc} 已回滚并恢复健康"; else echo "‼ ${svc} 回滚失败或不可用，需人工介入"; fi
+  fi
+done
+
+$DOCKER image prune -f &gt;/dev/null 2&gt;&amp;1 || true
+if [ "$fail" = 0 ]; then
+  echo "✓ 全部部署成功:${deployed} (tag=${TAG})"
+else
+  echo "✗ 存在失败服务（详见上文），job 以失败退出"
+  exit 1
+fi</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：跑测试确认转绿</strong>
+            <p>运行：<code>chmod +x patra-infra/cd/deploy.sh &amp;&amp; bash patra-infra/cd/deploy.test.sh</code></p>
+            <p>预期：<code>✓ 场景1/2/3</code> 全过，<code>PASS=3 FAIL=0</code>，退出码 0。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：shellcheck 静态检查（未安装则 <code>brew install shellcheck</code>）</strong>
+            <p>运行：<code>shellcheck patra-infra/cd/deploy.sh patra-infra/cd/deploy.test.sh</code></p>
+            <p>预期：无 error 级问题（<code>$DOCKER compose</code> 处 SC2086 有意不引号——需要词拆分，加行内 <code># shellcheck disable=SC2086</code> 注明理由）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra/cd/deploy.sh
+git commit -m "feat(infra): deploy.sh 部署执行器（arm64 断言/健康检查/部署后验证/自动回滚/last-good）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：cd.yml 重构 — 构建搬到 mini 原生 arm64</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.github/workflows/cd.yml</code>（detect-changes job 与 workflow_dispatch inputs 原样保留；其余全部替换）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：更新头注释与 paths（其余 on/permissions/concurrency 不变）</strong>
+            <p>头注释替换为：</p>
+            <pre><code class="lang-yaml"># 持续部署（多服务，Mac mini 原生构建）：merge 到 main（或手动触发）
+#   → detect-changes（ubuntu）算出改动服务（含「改公共面→重建全部」规则）
+#   → build-deploy（Mac mini runner）：gradlew bootJar → 原生 arm64 docker build
+#     → deploy.sh（部署+健康检查+部署后验证+自动回滚）→ GHCR 归档推送（best-effort）
+#   → notify（ubuntu）：失败推 ntfy 通知（secrets.NTFY_TOPIC，未配置则跳过）。
+# 架构决策（2026-08-27）：构建从 ubuntu(QEMU 交叉编译) 搬回 mini 原生——
+#   部署不再经翻墙代理拉大镜像（曾致 EOF/20min 超时），amd64 架构错配事故结构性消除；
+#   GHCR 从「部署必经之路」降级为「归档/回滚备源」，推送失败不阻塞部署。
+# 服务清单 SSOT：patra-infra/cd/services.json；部署逻辑：patra-infra/cd/deploy.sh。
+# 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request——
+#       self-hosted runner 只构建/执行已合并 main 的代码，信任边界与旧架构一致。</code></pre>
+            <p><code>on.push.paths</code> 列表末尾追加一行（负向模式必须在正向之后）：</p>
+            <pre><code class="lang-yaml">      - '!**/*.md'</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：删除 build-and-push job（含 QEMU/Buildx/buildcache/GRADLE_ENCRYPTION_KEY 引用），deploy job 替换为 build-deploy</strong>
+            <pre><code class="lang-yaml">  # ---- 2) Mac mini 上原生构建 + 部署（单 job；回滚时跳过构建步骤）----
+  build-deploy:
+    name: build-deploy
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services != '[]'
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 40   # 冷 Gradle 缓存全量约 30min；热缓存单服务 ~5-10min
+    permissions:
+      contents: read
+      packages: write   # GHCR 归档推送
+    env:
+      # macOS runner 不走 docker login（launchd 非交互无法解锁钥匙串 -25308），
+      # 凭据 base64 写入 DOCKER_CONFIG/config.json 绕过钥匙串。
+      DOCKER_CONFIG: ${{ github.workspace }}/.patra-docker-cfg
+      SERVICES: ${{ needs.detect-changes.outputs.services }}
+      IMAGE_TAG_INPUT: ${{ github.event.inputs.image_tag }}
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: 🔑 配置 GHCR 凭据（写 auths + 软链 compose 插件，绕过 macOS 钥匙串）
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          ln -sf "$HOME/.docker/cli-plugins" "$DOCKER_CONFIG/cli-plugins"
+          AUTH=$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" &gt; "$DOCKER_CONFIG/config.json"
+
+      - name: 🔨 Build bootJars（仅非回滚；单次 gradlew 聚合全部改动服务）
+        if: env.IMAGE_TAG_INPUT == ''
+        run: |
+          set -euo pipefail
+          TASKS=""
+          for svc in $(echo "$SERVICES" | jq -r '.[]'); do
+            TASKS="$TASKS $(jq -r --arg s "$svc" '.services[]|select(.name==$s)|.gradleTask' patra-infra/cd/services.json)"
+          done
+          echo "gradle 任务:$TASKS"
+          # JAVA_HOME 来自 runner 的 .env（mise 全局 Zulu 25，与 MacBook 同套，见 install-github-runner.sh）
+          ./gradlew $TASKS
+
+      - name: 🐳 Build images（原生 arm64，产物直接留在本机 daemon）
+        if: env.IMAGE_TAG_INPUT == ''
+        run: |
+          set -euo pipefail
+          TAG="${{ github.sha }}"
+          for svc in $(echo "$SERVICES" | jq -r '.[]'); do
+            IMG=$(jq -r --arg s "$svc" '.services[]|select(.name==$s)|.image' patra-infra/cd/services.json)
+            CTX=$(jq -r --arg s "$svc" '.services[]|select(.name==$s)|.context' patra-infra/cd/services.json)
+            PORT=$(jq -r --arg s "$svc" '.services[]|select(.name==$s)|.port' patra-infra/cd/services.json)
+            echo "===== build ${svc} ====="
+            docker build -f patra-infra/docker/service.Dockerfile \
+              --build-arg "APP_PORT=$PORT" \
+              -t "$IMG:$TAG" -t "$IMG:latest" "$CTX"
+          done
+
+      - name: 🚀 Deploy（部署+健康检查+部署后验证+自动回滚，逻辑在 deploy.sh）
+        run: |
+          TAG="${IMAGE_TAG_INPUT:-${{ github.sha }}}"
+          bash patra-infra/cd/deploy.sh "$TAG" "$SERVICES"
+
+      - name: 📦 GHCR 归档推送（best-effort：GHCR 只是回滚备源，失败不阻塞部署）
+        if: env.IMAGE_TAG_INPUT == ''
+        continue-on-error: true
+        run: |
+          TAG="${{ github.sha }}"
+          for svc in $(echo "$SERVICES" | jq -r '.[]'); do
+            IMG=$(jq -r --arg s "$svc" '.services[]|select(.name==$s)|.image' patra-infra/cd/services.json)
+            docker push "$IMG:$TAG" &amp;&amp; docker push "$IMG:latest" || echo "::warning::$IMG 归档推送失败（不阻塞）"
+          done
+
+      - name: 🧹 清理 GHCR 凭据（self-hosted 持久 workspace，防 config.json 落盘残留）
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"
+
+  # ---- 3) 失败通知（ntfy；NTFY_TOPIC 未配置则告警跳过）----
+  notify:
+    name: notify
+    needs: [detect-changes, build-deploy]
+    if: always() &amp;&amp; (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 📣 推送失败通知
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          [ -n "$NTFY_TOPIC" ] || { echo "::warning::NTFY_TOPIC 未配置，跳过通知"; exit 0; }
+          SHA="${{ github.sha }}"
+          curl -fsS -m 10 \
+            -H "Title: Patra CD failed" -H "Priority: high" -H "Tags: rotating_light" \
+            -d "CD 失败 @ ${SHA:0:9} — https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "https://ntfy.sh/$NTFY_TOPIC"</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：actionlint 校验（未安装则 <code>brew install actionlint</code>）</strong>
+            <p>运行：<code>actionlint .github/workflows/cd.yml</code></p>
+            <p>预期：无输出（0 问题）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add .github/workflows/cd.yml
+git commit -m "feat(cd): 构建搬回 Mac mini 原生 arm64，GHCR 降级为归档备源，接入 deploy.sh 与失败通知"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：portal-cd.yml 重构（同模式，消灭 portal amd64 隐患）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>.github/workflows/portal-cd.yml</code>（on/permissions/concurrency/inputs 保留；paths 追加 md 排除；jobs 全替换）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：paths 追加 <code>- '!**/*.md'</code>；jobs 替换为单 build-deploy + notify</strong>
+            <p>头注释同步改为「Mac mini 原生构建」口径（参照 Task 5 措辞）。jobs 全文：</p>
+            <pre><code class="lang-yaml">jobs:
+  # ---- Mac mini 上原生构建 + 部署（回滚时跳过构建步骤）----
+  build-deploy:
+    name: build-deploy
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKER_CONFIG: ${{ github.workspace }}/.patra-docker-cfg
+      IMAGE_TAG_INPUT: ${{ github.event.inputs.image_tag }}
+      IMAGE: ghcr.io/linqibin0826/patra-portal
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: 🔑 配置 GHCR 凭据（写 auths + 软链 compose 插件，绕过 macOS 钥匙串）
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          ln -sf "$HOME/.docker/cli-plugins" "$DOCKER_CONFIG/cli-plugins"
+          AUTH=$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" &gt; "$DOCKER_CONFIG/config.json"
+
+      - name: 🐳 Build image（仅非回滚；原生 arm64——旧 ubuntu 构建产物是 amd64 靠 Rosetta 跑，就此消灭）
+        if: env.IMAGE_TAG_INPUT == ''
+        run: |
+          docker build -f patra-portal/Dockerfile \
+            -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" patra-portal
+
+      - name: 🚀 Deploy（复用 deploy.sh：健康检查/部署后验证/自动回滚）
+        run: |
+          TAG="${IMAGE_TAG_INPUT:-${{ github.sha }}}"
+          bash patra-infra/cd/deploy.sh "$TAG" '["portal"]'
+
+      - name: 📦 GHCR 归档推送（best-effort）
+        if: env.IMAGE_TAG_INPUT == ''
+        continue-on-error: true
+        run: |
+          docker push "$IMAGE:${{ github.sha }}" &amp;&amp; docker push "$IMAGE:latest" \
+            || echo "::warning::portal 归档推送失败（不阻塞）"
+
+      - name: 🧹 清理 GHCR 凭据
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"
+
+  notify:
+    name: notify
+    needs: build-deploy
+    if: always() &amp;&amp; (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 📣 推送失败通知
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          [ -n "$NTFY_TOPIC" ] || { echo "::warning::NTFY_TOPIC 未配置，跳过通知"; exit 0; }
+          SHA="${{ github.sha }}"
+          curl -fsS -m 10 \
+            -H "Title: Patra Portal CD failed" -H "Priority: high" -H "Tags: rotating_light" \
+            -d "Portal CD 失败 @ ${SHA:0:9} — https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "https://ntfy.sh/$NTFY_TOPIC"</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：actionlint 校验</strong>
+            <p>运行：<code>actionlint .github/workflows/portal-cd.yml</code></p>
+            <p>预期：无输出。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add .github/workflows/portal-cd.yml
+git commit -m "feat(cd): portal 构建搬回 Mac mini 原生 arm64（消灭 Rosetta 运行隐患），复用 deploy.sh"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-7" data-status="done">
+        <header>
+          <h2>任务 7：runner-watchdog.yml — 每日巡检</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>.github/workflows/runner-watchdog.yml</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 workflow（完整内容）</strong>
+            <pre><code class="lang-yaml">name: Runner Watchdog
+
+# Mac mini runner 每日看门狗：
+#   check-runner（ubuntu）：API 查 macmini runner 是否 online——防「静默离线 30 天
+#     被 GitHub 自动注销」（2026-08 实际发生，离线 2 个月 registration 被删）。
+#   canary（macmini）：docker 可用性 / 磁盘余量 / 无 unhealthy 容器——防「在线但不可用」。
+#   notify：任一失败推 ntfy。
+# 需要 secrets：
+#   RUNNER_ADMIN_TOKEN  fine-grained PAT，仅本仓库 Administration:Read-only
+#                       （GITHUB_TOKEN 无权列 self-hosted runners，必须 PAT）
+#   NTFY_TOPIC          可选，失败通知
+# runner 离线时 check-runner 直接失败告警，canary 被跳过（不会滞留 queued）。
+
+permissions: {}
+
+on:
+  schedule:
+    - cron: '0 23 * * *'   # 每日 UTC 23:00（北京 07:00）
+  workflow_dispatch:
+
+jobs:
+  check-runner:
+    name: check-runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 🔎 检查 macmini runner 在线状态
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::error::RUNNER_ADMIN_TOKEN 未配置（fine-grained PAT，Administration:Read）"; exit 1; }
+          STATUS=$(gh api "repos/${{ github.repository }}/actions/runners" \
+            --jq '.runners[] | select(.name=="macmini") | .status')
+          echo "macmini runner status: ${STATUS:-未注册}"
+          [ "$STATUS" = "online" ] || { echo "::error::macmini runner 不在线（${STATUS:-registration 已被 GitHub 移除，需重装}）"; exit 1; }
+
+  canary:
+    name: canary
+    needs: check-runner
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 5
+    steps:
+      - name: 🐳 Docker 可用性
+        run: docker info --format 'server={{.ServerVersion}}' &amp;&amp; docker ps --format '{{.Names}}' | wc -l
+      - name: 💾 磁盘余量 ≥ 20G
+        run: |
+          AVAIL=$(df -g / | awk 'NR==2{print $4}')
+          echo "可用: ${AVAIL}G"
+          [ "$AVAIL" -ge 20 ] || { echo "::error::磁盘余量不足 20G，清理镜像/日志"; exit 1; }
+      - name: 🩺 无 unhealthy 容器
+        run: |
+          UNHEALTHY=$(docker ps --filter health=unhealthy --format '{{.Names}}')
+          [ -z "$UNHEALTHY" ] || { echo "::error::存在 unhealthy 容器: $UNHEALTHY"; exit 1; }
+
+  notify:
+    name: notify
+    needs: [check-runner, canary]
+    if: always() &amp;&amp; (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 📣 推送巡检告警
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          [ -n "$NTFY_TOPIC" ] || { echo "::warning::NTFY_TOPIC 未配置，跳过通知"; exit 0; }
+          curl -fsS -m 10 \
+            -H "Title: Patra runner watchdog" -H "Priority: high" -H "Tags: warning" \
+            -d "runner 巡检失败（离线/docker/磁盘/unhealthy）— https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "https://ntfy.sh/$NTFY_TOPIC"</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：actionlint 校验</strong>
+            <p>运行：<code>actionlint .github/workflows/runner-watchdog.yml</code></p>
+            <p>预期：无输出。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add .github/workflows/runner-watchdog.yml
+git commit -m "feat(cd): runner 每日看门狗（在线检查+宿主 canary+ntfy 告警）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-8" data-status="done">
+        <header>
+          <h2>任务 8：install-github-runner.sh 回写实战成果</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-infra/scripts/install-github-runner.sh</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：头注释补运维 runbook（在现有用法说明之后追加）</strong>
+            <pre><code class="lang-bash"># 运维要点（2026-08-27 实战沉淀）：
+#   - mini 出网必须经 Clash Verge（mixed-port 7897，常驻）；runner 是 launchd 服务、
+#     不继承 shell 代理，故代理必须写进 $RUNNER_DIR/.env（本脚本固化）
+#   - --disableupdate 关闭自更新：launchd 环境曾因下载走不了代理卡死自更新；
+#     升级方式=闲时重跑本脚本（registration 保留时只更新二进制与配置）
+#   - 派发任务期间严禁 ./svc.sh stop/start——会杀死执行中的 Worker，job 显示 cancelled；
+#     重启前先 gh run list --status in_progress 确认为空
+#   - runner 离线 &gt;30 天 GitHub 自动删除 registration（2026-08 实际发生）；
+#     runner-watchdog.yml 每日巡检兜底。重装=重新取 registration token 跑本脚本
+#   - CD 在本机跑 gradlew（构建原生 arm64 镜像），JAVA_HOME 指向 mise 全局 java。
+#     两台 Mac 环境保持一致（用户约定）：Homebrew + brew 装 mise + zulu 25 全局钉版，前置：
+#       brew install mise &amp;&amp; mise install java@zulu-25.30.17.0 &amp;&amp; mise use -g java@zulu-25.30.17.0
+#     升级 JDK 时 MacBook 与 mini 一起升同一版本</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：config.sh 加 --disableupdate；config 之后写 .env（代理 + JAVA_HOME）</strong>
+            <p>config 行改为：</p>
+            <pre><code class="lang-bash">./config.sh --url "$REPO_URL" --token "$TOKEN" \
+  --name "macmini" --labels "macmini" --unattended --replace --disableupdate</code></pre>
+            <p>写 <code>.path</code> 之后新增：</p>
+            <pre><code class="lang-bash"># launchd 服务不继承 shell 环境：代理与 JAVA_HOME 必须固化进 .env（runner 启动时读取）
+MISE_BIN="$(command -v mise || echo /opt/homebrew/bin/mise)"
+JH="$("$MISE_BIN" where java 2&gt;/dev/null || true)"
+if [ -z "$JH" ] || [ ! -x "$JH/bin/java" ]; then
+  echo "⚠ 未找到 mise 全局 java（CD 构建需要；两台 Mac 同套管理）。先执行：" &gt;&amp;2
+  echo "    brew install mise &amp;&amp; mise install java@zulu-25.30.17.0 &amp;&amp; mise use -g java@zulu-25.30.17.0" &gt;&amp;2
+  echo "  再重跑本脚本。" &gt;&amp;2
+  exit 1
+fi
+cat &gt; .env &lt;&lt;EOF
+LANG=en_US.UTF-8
+http_proxy=http://127.0.0.1:7897
+https_proxy=http://127.0.0.1:7897
+no_proxy=localhost,127.0.0.1,.local,100.64.0.0/10,192.168.0.0/16,nacos,postgres,redis
+JAVA_HOME=$JH
+EOF
+echo "==&gt; .env 已写入（代理 + JAVA_HOME=$JH）"</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：shellcheck + 语法检查（脚本不实际重跑——mini 现场 runner 已是目标状态）</strong>
+            <p>运行：<code>bash -n patra-infra/scripts/install-github-runner.sh &amp;&amp; shellcheck patra-infra/scripts/install-github-runner.sh</code></p>
+            <p>预期：无 error。再核对 mini 现场 .env 与脚本产物一致：<code>ssh linqibin@100.103.73.27 'cat ~/actions-runner/.env'</code> 应与脚本 heredoc 逐行一致（JAVA_HOME 为 Task 1 实测路径）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra/scripts/install-github-runner.sh
+git commit -m "feat(infra): install-github-runner 固化代理/JAVA_HOME/--disableupdate 并补运维 runbook"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-9" data-status="done">
+        <header>
+          <h2>任务 9：文档同步与归档</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-infra/CLAUDE.md</code>（「Self-hosted Runner 与 CD（多服务）」节）</dd>
+            <dt>提交</dt><dd><code>docs/patra/specs/2026-06-08-cicd-production-grade-review.md</code>（已存在未跟踪）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：重写 CLAUDE.md 的 CD 节（整节替换）</strong>
+            <pre><code class="lang-markdown">## Self-hosted Runner 与 CD（多服务，Mac mini 原生构建）
+
+5 个后端应用 + portal 由 GitHub Actions CD 自动部署，链路见 `.github/workflows/cd.yml` /
+`portal-cd.yml`。**2026-08-27 架构修订：构建从 ubuntu(QEMU 交叉编译) 搬回 Mac mini 原生
+arm64**——部署不再经翻墙代理从 GHCR 拉大镜像（曾致 EOF/20 分钟超时），amd64 架构错配
+事故结构性消除；GHCR 降级为「归档/回滚备源」，推送 best-effort 失败不阻塞部署。
+
+- **服务 SSOT**：`patra-infra/cd/services.json`（name / gradleTask / context / port / image /
+  healthPath / healthMatch）。加新服务 = 加一个条目 + compose service 块 + `.env.&lt;svc&gt;`。
+  portal 条目为 deploy-only（构建在 portal-cd.yml docker build 内）。
+- **两段 job**：`detect-changes`（ubuntu，受影响单元路由，逻辑在 `detect-changes.sh`）→
+  `build-deploy`（macmini：gradlew bootJar → 原生 docker build → `deploy.sh` → GHCR 归档推送）。
+- **deploy.sh**（`patra-infra/cd/deploy.sh`，有单测 `deploy.test.sh`）：镜像就位（本地优先，
+  缺失才回源 GHCR）→ arm64 断言 → 依赖顺序 up（object-storage 优先）→ 健康检查
+  （127.0.0.1，不用 localhost——IPv6 误报实际踩坑）→ 部署后验证（运行容器 tag == 期望）→
+  不健康自动回滚到 last-good（记录在 mini `~/.patra/cd/last-good-&lt;svc&gt;`，服务级）。
+- **回滚**：`workflow_dispatch` 填 `service` + `image_tag`（旧 sha）→ 跳过构建，本地镜像
+  缓存优先、缺失才拉 GHCR。健康检查失败时 deploy.sh 也会自动回滚。
+- **构建环境（mini）**：与 MacBook 同套——Homebrew + brew 装 mise + `java@zulu-25.30.17.0`
+  全局钉版（升级时两台一起升）；`JAVA_HOME` 固化在 `~/actions-runner/.env`（连同 Clash 代理
+  变量，launchd 不继承 shell 环境）；docker PATH 靠 `~/actions-runner/.path` 补
+  `/usr/local/bin` 与 `/opt/homebrew/bin`；Gradle/镜像层缓存常驻本机。
+- **失败通知**：CD/watchdog 任一失败经 ntfy 推手机（secrets `NTFY_TOPIC`，未配置则跳过）。
+- **runner 看门狗**：`runner-watchdog.yml` 每日 API 查在线 + mini canary（docker/磁盘/
+  unhealthy 容器）。防「离线 30 天被 GitHub 注销」（2026-08 实际发生）。
+  需 secrets `RUNNER_ADMIN_TOKEN`（fine-grained PAT，仅本仓库 Administration:Read）。
+- **运维红线**：派发任务期间严禁重启 runner（杀 Worker）；runner 自更新已禁用
+  （`--disableupdate`），升级=闲时重跑 `install-github-runner.sh`。
+- **安全**：CD 只监听 push:main 与 workflow_dispatch，绝不跑 fork PR 代码；runner 对
+  GitHub 出向长轮询、无入站端口。</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：核对旧节中被删除的知识点已有去处</strong>
+            <p>旧节的「runner docker PATH 靠 .path」「env 三层 + 密钥二分」两点仍然成立且未被新文字覆盖——保留原文（「env 三层」在节尾原样保留；`.path` 一句并入新节「构建环境」条目末尾：<code>docker PATH 靠 `~/actions-runner/.path` 补 `/usr/local/bin`</code>）。确认无引用悬空：<code>grep -rn 'build-and-push\|QEMU' patra-infra/ docs/patra/specs/2026-06-08-backend-multiservice-cd-design.html</code>，spec 中历史描述不改（spec 是当时决策记录），CLAUDE.md/README 不应再有。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：归档 review 备忘 + Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra/CLAUDE.md docs/patra/specs/2026-06-08-cicd-production-grade-review.md \
+        docs/patra/plans/2026-08-27-cd-native-build-on-mini.html
+git commit -m "docs(infra): CD 节改写为 mini 原生构建架构；归档 cicd review 备忘与本次实施计划"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-10" data-status="in-progress">
+        <header>
+          <h2>任务 10：Secrets 配置 + PR（draft → CodeRabbit 流程）</h2>
+          <dl class="files">
+            <dt>配置</dt><dd>repo secrets：<code>NTFY_TOPIC</code>（Claude 可完成）、<code>RUNNER_ADMIN_TOKEN</code>（需用户创建 PAT）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：生成并配置 NTFY_TOPIC</strong>
+            <pre><code class="lang-bash">TOPIC="patra-alerts-$(openssl rand -hex 8)"
+gh secret set NTFY_TOPIC -R linqibin0826/patra --body "$TOPIC"
+echo "topic: $TOPIC"</code></pre>
+            <p>预期：secret 写入成功。把 topic 值告知用户：手机装 ntfy App（iOS/Android），订阅该 topic 即收通知。topic 含 16 位随机 hex，等同弱密钥，不写入仓库。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：请用户创建 RUNNER_ADMIN_TOKEN（唯一需要用户亲手做的事）</strong>
+            <p>指引用户：GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token；Repository access 只选 <code>linqibin0826/patra</code>；Repository permissions 只给 <code>Administration: Read-only</code>；有效期建议 1 年。拿到 token 后执行：</p>
+            <pre><code class="lang-bash">gh secret set RUNNER_ADMIN_TOKEN -R linqibin0826/patra</code></pre>
+            <p>（交互式粘贴，不落 shell 历史。）此步可与 PR 评审并行；未配置前 watchdog 会以明确报错失败——这是有意的显性降级，不做静默跳过。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：推分支、开 draft PR、启动 Monitor</strong>
+            <pre><code class="lang-bash">git push -u origin feat/cd-native-build-on-mini
+gh pr create --draft --title "feat(cd): 构建搬回 Mac mini 原生 arm64 + 通知/看门狗/自动回滚" \
+  --body-file /tmp/pr-body.md   # body 概述架构决策与验证方式，末尾附 Generated with Claude Code 标注</code></pre>
+            <p>按仓库规范：创建后立即启动 Monitor 绑定该 PR（CodeRabbit + 人工两条流）；自查通过后转 ready 并评论 <code>@coderabbitai review</code> 触发首评；处理完一批反馈再 @ 复评，每条意见回复「已修复+SHA」或「不修复+理由」。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：合并（评审通过后 squash merge，删除远端分支）</strong>
+            <p>运行：<code>gh pr merge --squash --delete-branch</code></p>
+            <p>预期：合并即触发新 cd.yml 首跑（本 PR 改了 cd.yml → detect 判全量）——这天然就是 Task 11 的全量验证，观察它而非另行 dispatch。</p>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-11" data-status="pending">
+        <header>
+          <h2>任务 11：合并后 E2E 验证（全量 / 回滚 / 通知 / 看门狗）</h2>
+          <dl class="files">
+            <dt>验证</dt><dd>GitHub Actions 实跑 + mini 现场状态</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：观察合并触发的全量 CD 首跑（mini 原生构建 5 服务）</strong>
+            <pre><code class="lang-bash">gh run watch -R linqibin0826/patra $(gh run list -R linqibin0826/patra --workflow cd.yml --limit 1 --json databaseId --jq '.[0].databaseId')</code></pre>
+            <p>预期：build-deploy 成功（冷缓存 ≤40min）；随后核对：</p>
+            <pre><code class="lang-bash">ssh linqibin@100.103.73.27 '
+  ls -la ~/.patra/cd/
+  docker ps --filter name=patra- --format "{{.Names}}\t{{.Image}}\t{{.Status}}"
+  docker image inspect --format "{{.Architecture}}" ghcr.io/linqibin0826/patra-catalog:latest
+'</code></pre>
+            <p>预期：5 个 last-good 文件为合并 sha；容器全 healthy 且 tag 为合并 sha；架构 arm64。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 2：portal CD 验证（dispatch 触发，验证原生构建 + deploy.sh portal 路径）</strong>
+            <pre><code class="lang-bash">gh workflow run portal-cd.yml -R linqibin0826/patra
+# 完成后：
+ssh linqibin@100.103.73.27 'docker image inspect --format "{{.Architecture}}" ghcr.io/linqibin0826/patra-portal:latest'</code></pre>
+            <p>预期：run 成功、输出 <code>arm64</code>（此前一直是 amd64）、容器 healthy、<code>~/.patra/cd/last-good-portal</code> 生成。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 3：回滚演练（单服务回滚到上一个镜像 tag 再滚回）</strong>
+            <pre><code class="lang-bash"># PREV = 合并前最后一次成功部署的 sha（3ba06604f38218d4a1ddfc3beb2b7b7f8b67cf06）
+gh workflow run cd.yml -R linqibin0826/patra -f service=catalog -f image_tag=3ba06604f38218d4a1ddfc3beb2b7b7f8b67cf06
+# 成功后确认 catalog 镜像为 PREV 且 healthy（应命中本地镜像缓存，秒级完成不经 GHCR），
+# 再 dispatch 一次填新 sha 滚回最新。</code></pre>
+            <p>预期：两次 dispatch 均成功；回滚路径（跳过构建、本地镜像优先）实证可用。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 4：通知与看门狗演练</strong>
+            <pre><code class="lang-bash"># 通知通道端到端（绕过 workflow 直接验证 topic → 手机）：
+curl -fsS -H "Title: Patra 通知测试" -d "看到这条说明通知链路通了" "https://ntfy.sh/&lt;TOPIC值&gt;"
+# 看门狗全链路：
+gh workflow run runner-watchdog.yml -R linqibin0826/patra</code></pre>
+            <p>预期：手机收到测试推送；watchdog run 中 check-runner online、canary 三步全绿（RUNNER_ADMIN_TOKEN 若未配置，check-runner 按设计显性失败并触发 ntfy——那也是一次成功的失败通知演练）。</p>
+          </li>
+          <li class="step" data-status="pending">
+            <strong>步骤 5：收尾清理</strong>
+            <p>确认 GHCR 归档推送 step 无持续 warning；mini 磁盘余量正常（<code>df -h /</code>）；更新记忆文件中与 CD 架构相关的过时描述（如有）。向用户交付最终报告：新链路各环节实测结论 + 剩余用户动作（订阅 ntfy topic / 创建 PAT，若尚未完成）。</p>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>方案 A（原生构建）→ Task 1/5/6；P0-1 失败通知 → Task 5/6/7/10；P0-2 runner 看门狗 → Task 7；P0-3 portal arm64 → Task 6；P1-4 安装脚本回写 → Task 8；P1-5 部署后验证 → Task 4（verify_running_tag + assert_arm64）；P2-6 自动回滚 → Task 3/4；P2-7 触发降噪 → Task 5/6（paths !**/*.md）；「不建议做的」（K8s/自建 registry/僵尸 run 设防）确认无对应任务。文档同步与 review 归档 → Task 9。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>全部代码块为完整可执行内容；无 TODO/待定/「类似任务 N」。仅两处有意的运行期取值：Task 1/8 的 JAVA_HOME（探测逻辑已给全）、Task 11 的 PREV sha（已给出实际值 3ba06604f…）。FILL 注释已全部替换。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>deploy.sh 签名 <code>deploy.sh &lt;TAG&gt; &lt;SERVICES_JSON&gt;</code> 在 Task 3（测试调用）、Task 5（cd.yml）、Task 6（portal-cd.yml '["portal"]'）一致；注入点变量名（SERVICES_FILE/COMPOSE_DIR/LAST_GOOD_DIR/DOCKER/CURL/HEALTH_*/PULL_BACKOFFS）测试与实现一致；services.json 新字段 healthPath/healthMatch 与 meta() 读取一致；tag 环境变量规则 <code>tr 'a-z-' 'A-Z_'</code> + <code>_IMAGE_TAG</code> 与 compose 文件已有变量名（PORTAL_IMAGE_TAG 等）一致；last-good 文件名 <code>last-good-&lt;svc&gt;</code> 在 Task 3/4/9/11 一致；secrets 名 NTFY_TOPIC/RUNNER_ADMIN_TOKEN 在 Task 5/6/7/10 一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>11 个 task 均有唯一 id（task-1…task-11）与初始 data-status="pending"；每个 step li 均有 data-status="pending"；TOC toc-tasks 11 条与中栏 article 一一对应（href/task-N/状态均一致）；meta dl 含目标/架构/技术栈/关联 spec 四项；head 仅 2 个 link 指向 ../styles/，无内联 style 块。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <li class="note" data-type="change" data-time="2026-08-27T20:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-27T20:05">08-27 20:05</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>步骤 1（装 Homebrew）跳过：mini 上已有 Homebrew 6.0.19（用户此前自装，含大量包）。此前探测说"无 brew"是非交互 ssh 的 PATH 假象（/opt/homebrew/bin 不在默认 PATH）。步骤 2 起照常执行，两台 Mac 的一致性目标不受影响。</p>
+      </li>
+      <!-- ENTRY TEMPLATE:
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+    </ol>
+
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">1</span> decisions /
+      <span data-counter="change">1</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">0</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>

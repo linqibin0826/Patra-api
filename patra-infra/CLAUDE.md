@@ -50,18 +50,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 4. **`.env` / `.env.dev` 含真实 dev 凭据且随仓库提交。** 这是有意为之 —— Mac mini 靠 `git pull` 同步这些配置（PG/MinIO/MySQL 密码、`NACOS_AUTH_TOKEN`/`IDENTITY` 等）。这些是 dev 默认值、对应服务仅在 tailscale 内网暴露，公网打不到端口。新增密钥时沿用此约定（`.env.example` 是模板，Nacos token 用 `openssl rand -base64 32` 生成）；如未来引入真正敏感的生产密钥，须改走外部 secret 注入、不要提交。
 
-## Self-hosted Runner 与 CD（多服务）
+## Self-hosted Runner 与 CD（多服务，Mac mini 原生构建）
 
-5 个后端应用（registry / object-storage / catalog / ingest / gateway）由 GitHub Actions CD 自动部署，链路见 `.github/workflows/cd.yml`，设计见 `docs/patra/specs/2026-06-08-backend-multiservice-cd-design.html`（单服务首版见 `2026-06-07-cd-macmini-design.html`）。
+5 个后端应用 + portal 由 GitHub Actions CD 自动部署，链路见 `.github/workflows/cd.yml` / `portal-cd.yml`，设计见 `docs/patra/specs/2026-06-08-backend-multiservice-cd-design.html`（单服务首版见 `2026-06-07-cd-macmini-design.html`）。**2026-08-27 架构修订：构建从 ubuntu(QEMU 交叉编译) 搬回 Mac mini 原生 arm64**——部署不再经翻墙代理从 GHCR 拉大镜像（曾致 EOF/20 分钟超时），amd64 架构错配事故结构性消除；GHCR 降级为「归档/回滚备源」，推送 best-effort 失败不阻塞部署。
 
-- **服务 SSOT**：`patra-infra/cd/services.json` 列出每个服务的 `name / gradleTask / context / port / image / srcPrefix`。**加新服务 = 加一个条目**（再在 compose 加 service 块 + 建 `.env.<svc>`），workflow 逻辑不变。
-- **选择性构建**：`patra-infra/cd/detect-changes.sh` 按 git diff 把改动路径映射到 services.json 的 srcPrefix，只构建/部署改动的服务。**改公共面**（`patra-api/patra-common*` / `linqibin-commons/*` / `patra-starters/*` / `build-logic` / `gradle` / 根构建脚本 / `service.Dockerfile` / `docker-compose.apps.yaml` / `.env.common` / `cd.yml` / `services.json`）→ **重建全部 5 个**（正确性优先，宁可多建不可漏建）；docs / 前端 patra-portal / 运维脚本 / markdown 改动不触发构建。
-- **三段 job**：`detect-changes`（算改动服务，输出 matrix JSON）→ `build-and-push`（ubuntu，动态 `matrix.service` 只构建改动的，用共享 `service.Dockerfile` build 推 `ghcr.io/linqibin0826/patra-<svc>`）→ `deploy`（Mac mini，单 job 循环按依赖顺序 **object-storage 优先**，`compose pull + up` + 逐服务 `/actuator/health`）。
-- **共享分层 Dockerfile**：`patra-infra/docker/service.Dockerfile` 一份供 5 服务共用（`--build-arg APP_PORT` 区分端口）；5 服务都用 `linqibin.hexagonal-boot` 打 fat jar，Spring Boot 4 `jarmode=tools` 分层结构通用，依赖层缓存复用使弱网每次只传变化的 application 层。
-- **runner**：Mac mini 上 `install-github-runner.sh` 装的 self-hosted runner（labels `self-hosted,macmini`，launchd 常驻），对 GitHub 出向长轮询、无入站端口，deploy 在本地跑，零网络打洞。
-- **触发与回滚**：push main 命中相关 paths 自动跑；`workflow_dispatch` 填 `service`（单服务名）+ `image_tag`（旧 sha）即回滚（跳过构建，直接部署 GHCR 已有镜像）。安全：不监听 `pull_request`，self-hosted runner 绝不跑 fork PR 代码。
+- **服务 SSOT**：`patra-infra/cd/services.json`（`name / gradleTask / context / port / image / healthPath / healthMatch`）。**加新服务 = 加一个条目**（再在 compose 加 service 块 + 建 `.env.<svc>`），workflow 逻辑不变。portal 条目为 deploy-only（构建在 portal-cd.yml 的 docker build 内）。
+- **选择性构建**：`patra-infra/cd/detect-changes.sh` 按 git diff 做受影响单元路由，只构建/部署改动的服务。**改公共面**（`patra-api/patra-common*` / `linqibin-commons/*` / `patra-starters/*` / `build-logic` / `gradle` / 根构建脚本 / `service.Dockerfile` / `docker-compose.apps.yaml` / `cd.yml` / `patra-infra/cd/*`）→ **重建全部 5 个**（正确性优先，宁可多建不可漏建）；docs / markdown / 运维脚本改动不触发构建。
+- **两段 job**：`detect-changes`（ubuntu，受影响单元路由）→ `build-deploy`（macmini：`gradlew bootJar` → 原生 `docker build` → `deploy.sh` → GHCR 归档推送 best-effort）。
+- **deploy.sh**（`patra-infra/cd/deploy.sh`，有单测 `deploy.test.sh`）：镜像就位（本地优先，缺失才回源 GHCR）→ arm64 断言 → 依赖顺序 up（**object-storage 优先**）→ 健康检查（127.0.0.1，不用 localhost——IPv6 误报实际踩坑）→ 部署后验证（运行容器 tag == 期望）→ 不健康自动回滚到 last-good（记录在 mini `~/.patra/cd/last-good-<svc>`，服务级）。
+- **共享分层 Dockerfile**：`patra-infra/docker/service.Dockerfile` 一份供 5 服务共用（`--build-arg APP_PORT` 区分端口）；5 服务都用 `linqibin.hexagonal-boot` 打 fat jar，Spring Boot 4 `jarmode=tools` 分层结构通用，依赖层在本机 daemon 长期缓存。
+- **触发与回滚**：push main 命中相关 paths 自动跑；`workflow_dispatch` 填 `service`（单服务名）+ `image_tag`（旧 sha）即回滚（跳过构建，本地镜像缓存优先、缺失才拉 GHCR）。健康检查失败时 deploy.sh 也会自动回滚。安全：不监听 `pull_request`，self-hosted runner 绝不跑 fork PR 代码；对 GitHub 出向长轮询、无入站端口。
+- **构建环境（mini）**：与 MacBook 同套——Homebrew + brew 装 mise + `java@zulu-25.30.17.0` 全局钉版（升级时两台一起升）；`JAVA_HOME` 固化在 `~/actions-runner/.env`（连同 Clash 代理变量，launchd 不继承 shell 环境）；docker PATH 靠 `~/actions-runner/.path` 补 `/usr/local/bin` 与 `/opt/homebrew/bin`；Gradle/镜像层缓存常驻本机。
+- **失败通知**：CD / watchdog 任一失败经 ntfy 推手机（secrets `NTFY_TOPIC`，未配置则跳过）。
+- **runner 看门狗**：`runner-watchdog.yml` 每日 API 查在线 + mini canary（docker/磁盘/unhealthy 容器）。防「离线 30 天被 GitHub 注销」（2026-08 实际发生）。需 secrets `RUNNER_ADMIN_TOKEN`（fine-grained PAT，仅本仓库 Administration:Read）。
+- **运维红线**：派发任务期间严禁重启 runner（杀 Worker）；runner 自更新已禁用（`--disableupdate`），升级=闲时重跑 `install-github-runner.sh`。
 - **容器内 Nacos 无需 ssh tunnel**：应用容器和 nacos 同在 `patra-net`，gRPC 走 Docker bridge 不经 tailscale，直接 `NACOS_HOST=nacos`。
-- **runner 的 docker PATH**：靠 `~/actions-runner/.path` 补 `/usr/local/bin`（runner 不依赖 `~/.zshenv`）。
 - **env 三层 + 密钥二分**：`env_file` 顺序叠加 `.env.common`（共享基建坐标，patra-net 服务名 + 内网 dev 默认）→ `.env.<svc>`（服务专属 DB/Redis/bucket/日志路径）→ `.env.<svc>.secret`（真敏感密钥，被 `.gitignore` 的 `.env.*.secret` 挡住，绝不进仓库，缺失时跳过，后者覆盖同名）。**外部数据源 API key（Scopus / 青果 proxy / RocketMQ ACL 等）一律只进 `.secret`**，committed 文件只放内网 dev 默认值。
 
 ## scripts 一览
