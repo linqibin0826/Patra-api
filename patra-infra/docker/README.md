@@ -39,7 +39,7 @@ docker/
 **MacBook ↔ Mac mini 链路**：
 
 - 在家（同一 LAN）→ DNS 解析为 `192.168.1.11` → LAN 直连，延迟 < 5ms
-- 离家 → DNS 解析为 `100.73.7.112` → tailscale 加密隧道
+- 离家 → DNS 解析为 `100.103.73.27` → tailscale 加密隧道
 
 两种网络环境无需任何切换配置。
 
@@ -315,7 +315,7 @@ ssh linqibin@linqibins-mac-mini 'docker logs patra-rocketmq-broker 2>&1 | grep "
 `MINIO_BROWSER_REDIRECT_URL` 必须指向用户浏览器能访问的地址。默认 `linqibins-mac-mini:19001`，如改用 IP 部署可：
 
 ```bash
-PATRA_INFRA_HOST=100.73.7.112 docker compose -f patra-infra/docker/docker-compose.storage.yaml up -d minio
+PATRA_INFRA_HOST=100.103.73.27 docker compose -f patra-infra/docker/docker-compose.storage.yaml up -d minio
 ```
 
 ---
