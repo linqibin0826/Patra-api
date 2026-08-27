@@ -30,7 +30,6 @@ export function MetroMap() {
         viewBox={`0 0 ${width} ${height}`}
         width={width}
         height={height}
-        role="img"
         aria-label="学习网络图：三条开通线与两条规划线"
       >
         {LINES.map((line, row) => {

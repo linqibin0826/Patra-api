@@ -27,7 +27,7 @@ export function ContinueCard() {
         </span>
         <span className="pt-2 text-sm text-fog">
           {next
-            ? `接下来学：${next.line.name.slice(0, 4)} · ${next.station.name} —— ${next.station.summary}`
+            ? `接下来学：${next.line.name.split(" · ")[0] ?? next.line.name} · ${next.station.name} —— ${next.station.summary}`
             : visited === null
               ? "正在读取你的通勤记录…"
               : "全线通车！三条线都学完了 🎉"}
