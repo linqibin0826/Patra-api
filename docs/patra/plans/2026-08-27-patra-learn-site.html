@@ -25,8 +25,8 @@
           -->
           <li data-task-status="done"><a href="#task-1">Task 1 — 工程脚手架</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — 设计系统 token 与全局布局</a></li>
-          <li data-task-status="in-progress"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
+          <li data-task-status="in-progress"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
@@ -390,7 +390,7 @@ git commit -m "feat(learn): 设计系统 @theme token + 字体 + 顶栏（任务
         </ol>
       </article>
 
-      <article class="task" id="task-3" data-status="in-progress">
+      <article class="task" id="task-3" data-status="done">
         <header>
           <h2>任务 3：内容模型与线路拓扑（TDD）</h2>
           <dl class="files">
@@ -399,7 +399,7 @@ git commit -m "feat(learn): 设计系统 @theme token + 字体 + 顶栏（任务
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写失败的完整性测试</strong>
             <pre><code class="lang-ts">// patra-learn/src/content/integrity.test.ts
 import { describe, expect, it } from "vitest";
@@ -439,7 +439,7 @@ describe("线路拓扑完整性", () =&gt; {
 });</code></pre>
             <p>运行：<code>cd patra-learn &amp;&amp; pnpm test</code>　预期：<span class="pill high">红</span>（lines.ts 不存在，import 失败）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：types.ts</strong>
             <pre><code class="lang-ts">// patra-learn/src/content/types.ts
 export type LineId = "l1" | "l2" | "l3" | "l4" | "l5";
@@ -488,7 +488,7 @@ export interface OpsCard {
   lineId: LineId;    // 徽章取该线颜色
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：lines.ts 全量拓扑数据（站名以画布 Sitemap 为准）</strong>
             <pre><code class="lang-ts">// patra-learn/src/content/lines.ts
 import type { Line } from "./types";
@@ -573,7 +573,7 @@ export const LINES: Line[] = [
 ];</code></pre>
             <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>（5 个用例全过）。<code>pnpm typecheck</code> 通过。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/src/content
 git commit -m "feat(learn): 内容模型与三线十三站拓扑 + 完整性测试（任务 3/16）"</code></pre>
@@ -581,7 +581,7 @@ git commit -m "feat(learn): 内容模型与三线十三站拓扑 + 完整性测�
         </ol>
       </article>
 
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="in-progress">
         <header>
           <h2>任务 4：进度库 progress.ts（TDD）</h2>
           <dl class="files">
@@ -2062,12 +2062,20 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>lint 仍有 biome schema 版本 info 提示（Task 1 已记录的同一事项），info 级非 error，保持与 portal 同构不动 biome.json。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T00:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T00:50">08-28 00:50</time>
+          <a href="#task-3">&sect; Task 3</a>
+        </header>
+        <p>biome check --write 重排 lines.ts / integrity.test.ts 的对象换行（超行宽 station 对象展开为多行），语义不变（Task 2 先例的同类重排）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">1</span> decisions /
-      <span data-counter="change">2</span> changes /
+      <span data-counter="change">3</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
