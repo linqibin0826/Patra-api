@@ -100,7 +100,9 @@ services:
         required: false
     healthcheck:
       # busybox wget（node:alpine 自带，免装 curl）；/api/health 不依赖 gateway
-      test: [ "CMD", "wget", "-q", "-O", "-", "http://localhost:4000/api/health" ]
+      # 用 127.0.0.1 而非 localhost：容器内 localhost 先解析 ::1（IPv6），
+      # 而 Next.js standalone 只监听 IPv4，busybox wget 无回退会 Connection refused
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4000/api/health" ]
       <<: *app-healthcheck
 
 networks:
