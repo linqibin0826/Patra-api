@@ -23,8 +23,8 @@
           <!-- ENTRY TEMPLATE（注释保留供添加 task 时复制）:
           <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
           -->
-          <li data-task-status="pending"><a href="#task-1">Task 1 — 工程脚手架</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — 设计系统 token 与全局布局</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — 工程脚手架</a></li>
+          <li data-task-status="in-progress"><a href="#task-2">Task 2 — 设计系统 token 与全局布局</a></li>
           <li data-task-status="pending"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
@@ -149,7 +149,7 @@ patra-infra/CLAUDE.md                            [modify] 服务清单补 learn�
       </article>
       -->
 
-      <article class="task" id="task-1" data-status="pending">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：工程脚手架</h2>
           <dl class="files">
@@ -157,7 +157,7 @@ patra-infra/CLAUDE.md                            [modify] 服务清单补 learn�
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：建目录并复制 portal 的通用配置</strong>
             <pre><code class="lang-bash">mkdir -p patra-learn/src/app/api/health
 cp patra-portal/biome.json patra-portal/postcss.config.mjs patra-portal/.nvmrc patra-learn/
@@ -174,7 +174,7 @@ test-results/
 next-env.d.ts</code></pre>
             <p>检查 <code>tsconfig.json</code> 含 <code>"paths": { "@/*": ["./src/*"] }</code>（portal 已配则原样保留；没有则补上）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：写 package.json（依赖版本号从 patra-portal/package.json 抄同名条目的版本）</strong>
             <pre><code class="lang-json">{
   "name": "patra-learn",
@@ -214,7 +214,7 @@ next-env.d.ts</code></pre>
 }</code></pre>
             <p>「《抄 portal》」= 打开 <code>patra-portal/package.json</code> 把同名依赖的版本字符串原样填入——这是精确指令而非占位。portal 没有的依赖不加。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：next.config.ts 与 vitest.config.ts</strong>
             <pre><code class="lang-ts">// patra-learn/next.config.ts
 import type { NextConfig } from "next";
@@ -235,7 +235,7 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
 });</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：健康检查端点 + 最小 app 骨架</strong>
             <pre><code class="lang-ts">// patra-learn/src/app/api/health/route.ts —— 与 portal 同款（CD 健康检查依赖）
 import { NextResponse } from "next/server";
@@ -268,12 +268,12 @@ export default function HomePage() {
             <pre><code class="lang-css">/* patra-learn/src/app/globals.css —— 最小版，Task 2 全量替换 */
 @import "tailwindcss";</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：安装依赖并验证</strong>
             <p>运行：<code>cd patra-learn &amp;&amp; pnpm install &amp;&amp; pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm build</code></p>
             <p>预期：三条命令全部 0 退出。再验证 dev server：<code>pnpm dev &amp;</code> 后 <code>curl -s http://127.0.0.1:4001/api/health</code> 返回 <code>{"status":"ok",…}</code>，然后杀掉 dev 进程。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn
 git commit -m "feat(learn): 工程脚手架——Next.js 15 骨架 + 健康检查端点（任务 1/16）"</code></pre>
@@ -281,7 +281,7 @@ git commit -m "feat(learn): 工程脚手架——Next.js 15 骨架 + 健康检�
         </ol>
       </article>
 
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="in-progress">
         <header>
           <h2>任务 2：设计系统 token 与全局布局</h2>
           <dl class="files">
@@ -2006,16 +2006,46 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
       data-type 4 类：decision / change / tradeoff / other
       追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
       -->
+      <li class="note" data-type="change" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>新增计划外文件 src/types/globals.d.ts（declare module "*.css"）——TypeScript 6 下 import "./globals.css" 报 TS2882，portal 有同款文件，照抄其模式。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>.gitignore 原样保留 portal 版本（不忽略 next-env.d.ts，该文件随 commit 入库，与 portal 模板一致）；plan 里的 fallback gitignore 未启用（复制成功）。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>biome lint 有 2 条 info（schema 2.4.15 vs CLI 2.5.10；recommended 字段 deprecated），退出码 0，与 portal 完全一致，未执行 biome migrate 以保持与模板同构。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>环境怪事：这台 MacBook 上 QQ 客户端占用 127.0.0.1:4001（IPv4），next dev 监听 IPv6 通配，curl 127.0.0.1:4001 会打到 QQ；本机验证需用 [::1]:4001。Mac mini 上是否有同样冲突未验证——Task 15 部署验证时留意，若 mini 也冲突则届时换端口。</p>
+      </li>
     </ol>
-
-    <p class="empty-state">no notes yet</p>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="decision">1</span> decisions /
+      <span data-counter="change">1</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="other">2</span> others
     </footer>
   </aside>
 
