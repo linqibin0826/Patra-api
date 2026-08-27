@@ -11,7 +11,7 @@ export default function ChangedOnlyArticle() {
           最笨的 CI 是每次 PR
           把所有服务全部编译、全部测一遍——正确，但一轮几十分钟，改一行文档也要等。这条线聪明在开考前多了一步：
           <strong className="text-ink">先算这次到底改了什么，只考改过的科目</strong>。改 catalog
-          只考 catalog，改公共库全员重考，改文档全员免考。普通 PR 因此几分钟出成绩。
+          只考 catalog，改地基级的公共库全员重考，改文档全员免考。普通 PR 因此几分钟出成绩。
         </p>
         <p>
           干这件事的裁判是一个 shell 脚本：
@@ -202,10 +202,12 @@ export default function ChangedOnlyArticle() {
         <p>几条规则值得单独说透：</p>
         <ul className="flex list-disc flex-col gap-1.5 pl-5">
           <li>
-            <strong className="text-ink">改公共库 = 全员重考。</strong>
-            commons、starters、Gradle
-            构建脚本这些是所有服务共用的地基，动了地基就不能只考一间房。同理，共享的 Dockerfile 和{" "}
-            <Term>docker compose</Term> 编排文件变了，也是全量——它们决定每个服务怎么打包、怎么落座。
+            <strong className="text-ink">改公共库，按模块图算波及面。</strong>
+            commons、starters 这些公共模块并不是一律全量：像 commons-core
+            这样人人依赖的地基，模块图会算出它波及全部单元、全员重考；而 starter-batch
+            这类只有两个单元用到的，就只考那两科。真正写死"必全量"的是 Gradle 构建脚本、共享的
+            Dockerfile 和 <Term>docker compose</Term>{" "}
+            编排文件——它们决定每个服务怎么编译、怎么打包、怎么落座，模块图管不到。
           </li>
           <li>
             <strong className="text-ink">workflow 自身变更 = 全量 + 前端也考。</strong>

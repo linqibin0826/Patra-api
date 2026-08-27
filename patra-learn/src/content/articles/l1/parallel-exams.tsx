@@ -235,8 +235,8 @@ export default function ParallelExamsArticle() {
         </p>
         <p>
           为什么要多此一举加一层汇总，而不是让分支保护直接盯每一科？因为考的科目数
-          <strong className="text-ink">每次都不一样</strong>——改 catalog
-          考一科，改公共库考六科。分支保护里的 required
+          <strong className="text-ink">每次都不一样</strong>——改 catalog 考一科，改 commons-core
+          这种地基公共库按模块图波及全部六科。分支保护里的 required
           名单是写死的，没法跟着变；于是让它只认这一个固定名字的总闸。这也带来一条铁律：
           <strong className="text-ink">这个 job 的名字绝对不能改</strong>
           ，改了名，分支保护就找不到灯，任何 PR 都合不进去。
@@ -245,7 +245,7 @@ export default function ParallelExamsArticle() {
           最后补一块拼图：每天夜里（UTC 18 点，北京时间凌晨 2 点）这套 <Term>workflow</Term>{" "}
           还会由定时器自动全量跑一遍——所有单元重考、E2E
           转为硬门槛、覆盖率聚合上传。它兜住"选择性考试万一漏了什么"的极小概率，顺便让构建缓存保温。考试用到的少数凭据（缓存加密钥匙、覆盖率平台的令牌）都放在
-          GitHub 的 <Term>secrets</Term> 保险柜里，公开仓库里一个密码都没有。
+          GitHub 的 <Term>secrets</Term> 保险柜里，考试要用的凭据一个都没进仓库。
         </p>
         <p>
           至此 1 号线到站。灯是绿的、意见都 resolve 了，你点下 Merge——列车驶入换乘站，2

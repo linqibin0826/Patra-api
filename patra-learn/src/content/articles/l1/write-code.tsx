@@ -221,7 +221,8 @@ export default function WriteCodeArticle() {
           <strong className="text-ink">推一条 feature 分支本身并不会触发任何考试</strong>——
           <Term>GitHub Actions</Term> 的 CI <Term>workflow</Term>（
           <code className="rounded bg-mist px-1.5 py-0.5 font-mono text-xs">ci.yml</code>
-          ）只在两种时刻开工：你开了指向 main 的 PR，或者代码合并进了 main。
+          ）对你手上这条改动而言只在两个时刻开工：你开了指向 main 的 PR，或者代码合并进了
+          main（此外它还有每晚的定时全量考和手动触发按钮，到「并行考试」站细讲）。
         </p>
         <p>所以此刻你的代码状态是"已报到、未报名"。下一站就去报名——开 PR，正式进考场。</p>
       </ArticleSection>

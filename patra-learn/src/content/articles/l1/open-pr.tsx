@@ -20,7 +20,7 @@ export default function OpenPrArticle() {
         <CodeBlock command="gh pr create --draft" />
       </ArticleSection>
 
-      <ArticleSection title="闸机检查三件事">
+      <ArticleSection title="闸机的两把锁">
         <p>
           PR 页面那颗 Merge 按钮不是你想点就能点的。<Term>分支保护</Term>
           给它加了两把锁，全开了按钮才亮：
