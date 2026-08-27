@@ -40,7 +40,7 @@ export default function CheatsheetPage() {
             key={text}
             className="rounded-xl border border-line border-l-4 border-l-danger bg-surface px-4 py-3 text-sm text-slate"
           >
-            <strong className="text-ink">红线{i === 0 ? "一" : "二"}：</strong>
+            <strong className="text-ink">红线{["一", "二", "三"][i] ?? String(i + 1)}：</strong>
             {text}
           </div>
         ))}

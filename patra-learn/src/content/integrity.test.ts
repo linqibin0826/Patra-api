@@ -68,7 +68,7 @@ describe("词条完整性", () => {
 
 describe("档案与小抄完整性", () => {
   it("6 份档案、编号 1-6 无重复、relatedStation 有效", () => {
-    expect(INCIDENTS.map((i) => i.no).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(INCIDENTS.map((i) => i.no).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
     for (const i of INCIDENTS) expect(openStations).toContain(i.relatedStation);
   });
   it("3 张操作卡、lineId 是开通线", () => {

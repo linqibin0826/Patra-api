@@ -20,7 +20,7 @@ export const OPS_CARDS: OpsCard[] = [
     action: "升级",
     lineId: "l1",
     scenario: "守夜线告警「版本过期」，或 runner 彻底失联需要重装。在 mini 上执行。",
-    command: "bash patra-infra/scripts/\\\n  install-github-runner.sh \\\n  <TOKEN>",
+    command: "bash patra-infra/scripts/install-github-runner.sh \\\n  <TOKEN>",
     note: "TOKEN 在仓库设置 Runners 页取",
   },
 ];
