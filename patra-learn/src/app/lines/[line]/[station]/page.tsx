@@ -1,4 +1,5 @@
 // patra-learn/src/app/lines/[line]/[station]/page.tsx
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArticleLayout } from "@/components/article-layout";
 import { ARTICLES } from "@/content/articles";
@@ -13,6 +14,20 @@ export function generateStaticParams() {
 }
 
 export const dynamicParams = false;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ line: string; station: string }>;
+}): Promise<Metadata> {
+  const { line: lineId, station: stationId } = await params;
+  const hit = getStation(`${lineId}/${stationId}`);
+  if (!hit) return {};
+  return {
+    title: `${hit.station.name} · Patra 学习站`,
+    description: hit.station.summary,
+  };
+}
 
 export default async function StationPage({
   params,
