@@ -1,6 +1,7 @@
 // patra-learn/src/content/integrity.test.ts
 import { describe, expect, it } from "vitest";
 import { ARTICLES } from "./articles";
+import { GLOSSARY } from "./glossary";
 import { LINES, TRANSFER_NODE } from "./lines";
 
 const openLines = LINES.filter((l) => l.status === "open");
@@ -46,6 +47,19 @@ describe("文章注册表完整性", () => {
     expect(Object.keys(ARTICLES).sort()).toEqual([...openStations].sort());
     for (const ref of openStations) {
       expect(typeof ARTICLES[ref as keyof typeof ARTICLES]).toBe("function");
+    }
+  });
+});
+
+describe("词条完整性", () => {
+  it("共 10 条、term 无重复", () => {
+    expect(GLOSSARY).toHaveLength(10);
+    expect(new Set(GLOSSARY.map((g) => g.term)).size).toBe(10);
+  });
+  it("appearsAt 引用的站都真实存在", () => {
+    for (const g of GLOSSARY) {
+      if (g.appearsAt === "all") continue;
+      for (const ref of g.appearsAt) expect(openStations).toContain(ref);
     }
   });
 });
