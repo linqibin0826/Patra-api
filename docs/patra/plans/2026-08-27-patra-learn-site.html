@@ -32,8 +32,8 @@
           <li data-task-status="done"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
           <li data-task-status="done"><a href="#task-8">Task 8 — 1 号线 4 篇文章内容</a></li>
           <li data-task-status="done"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
-          <li data-task-status="in-progress"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
-          <li data-task-status="pending"><a href="#task-11">Task 11 — 名词图鉴页</a></li>
+          <li data-task-status="done"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
+          <li data-task-status="in-progress"><a href="#task-11">Task 11 — 名词图鉴页</a></li>
           <li data-task-status="pending"><a href="#task-12">Task 12 — 事故档案馆与操作小抄页</a></li>
           <li data-task-status="pending"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
           <li data-task-status="pending"><a href="#task-14">Task 14 — Dockerfile 与本地容器验证</a></li>
@@ -1363,7 +1363,7 @@ git commit -m "feat(learn): 2 号线上线线 5 站课程正文（任务 9/16）
         </ol>
       </article>
 
-      <article class="task" id="task-10" data-status="in-progress">
+      <article class="task" id="task-10" data-status="done">
         <header>
           <h2>任务 10：3 号线 4 篇文章内容</h2>
           <dl class="files">
@@ -1371,11 +1371,11 @@ git commit -m "feat(learn): 2 号线上线线 5 站课程正文（任务 9/16）
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：读内容源</strong>
             <p>手册「平时：每天一次自动巡检」「安全设计：三道墙」两节 + 仓库真实文件 <code>.github/workflows/runner-watchdog.yml</code>、<code>patra-infra/scripts/install-github-runner.sh</code> 头部 runbook 注释。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：逐站撰写（质量线同任务 8）</strong>
             <table>
               <thead><tr><th>站</th><th>必须覆盖的要点</th><th>图解</th></tr></thead>
@@ -1387,11 +1387,11 @@ git commit -m "feat(learn): 2 号线上线线 5 站课程正文（任务 9/16）
               </tbody>
             </table>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证</strong>
             <p>同任务 8 步骤 3（4 个 URL）。13 篇全文就位后额外跑一次 <code>pnpm build</code> 确认 13 个 SSG 页全部生成。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/src/content/articles/l3
 git commit -m "feat(learn): 3 号线守夜线 4 站课程正文（任务 10/16）"</code></pre>
@@ -1399,7 +1399,7 @@ git commit -m "feat(learn): 3 号线守夜线 4 站课程正文（任务 10/16�
         </ol>
       </article>
 
-      <article class="task" id="task-11" data-status="pending">
+      <article class="task" id="task-11" data-status="in-progress">
         <header>
           <h2>任务 11：名词图鉴页（TDD）</h2>
           <dl class="files">
@@ -2174,12 +2174,20 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>质量审查修复（e76a2c184）：补 bash 3.2 伏笔段（plan 要点曾被静默漏掉）、修「四个字」计数、全量修剪 JSX 中文断行渲染空格——审查点名 7 处，grep 实测同类 39 处（l1 基准 0），全部合并修剪；biome noTemplateCurlyInString 用转义模板字面量绕过。审查员明示修完无需复审。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T09:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T09:55">08-28 09:55</time>
+          <a href="#task-10">&sect; Task 10</a>
+        </header>
+        <p>规格审查修复（26258b3c5）：60 天停用需手动 Enable（原文虚构了 push 自动唤醒）、双文件注释表述收紧、bash 坑「同一天」软化。质量审查 6 条 Minor（两处 SVG 箭头落点、三处措辞、24 容器数硬编码三处）接受不阻塞，归入 Task 16 收尾顺手处理。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">13</span> changes /
+      <span data-counter="change">14</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
