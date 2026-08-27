@@ -27,8 +27,8 @@
           <li data-task-status="done"><a href="#task-2">Task 2 — 设计系统 token 与全局布局</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
-          <li data-task-status="in-progress"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
+          <li data-task-status="in-progress"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
           <li data-task-status="pending"><a href="#task-8">Task 8 — 1 号线 4 篇文章内容</a></li>
           <li data-task-status="pending"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
@@ -691,7 +691,7 @@ git commit -m "feat(learn): localStorage 进度库（打卡/降级）+ 单测（
         </ol>
       </article>
 
-      <article class="task" id="task-5" data-status="in-progress">
+      <article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：内容查询助手与基础组件（TDD）</h2>
           <dl class="files">
@@ -700,7 +700,7 @@ git commit -m "feat(learn): localStorage 进度库（打卡/降级）+ 单测（
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写失败的 content 助手测试</strong>
             <pre><code class="lang-ts">// patra-learn/src/lib/content.test.ts
 import { describe, expect, it } from "vitest";
@@ -739,7 +739,7 @@ describe("content 助手", () =&gt; {
 });</code></pre>
             <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现 content.ts</strong>
             <pre><code class="lang-ts">// patra-learn/src/lib/content.ts
 import { LINES } from "@/content/lines";
@@ -780,7 +780,7 @@ export function firstUnvisited(visited: StationRef[]): StationRef | undefined {
 }</code></pre>
             <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：四个展示组件 + 打卡按钮</strong>
             <pre><code class="lang-tsx">// patra-learn/src/components/line-chip.tsx
 import type { Line } from "@/content/types";
@@ -887,7 +887,7 @@ export function CheckInButton({ stationRef }: { stationRef: StationRef }) {
 }</code></pre>
             <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test</code>　预期：全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/src
 git commit -m "feat(learn): 内容查询助手 + 基础组件（徽章/术语/命令块/打卡）（任务 5/16）"</code></pre>
@@ -895,7 +895,7 @@ git commit -m "feat(learn): 内容查询助手 + 基础组件（徽章/术语/�
         </ol>
       </article>
 
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="in-progress">
         <header>
           <h2>任务 6：课程页路由与 13 篇文章骨架（TDD）</h2>
           <dl class="files">
@@ -2086,12 +2086,28 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>Task 4 质量审查建议的 2 个微用例（readProgress 过滤非字符串元素、非数组合法 JSON）并入 Task 5 顺手补——杀死变异测试发现的 2 个存活变异体。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T02:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T02:10">08-28 02:10</time>
+          <a href="#task-5">&sect; Task 5</a>
+        </header>
+        <p>getStation 在 noUncheckedIndexedAccess 下报 TS2322，按 plan 预授权最小修正：先取 station 局部变量判 undefined 再返回（运行时行为不变）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T02:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T02:35">08-28 02:35</time>
+          <a href="#task-5">&sect; Task 5</a>
+        </header>
+        <p>质量审查修复（commit 783e16603）：CodeBlock 加 navigator.clipboard?. 可选链守卫（tailscale http 非安全上下文防 TypeError）+ firstUnvisited 乱序断言用例；commit subject 因 commitlint subject-case 规则前加「补」字。测试 17 用例全绿，复验通过。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">2</span> decisions /
-      <span data-counter="change">4</span> changes /
+      <span data-counter="change">6</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
