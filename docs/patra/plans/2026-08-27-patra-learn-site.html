@@ -35,8 +35,8 @@
           <li data-task-status="done"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
           <li data-task-status="done"><a href="#task-11">Task 11 — 名词图鉴页</a></li>
           <li data-task-status="done"><a href="#task-12">Task 12 — 事故档案馆与操作小抄页</a></li>
-          <li data-task-status="in-progress"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
-          <li data-task-status="pending"><a href="#task-14">Task 14 — Dockerfile 与本地容器验证</a></li>
+          <li data-task-status="done"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
+          <li data-task-status="in-progress"><a href="#task-14">Task 14 — Dockerfile 与本地容器验证</a></li>
           <li data-task-status="pending"><a href="#task-15">Task 15 — CI/CD 接入</a></li>
           <li data-task-status="pending"><a href="#task-16">Task 16 — 文档收尾</a></li>
         </ol>
@@ -1710,7 +1710,7 @@ git commit -m "feat(learn): 事故档案馆 6 档案 + 操作小抄 3 卡与红�
         </ol>
       </article>
 
-      <article class="task" id="task-13" data-status="in-progress">
+      <article class="task" id="task-13" data-status="done">
         <header>
           <h2>任务 13：Playwright 冒烟</h2>
           <dl class="files">
@@ -1718,7 +1718,7 @@ git commit -m "feat(learn): 事故档案馆 6 档案 + 操作小抄 3 卡与红�
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：配置 + 3 条冒烟用例</strong>
             <pre><code class="lang-ts">// patra-learn/playwright.config.ts
 import { defineConfig } from "@playwright/test";
@@ -1760,11 +1760,11 @@ test("图鉴搜索过滤生效", async ({ page }) =&gt; {
   await expect(page.getByTestId("glossary-card")).toHaveCount(1);
 });</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行验证</strong>
             <p>运行：<code>cd patra-learn &amp;&amp; pnpm exec playwright install chromium 2&gt;/dev/null; pnpm test:e2e</code>　预期：3 passed。若 SVG 内 <code>&lt;Link&gt;</code> 包 <code>&lt;g&gt;</code> 导致点击/测数失败，把 data-testid 提到外层 <code>&lt;a&gt;</code> 上修正实现而非放松断言。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn
 git commit -m "test(learn): Playwright 冒烟——网络图/打卡持久化/图鉴搜索（任务 13/16）"</code></pre>
@@ -1772,7 +1772,7 @@ git commit -m "test(learn): Playwright 冒烟——网络图/打卡持久化/图
         </ol>
       </article>
 
-      <article class="task" id="task-14" data-status="pending">
+      <article class="task" id="task-14" data-status="in-progress">
         <header>
           <h2>任务 14：Dockerfile 与本地容器验证</h2>
           <dl class="files">
@@ -2206,12 +2206,20 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>质量审查修复（4273eca7c）：升级命令改参数边界断行（plan/画布稿在路径中间断行，粘贴 shell 会解析成两个参数——真功能缺陷）、档案编号数值排序、红线序号数组化。复验通过（含实际分词验证）。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T12:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T12:55">08-28 12:55</time>
+          <a href="#task-13">&sect; Task 13</a>
+        </header>
+        <p>e2e 端口采用方案 B（4010 独占口）：Playwright 内部探活栈连 IPv4 端（QQ 占 127.0.0.1:4001），[::1] 方案在探活层死路；webServer.command 用 pnpm exec next dev -p 4010 避免双 -p 歧义。生产端口 4001 不变。commit subject Playwright 因 commitlint subject-case 改小写。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">17</span> changes /
+      <span data-counter="change">18</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
