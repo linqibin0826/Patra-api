@@ -6,6 +6,7 @@
 #   场景3 镜像架构为 amd64：拦截，不执行 compose up，exit 1
 # 运行：bash patra-infra/cd/deploy.test.sh
 # ============================================================================
+# shellcheck disable=SC2016  # 断言用单引号是有意的：延迟到 check() 内 eval 时才展开
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PASS=0; FAIL=0
