@@ -1,2 +1,21 @@
-/* 最小版，任务 2 会全量替换 */
 @import "tailwindcss";
+
+/* 学习站设计系统 token（源：Claude Design 画布 e2bb7c08 Tokens 页）。
+   线路 5 色在 src/content/lines.ts 数据里（内联 style 使用），此处只放会
+   生成 utility 的中性/语义色——每个 token 必须真被 utility 消费（防死类）。 */
+@theme {
+  --color-bg: #fafaf8; /* 页面底 */
+  --color-surface: #ffffff; /* 卡片面 */
+  --color-mist: #f1f2ee; /* 浅灰块（代码底、徽章底） */
+  --color-line: #e3e5df; /* 描边 */
+  --color-fog: #8b929b; /* 次要文字 */
+  --color-slate: #565d66; /* 正文灰 */
+  --color-ink: #22262c; /* 主文字 */
+
+  --color-ok: #2c9457; /* 成功/教训 */
+  --color-warn: #b98014; /* 提醒 */
+  --color-danger: #cc4747; /* 危险/红线 */
+
+  --font-sans: var(--font-noto-sans-sc), "PingFang SC", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "SF Mono", monospace;
+}
