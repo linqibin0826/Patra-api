@@ -31,8 +31,8 @@
           <li data-task-status="done"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
           <li data-task-status="done"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
           <li data-task-status="done"><a href="#task-8">Task 8 — 1 号线 4 篇文章内容</a></li>
-          <li data-task-status="in-progress"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
-          <li data-task-status="pending"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
+          <li data-task-status="in-progress"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
           <li data-task-status="pending"><a href="#task-11">Task 11 — 名词图鉴页</a></li>
           <li data-task-status="pending"><a href="#task-12">Task 12 — 事故档案馆与操作小抄页</a></li>
           <li data-task-status="pending"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
@@ -1326,7 +1326,7 @@ git commit -m "feat(learn): 1 号线质检线 4 站课程正文（任务 8/16）
         </ol>
       </article>
 
-      <article class="task" id="task-9" data-status="in-progress">
+      <article class="task" id="task-9" data-status="done">
         <header>
           <h2>任务 9：2 号线 5 篇文章内容</h2>
           <dl class="files">
@@ -1334,11 +1334,11 @@ git commit -m "feat(learn): 1 号线质检线 4 站课程正文（任务 8/16）
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：读内容源</strong>
             <p>手册「合并之后：自动上线（CD）」「部署闭环：换新、验货、出事自己退」「那台 Mac mini 上都有什么」「连起来：你点下合并之后的十分钟」四节 + 仓库真实文件 <code>.github/workflows/cd.yml</code>、<code>portal-cd.yml</code>、<code>patra-infra/cd/deploy.sh</code>、<code>services.json</code>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：逐站撰写（质量线同任务 8）</strong>
             <table>
               <thead><tr><th>站</th><th>必须覆盖的要点</th><th>图解</th></tr></thead>
@@ -1351,11 +1351,11 @@ git commit -m "feat(learn): 1 号线质检线 4 站课程正文（任务 8/16）
               </tbody>
             </table>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证</strong>
             <p>同任务 8 步骤 3（5 个 URL）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/src/content/articles/l2
 git commit -m "feat(learn): 2 号线上线线 5 站课程正文（任务 9/16）"</code></pre>
@@ -1363,7 +1363,7 @@ git commit -m "feat(learn): 2 号线上线线 5 站课程正文（任务 9/16）
         </ol>
       </article>
 
-      <article class="task" id="task-10" data-status="pending">
+      <article class="task" id="task-10" data-status="in-progress">
         <header>
           <h2>任务 10：3 号线 4 篇文章内容</h2>
           <dl class="files">
@@ -2158,12 +2158,28 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>采纳质量审查建议：抽 InlineCode 组件（components/inline-code.tsx），4 篇内 14 处重复行内 code 类名已替换；任务 9/10 的 9 篇直接使用该组件。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T07:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T07:35">08-28 07:35</time>
+          <a href="#task-9">&sect; Task 9</a>
+        </header>
+        <p>手册与代码两处取舍（以代码为准）：①芯片事故按 portal-cd.yml 注释写为「amd64 靠 Rosetta 转译跑了三个月」（非手册的「Intel 格式装不上」）；②「健康检查一律 127.0.0.1」为手册绝对化说法——实际仅 portal 容器内与 deploy.sh 宿主侧写死 127.0.0.1，Java 服务容器内仍是 localhost（curl 有 IPv4 回退），文章按代码精确表述。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T08:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T08:50">08-28 08:50</time>
+          <a href="#task-9">&sect; Task 9</a>
+        </header>
+        <p>质量审查修复（e76a2c184）：补 bash 3.2 伏笔段（plan 要点曾被静默漏掉）、修「四个字」计数、全量修剪 JSX 中文断行渲染空格——审查点名 7 处，grep 实测同类 39 处（l1 基准 0），全部合并修剪；biome noTemplateCurlyInString 用转义模板字面量绕过。审查员明示修完无需复审。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">11</span> changes /
+      <span data-counter="change">13</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
