@@ -1,0 +1,5 @@
+# actionlint 配置：声明 self-hosted runner 的自定义 label，
+# 否则 actionlint 会把 runs-on: [self-hosted, macmini] 报为未知 label。
+self-hosted-runner:
+  labels:
+    - macmini

@@ -1,8 +1,11 @@
 name: Portal CD
 
-# 前端 portal 持续部署：merge 到 main（或手动触发）
-#   → build-and-push：ubuntu 上 pnpm 多阶段 docker build，推 GHCR
-#   → deploy：Mac mini self-hosted runner 上 compose pull + up + 健康检查。
+# 前端 portal 持续部署（Mac mini 原生构建）：merge 到 main（或手动触发）
+#   → build-deploy（Mac mini runner）：原生 arm64 docker build（pnpm 构建全在 Dockerfile 内）
+#     → deploy.sh（部署+健康检查+部署后验证+自动回滚）→ GHCR 归档推送（best-effort）
+#   → notify（ubuntu）：失败推 ntfy 通知。
+# 架构决策（2026-08-27）：与 cd.yml 同步改为 mini 原生构建——旧 ubuntu 构建产物是
+#   amd64、在 mini 上靠 Rosetta 跑，就此消灭；GHCR 降级为「归档/回滚备源」。
 # 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
 #       保证 self-hosted runner 永不执行未经审查的 fork PR 代码。
 
@@ -19,6 +22,7 @@ on:
       - 'patra-infra/docker/docker-compose.apps.yaml'
       - 'patra-infra/docker/.env.portal'
       - '.github/workflows/portal-cd.yml'
+      - '!**/*.md'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -30,57 +34,21 @@ concurrency:
   group: portal-cd-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  IMAGE: ghcr.io/linqibin0826/patra-portal
-
 jobs:
-  # ---- 1) 构建并推送镜像（pnpm 多阶段 docker build 全在 Dockerfile 内）----
-  build-and-push:
-    name: build-and-push
-    # 回滚（指定了 image_tag）时跳过构建
-    if: github.event_name == 'push' || github.event.inputs.image_tag == ''
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  # ---- Mac mini 上原生构建 + 部署（回滚时跳过构建步骤）----
+  build-deploy:
+    name: build-deploy
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-
-      - name: 🔑 Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: 🐳 Build & push image
-        env:
-          TAG: ${{ github.sha }}
-        run: |
-          docker build \
-            -f patra-portal/Dockerfile \
-            -t "$IMAGE:$TAG" -t "$IMAGE:latest" \
-            patra-portal
-          docker push "$IMAGE:$TAG"
-          docker push "$IMAGE:latest"
-
-  # ---- 2) 在 Mac mini 上部署 ----
-  deploy:
-    name: deploy
-    needs: build-and-push
-    # build 成功（正常）或被跳过（回滚）都部署；build 失败/取消不部署。
-    if: always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
-    runs-on: [self-hosted, macmini]
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: read
     env:
-      # macOS self-hosted runner：不调 docker login（launchd 非交互无法解锁钥匙串 -25308），
-      # 直接把凭据 base64 写入 DOCKER_CONFIG/config.json 的 auths 字段，绕过钥匙串。
+      # macOS runner 不走 docker login（launchd 非交互无法解锁钥匙串 -25308），
+      # 凭据 base64 写入 DOCKER_CONFIG/config.json 绕过钥匙串。
       DOCKER_CONFIG: ${{ github.workspace }}/.patra-docker-cfg
       IMAGE_TAG_INPUT: ${{ github.event.inputs.image_tag }}
-      GITHUB_SHA: ${{ github.sha }}
+      IMAGE: ghcr.io/linqibin0826/patra-portal
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -94,38 +62,43 @@ jobs:
           AUTH=$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')
           printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" > "$DOCKER_CONFIG/config.json"
 
-      - name: 🚀 Deploy portal（compose pull 3× 重试 + up）
+      - name: 🐳 Build image（仅非回滚；原生 arm64——旧 ubuntu 构建产物是 amd64 靠 Rosetta 跑，就此消灭）
+        if: env.IMAGE_TAG_INPUT == ''
         run: |
-          set -uo pipefail
-          TAG="${IMAGE_TAG_INPUT:-$GITHUB_SHA}"
-          export PORTAL_IMAGE_TAG="$TAG"
-          cd patra-infra/docker
-          echo "===== deploy portal (PORTAL_IMAGE_TAG=$TAG) ====="
-          ok=0
-          for i in 1 2 3; do
-            if docker compose -f docker-compose.apps.yaml pull portal; then ok=1; break; fi
-            echo "pull 失败（GHCR 代理 TLS 抖动？），重试 $i/3..."; sleep 10
-          done
-          [ "$ok" = 1 ] || { echo "✗ portal 镜像 pull 3 次均失败"; exit 1; }
-          docker compose -f docker-compose.apps.yaml up -d portal
+          docker build -f patra-portal/Dockerfile \
+            -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" patra-portal
 
-      - name: 🩺 Health check（轮询 :4000 /api/health）
+      - name: 🚀 Deploy（复用 deploy.sh：健康检查/部署后验证/自动回滚）
         run: |
-          set -uo pipefail
-          healthy=0
-          for i in $(seq 1 30); do
-            if curl -fs "http://localhost:4000/api/health" >/dev/null; then
-              echo "✓ portal 健康"; healthy=1; break
-            fi
-            echo "等待 portal 健康... ($i/30)"
-            sleep 5
-          done
-          if [ "$healthy" != 1 ]; then
-            echo "✗ portal 健康检查超时，最近日志："
-            docker logs patra-portal --tail 80 2>&1 || true
-            exit 1
-          fi
+          TAG="${IMAGE_TAG_INPUT:-${{ github.sha }}}"
+          bash patra-infra/cd/deploy.sh "$TAG" '["portal"]'
+
+      - name: 📦 GHCR 归档推送（best-effort：GHCR 只是回滚备源，失败不阻塞部署）
+        if: env.IMAGE_TAG_INPUT == ''
+        continue-on-error: true
+        run: |
+          docker push "$IMAGE:${{ github.sha }}" && docker push "$IMAGE:latest" \
+            || echo "::warning::portal 归档推送失败（不阻塞）"
 
       - name: 🧹 清理 GHCR 凭据（self-hosted 持久 workspace，防 config.json 落盘残留）
         if: always()
         run: rm -rf "$DOCKER_CONFIG"
+
+  # ---- 失败通知（ntfy；NTFY_TOPIC 未配置则告警跳过）----
+  notify:
+    name: notify
+    needs: build-deploy
+    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 📣 推送失败通知
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          [ -n "$NTFY_TOPIC" ] || { echo "::warning::NTFY_TOPIC 未配置，跳过通知"; exit 0; }
+          SHA="${{ github.sha }}"
+          curl -fsS -m 10 \
+            -H "Title: Patra Portal CD failed" -H "Priority: high" -H "Tags: rotating_light" \
+            -d "Portal CD 失败 @ ${SHA:0:9} — https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            "https://ntfy.sh/$NTFY_TOPIC"
