@@ -34,8 +34,8 @@
           <li data-task-status="done"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
           <li data-task-status="done"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
           <li data-task-status="done"><a href="#task-11">Task 11 — 名词图鉴页</a></li>
-          <li data-task-status="in-progress"><a href="#task-12">Task 12 — 事故档案馆与操作小抄页</a></li>
-          <li data-task-status="pending"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
+          <li data-task-status="done"><a href="#task-12">Task 12 — 事故档案馆与操作小抄页</a></li>
+          <li data-task-status="in-progress"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
           <li data-task-status="pending"><a href="#task-14">Task 14 — Dockerfile 与本地容器验证</a></li>
           <li data-task-status="pending"><a href="#task-15">Task 15 — CI/CD 接入</a></li>
           <li data-task-status="pending"><a href="#task-16">Task 16 — 文档收尾</a></li>
@@ -1537,7 +1537,7 @@ git commit -m "feat(learn): 名词图鉴页——10 词条 + 过滤搜索 + 站�
         </ol>
       </article>
 
-      <article class="task" id="task-12" data-status="in-progress">
+      <article class="task" id="task-12" data-status="done">
         <header>
           <h2>任务 12：事故档案馆与操作小抄页（TDD）</h2>
           <dl class="files">
@@ -1546,7 +1546,7 @@ git commit -m "feat(learn): 名词图鉴页——10 词条 + 过滤搜索 + 站�
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：先写失败的校验</strong>
             <pre><code class="lang-ts">// 追加到 integrity.test.ts
 import { INCIDENTS } from "./incidents";
@@ -1564,7 +1564,7 @@ describe("档案与小抄完整性", () =&gt; {
 });</code></pre>
             <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：incidents.ts 全量数据（文案源自画布 Archive 画板）</strong>
             <pre><code class="lang-ts">// patra-learn/src/content/incidents.ts
 import type { Incident } from "./types";
@@ -1590,7 +1590,7 @@ export const INCIDENTS: Incident[] = [
     lesson: "入参校验，名字不认识直接拒绝执行", relatedStation: "l2/ship-and-rollback" },
 ];</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：cheatsheet.ts 全量数据（文案源自画布 CheatSheet 画板；命令与仓库现状核对）</strong>
             <pre><code class="lang-ts">// patra-learn/src/content/cheatsheet.ts
 import type { OpsCard } from "./types";
@@ -1617,7 +1617,7 @@ export const RED_LINES = [
 ];</code></pre>
             <p>注意 <code>command</code> 里 <code>&lt;旧sha&gt;</code>/<code>&lt;TOKEN&gt;</code> 是给读者的占位符（原样展示），TSX 中它们在字符串里、无 JSX 转义问题。运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：两个页面</strong>
             <pre><code class="lang-tsx">// patra-learn/src/app/archive/page.tsx
 import type { Metadata } from "next";
@@ -1698,11 +1698,11 @@ export default function CheatsheetPage() {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：验证（含 Task 2 遗留的语义色 token 复验）</strong>
             <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test &amp;&amp; pnpm build</code> 全绿；然后 <code>grep -l 'cc4747' .next/static/css/*.css &amp;&amp; grep -l '2c9457' .next/static/css/*.css</code>——两个语义色 hex 必须出现在产物（text-ok / text-danger / bg-danger 已被本任务消费）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/src
 git commit -m "feat(learn): 事故档案馆 6 档案 + 操作小抄 3 卡与红线（任务 12/16）"</code></pre>
@@ -1710,7 +1710,7 @@ git commit -m "feat(learn): 事故档案馆 6 档案 + 操作小抄 3 卡与红�
         </ol>
       </article>
 
-      <article class="task" id="task-13" data-status="pending">
+      <article class="task" id="task-13" data-status="in-progress">
         <header>
           <h2>任务 13：Playwright 冒烟</h2>
           <dl class="files">
@@ -2190,12 +2190,28 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>质量审查修复（0973ab5a6）：搜索框补 aria-label、空结果态提示、三字段过滤大小写统一（plan 原代码仅 term 不区分大小写）。复验通过。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T11:25">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T11:25">08-28 11:25</time>
+          <a href="#task-12">&sect; Task 12</a>
+        </header>
+        <p>incidents.ts 档案 #5 的 lesson 含读者可见的 ${VAR} 字面量，biome noTemplateCurlyInString 误报，按行加 biome-ignore 抑制（文案未动）。另：档案 #2/#4/#5 文案相比画布稿三处微调以对齐任务 9/10 审查后的课程口径（plan 已内置为定稿）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T12:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T12:10">08-28 12:10</time>
+          <a href="#task-12">&sect; Task 12</a>
+        </header>
+        <p>质量审查修复（4273eca7c）：升级命令改参数边界断行（plan/画布稿在路径中间断行，粘贴 shell 会解析成两个参数——真功能缺陷）、档案编号数值排序、红线序号数组化。复验通过（含实际分词验证）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">15</span> changes /
+      <span data-counter="change">17</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
