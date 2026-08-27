@@ -4,7 +4,7 @@ name: CD
 #   → detect-changes（ubuntu）算出改动服务（含「改公共面→重建全部」规则）
 #   → build-deploy（Mac mini runner）：gradlew bootJar → 原生 arm64 docker build
 #     → deploy.sh（部署+健康检查+部署后验证+自动回滚）→ GHCR 归档推送（best-effort）
-#   → notify（ubuntu）：失败推 ntfy 通知（secrets.NTFY_TOPIC，未配置则跳过）。
+# 失败通知走 GitHub 原生（App/邮件推给触发者），不设自建通知通道（单人 dev 环境，2026-08-28 决策）。
 # 架构决策（2026-08-27）：构建从 ubuntu(QEMU 交叉编译) 搬回 mini 原生——
 #   部署不再经翻墙代理拉大镜像（曾致 EOF/20min 超时），amd64 架构错配事故结构性消除；
 #   GHCR 从「部署必经之路」降级为「归档/回滚备源」，推送失败不阻塞部署。
@@ -155,22 +155,3 @@ jobs:
       - name: 🧹 清理 GHCR 凭据（self-hosted 持久 workspace，防 config.json 落盘残留）
         if: always()
         run: rm -rf "$DOCKER_CONFIG"
-
-  # ---- 3) 失败通知（ntfy；NTFY_TOPIC 未配置则告警跳过）----
-  notify:
-    name: notify
-    needs: [detect-changes, build-deploy]
-    if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - name: 📣 推送失败通知
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-        run: |
-          [ -n "$NTFY_TOPIC" ] || { echo "::warning::NTFY_TOPIC 未配置，跳过通知"; exit 0; }
-          SHA="${{ github.sha }}"
-          curl -fsS -m 10 \
-            -H "Title: Patra CD failed" -H "Priority: high" -H "Tags: rotating_light" \
-            -d "CD 失败 @ ${SHA:0:9} — https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            "https://ntfy.sh/$NTFY_TOPIC"

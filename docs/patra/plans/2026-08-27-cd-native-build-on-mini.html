@@ -32,8 +32,8 @@
           <li data-task-status="done"><a href="#task-7">Task 7 — runner-watchdog.yml</a></li>
           <li data-task-status="done"><a href="#task-8">Task 8 — install-github-runner.sh 回写</a></li>
           <li data-task-status="done"><a href="#task-9">Task 9 — 文档同步与归档</a></li>
-          <li data-task-status="in-progress"><a href="#task-10">Task 10 — Secrets 配置 + PR</a></li>
-          <li data-task-status="pending"><a href="#task-11">Task 11 — 合并后 E2E 验证</a></li>
+          <li data-task-status="done"><a href="#task-10">Task 10 — Secrets 配置 + PR</a></li>
+          <li data-task-status="done"><a href="#task-11">Task 11 — 合并后 E2E 验证</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -946,7 +946,7 @@ git commit -m "docs(infra): CD 节改写为 mini 原生构建架构；归档 cic
         </ol>
       </article>
 
-      <article class="task" id="task-10" data-status="in-progress">
+      <article class="task" id="task-10" data-status="done">
         <header>
           <h2>任务 10：Secrets 配置 + PR（draft → CodeRabbit 流程）</h2>
           <dl class="files">
@@ -961,7 +961,7 @@ gh secret set NTFY_TOPIC -R linqibin0826/patra --body "$TOPIC"
 echo "topic: $TOPIC"</code></pre>
             <p>预期：secret 写入成功。把 topic 值告知用户：手机装 ntfy App（iOS/Android），订阅该 topic 即收通知。topic 含 16 位随机 hex，等同弱密钥，不写入仓库。</p>
           </li>
-          <li class="step" data-status="in-progress">
+          <li class="step" data-status="done">
             <strong>步骤 2：请用户创建 RUNNER_ADMIN_TOKEN（唯一需要用户亲手做的事）</strong>
             <p>指引用户：GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token；Repository access 只选 <code>linqibin0826/patra</code>；Repository permissions 只给 <code>Administration: Read-only</code>；有效期建议 1 年。拿到 token 后执行：</p>
             <pre><code class="lang-bash">gh secret set RUNNER_ADMIN_TOKEN -R linqibin0826/patra</code></pre>
@@ -974,7 +974,7 @@ gh pr create --draft --title "feat(cd): 构建搬回 Mac mini 原生 arm64 + 通
   --body-file /tmp/pr-body.md   # body 概述架构决策与验证方式，末尾附 Generated with Claude Code 标注</code></pre>
             <p>按仓库规范：创建后立即启动 Monitor 绑定该 PR（CodeRabbit + 人工两条流）；自查通过后转 ready 并评论 <code>@coderabbitai review</code> 触发首评；处理完一批反馈再 @ 复评，每条意见回复「已修复+SHA」或「不修复+理由」。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：合并（评审通过后 squash merge，删除远端分支）</strong>
             <p>运行：<code>gh pr merge --squash --delete-branch</code></p>
             <p>预期：合并即触发新 cd.yml 首跑（本 PR 改了 cd.yml → detect 判全量）——这天然就是 Task 11 的全量验证，观察它而非另行 dispatch。</p>
@@ -982,7 +982,7 @@ gh pr create --draft --title "feat(cd): 构建搬回 Mac mini 原生 arm64 + 通
         </ol>
       </article>
 
-      <article class="task" id="task-11" data-status="pending">
+      <article class="task" id="task-11" data-status="done">
         <header>
           <h2>任务 11：合并后 E2E 验证（全量 / 回滚 / 通知 / 看门狗）</h2>
           <dl class="files">
@@ -990,7 +990,7 @@ gh pr create --draft --title "feat(cd): 构建搬回 Mac mini 原生 arm64 + 通
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：观察合并触发的全量 CD 首跑（mini 原生构建 5 服务）</strong>
             <pre><code class="lang-bash">gh run watch -R linqibin0826/patra $(gh run list -R linqibin0826/patra --workflow cd.yml --limit 1 --json databaseId --jq '.[0].databaseId')</code></pre>
             <p>预期：build-deploy 成功（冷缓存 ≤40min）；随后核对：</p>
@@ -1001,14 +1001,14 @@ gh pr create --draft --title "feat(cd): 构建搬回 Mac mini 原生 arm64 + 通
 '</code></pre>
             <p>预期：5 个 last-good 文件为合并 sha；容器全 healthy 且 tag 为合并 sha；架构 arm64。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：portal CD 验证（dispatch 触发，验证原生构建 + deploy.sh portal 路径）</strong>
             <pre><code class="lang-bash">gh workflow run portal-cd.yml -R linqibin0826/patra
 # 完成后：
 ssh linqibin@100.103.73.27 'docker image inspect --format "{{.Architecture}}" ghcr.io/linqibin0826/patra-portal:latest'</code></pre>
             <p>预期：run 成功、输出 <code>arm64</code>（此前一直是 amd64）、容器 healthy、<code>~/.patra/cd/last-good-portal</code> 生成。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：回滚演练（单服务回滚到上一个镜像 tag 再滚回）</strong>
             <pre><code class="lang-bash"># PREV = 合并前最后一次成功部署的 sha（3ba06604f38218d4a1ddfc3beb2b7b7f8b67cf06）
 gh workflow run cd.yml -R linqibin0826/patra -f service=catalog -f image_tag=3ba06604f38218d4a1ddfc3beb2b7b7f8b67cf06
@@ -1016,7 +1016,7 @@ gh workflow run cd.yml -R linqibin0826/patra -f service=catalog -f image_tag=3ba
 # 再 dispatch 一次填新 sha 滚回最新。</code></pre>
             <p>预期：两次 dispatch 均成功；回滚路径（跳过构建、本地镜像优先）实证可用。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：通知与看门狗演练</strong>
             <pre><code class="lang-bash"># 通知通道端到端（绕过 workflow 直接验证 topic → 手机）：
 curl -fsS -H "Title: Patra 通知测试" -d "看到这条说明通知链路通了" "https://ntfy.sh/&lt;TOPIC值&gt;"
@@ -1024,7 +1024,7 @@ curl -fsS -H "Title: Patra 通知测试" -d "看到这条说明通知链路通�
 gh workflow run runner-watchdog.yml -R linqibin0826/patra</code></pre>
             <p>预期：手机收到测试推送；watchdog run 中 check-runner online、canary 三步全绿（RUNNER_ADMIN_TOKEN 若未配置，check-runner 按设计显性失败并触发 ntfy——那也是一次成功的失败通知演练）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：收尾清理</strong>
             <p>确认 GHCR 归档推送 step 无持续 warning；mini 磁盘余量正常（<code>df -h /</code>）；更新记忆文件中与 CD 架构相关的过时描述（如有）。向用户交付最终报告：新链路各环节实测结论 + 剩余用户动作（订阅 ntfy topic / 创建 PAT，若尚未完成）。</p>
           </li>
@@ -1090,6 +1090,22 @@ gh workflow run runner-watchdog.yml -R linqibin0826/patra</code></pre>
         </header>
         <p>CodeRabbit 首评驱动的计划外变更：deploy.sh 增加入参校验（拒绝非法 SERVICES_JSON 与未知服务名，exit 2，测试新增场景 4/5）；顺带修掉 macOS bash 3.2 多字节坑（$req 紧跟全角括号被并入变量名，须 ${req}）；watchdog canary 补 pipefail 与 runner 版本过期检查；install-github-runner.sh 补版本比对升级路径与 Zulu 25 校验；CLAUDE.md 两处口径修正。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T00:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T00:20">08-28 00:20</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>用户决策拆除 ntfy 通知：单人 dev 环境自己 push 自己看结果，GitHub 原生失败通知（App/邮件）已覆盖主场景，ntfy 属过度设计。三个 workflow 的 notify job 删除、NTFY_TOPIC secret 删除；watchdog 本体与 RUNNER_ADMIN_TOKEN 保留（查岗+版本红线有实战价值）。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T00:20">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T00:20">08-28 00:20</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>E2E 实战记录：watchdog 首跑即抓到 runner 版本过期（2.335.1 → 已手动升 2.337.0，注册保留）；版本告警文案踩到 bash 3.2 全角字符坑第二处（#170 修复并全仓扫描）；回滚演练双向成功（各约 2 分钟，命中本地缓存零 GHCR 依赖）；merge 触发的全量首跑 5 后端 + portal 全部原生 arm64 healthy。</p>
+      </li>
       <!-- ENTRY TEMPLATE:
       <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
         <header>
@@ -1108,9 +1124,9 @@ gh workflow run runner-watchdog.yml -R linqibin0826/patra</code></pre>
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">1</span> decisions /
-      <span data-counter="change">2</span> changes /
+      <span data-counter="change">3</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="other">1</span> others
     </footer>
   </aside>
 
