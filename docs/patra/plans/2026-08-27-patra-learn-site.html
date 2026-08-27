@@ -29,8 +29,8 @@
           <li data-task-status="done"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
           <li data-task-status="done"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
-          <li data-task-status="in-progress"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
-          <li data-task-status="pending"><a href="#task-8">Task 8 — 1 号线 4 篇文章内容</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
+          <li data-task-status="in-progress"><a href="#task-8">Task 8 — 1 号线 4 篇文章内容</a></li>
           <li data-task-status="pending"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
           <li data-task-status="pending"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
           <li data-task-status="pending"><a href="#task-11">Task 11 — 名词图鉴页</a></li>
@@ -1075,7 +1075,7 @@ git commit -m "feat(learn): 课程页路由 + ArticleLayout + 13 篇文章骨架
         </ol>
       </article>
 
-      <article class="task" id="task-7" data-status="in-progress">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：首页与 MetroMap 网络图</h2>
           <dl class="files">
@@ -1084,7 +1084,7 @@ git commit -m "feat(learn): 课程页路由 + ArticleLayout + 13 篇文章骨架
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：MetroMap（client；SVG 数据驱动；视觉对照画布 Main.dc.html）</strong>
             <p>布局规则：每条线一行水平线，行距 96px；开通线实色 6px 线宽，规划线 <code>#e3e5df</code> 虚线（<code>strokeDasharray="10 8"</code>）；站点 = 半径 9 圆，未学空心（白底线路色描边）、已学实心线路色、「当前站」（= firstUnvisited）外加同色大圆环；换乘节点在 l1 行末与 l2 行首之间画竖直连接线 + 白底黑描边圆 + 「合并进 main · 换乘站」标签。站名标注在圆点下方 12.5px 文字。开通站可点击跳课程页，规划站不可点。</p>
             <pre><code class="lang-tsx">// patra-learn/src/components/metro-map.tsx
@@ -1191,7 +1191,7 @@ export function MetroMap() {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：进度徽章 + 继续通勤卡（client）</strong>
             <pre><code class="lang-tsx">// patra-learn/src/components/continue-card.tsx
 "use client";
@@ -1238,7 +1238,7 @@ export function ContinueCard() {
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：首页组装（server 组件）</strong>
             <pre><code class="lang-tsx">// patra-learn/src/app/page.tsx
 import Link from "next/link";
@@ -1280,7 +1280,7 @@ export default function HomePage() {
 }</code></pre>
             <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm build</code> 全绿；<code>pnpm dev</code> 后浏览器（或 <code>curl -s http://127.0.0.1:4001 | grep -c 'station-node'</code>）确认首页渲染 13 个开通站节点 + 5 个规划站灰点 + 换乘节点。视觉与画布 Main.dc.html 对照（允许布局简化，但三态站点/线路色/虚线规划线必须一致）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/src
 git commit -m "feat(learn): 首页 MetroMap 网络图 + 进度徽章 + 继续通勤卡（任务 7/16）"</code></pre>
@@ -1288,7 +1288,7 @@ git commit -m "feat(learn): 首页 MetroMap 网络图 + 进度徽章 + 继续通
         </ol>
       </article>
 
-      <article class="task" id="task-8" data-status="pending">
+      <article class="task" id="task-8" data-status="in-progress">
         <header>
           <h2>任务 8：1 号线 4 篇文章内容</h2>
           <dl class="files">
@@ -2118,12 +2118,28 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>Task 6 质量审查发现 plan 缺口：课程页无 generateMetadata（13 页共享根 title）。并入 Task 8：给 page.tsx 补 generateMetadata——title 为「站名 · Patra 学习站」，description 用 station.summary。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T04:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T04:05">08-28 04:05</time>
+          <a href="#task-7">&sect; Task 7</a>
+        </header>
+        <p>MetroMap 站点链接按 plan 预警采用 SVG2 原生 a 元素（HTML a/Link 不能进 svg），客户端导航退化为整页跳转（可接受）；a 加 aria-label、内层 dot g 补 key（Biome useJsxKeyInIterable 要求）。curl 实测 station-node=13、planned-node=5、课程页 200。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T04:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T04:35">08-28 04:35</time>
+          <a href="#task-7">&sect; Task 7</a>
+        </header>
+        <p>质量审查修复（commit 2d67f95e9）：svg 根删 role="img"（含交互链接的 SVG 不应为 children-presentational 角色，aria-label 保留）；继续通勤卡线名 slice(0,4) 改 split(" · ")[0] 兜底。复验通过。换乘节点坐标硬编码（Important#2）接受为已知裂缝——13 站拓扑已冻结，改拓扑时需同步此处。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">3</span> decisions /
-      <span data-counter="change">7</span> changes /
+      <span data-counter="change">9</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
