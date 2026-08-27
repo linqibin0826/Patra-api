@@ -50,4 +50,14 @@ describe("progress", () => {
   it("无 storage（SSR）时读=零进度", () => {
     expect(readProgress(undefined)).toEqual([]);
   });
+
+  it("数组里的非字符串元素被过滤", () => {
+    const s = fakeStorage({ "patra-learn.progress.v1": '[1,"l1/x",null]' });
+    expect(readProgress(s)).toEqual(["l1/x"]);
+  });
+
+  it("合法 JSON 但非数组按零进度降级", () => {
+    const s = fakeStorage({ "patra-learn.progress.v1": '{"a":1}' });
+    expect(readProgress(s)).toEqual([]);
+  });
 });
