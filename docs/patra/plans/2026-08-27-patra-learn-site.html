@@ -28,8 +28,8 @@
           <li data-task-status="done"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
-          <li data-task-status="in-progress"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
+          <li data-task-status="in-progress"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
           <li data-task-status="pending"><a href="#task-8">Task 8 — 1 号线 4 篇文章内容</a></li>
           <li data-task-status="pending"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
           <li data-task-status="pending"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
@@ -895,7 +895,7 @@ git commit -m "feat(learn): 内容查询助手 + 基础组件（徽章/术语/�
         </ol>
       </article>
 
-      <article class="task" id="task-6" data-status="in-progress">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：课程页路由与 13 篇文章骨架（TDD）</h2>
           <dl class="files">
@@ -904,7 +904,7 @@ git commit -m "feat(learn): 内容查询助手 + 基础组件（徽章/术语/�
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：integrity.test.ts 追加文章注册表用例</strong>
             <pre><code class="lang-ts">// 追加到 patra-learn/src/content/integrity.test.ts（新增 import + describe）
 import { ARTICLES } from "./articles";
@@ -919,7 +919,7 @@ describe("文章注册表完整性", () =&gt; {
 });</code></pre>
             <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>（articles/index.ts 不存在）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：13 个文章骨架 + 注册表</strong>
             <p>每站建 <code>src/content/articles/&lt;lineId&gt;/&lt;stationId&gt;.tsx</code>（kebab 文件名 = 站 id）。骨架统一为（以 l1/write-code 为例，其余 12 个同构，标题/文字用各站 name/summary）：</p>
             <pre><code class="lang-tsx">// patra-learn/src/content/articles/l1/write-code.tsx —— 骨架；正文在任务 8 填充
@@ -966,7 +966,7 @@ export const ARTICLES: Record&lt;StationRef, ComponentType&gt; = {
 };</code></pre>
             <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：ArticleLayout（站牌头 + 本线站条 + 打卡 + 前后站导航）</strong>
             <pre><code class="lang-tsx">// patra-learn/src/components/article-layout.tsx
 import Link from "next/link";
@@ -1033,7 +1033,7 @@ export function ArticleLayout({
   );
 }</code></pre>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：课程页路由（Next 15：params 是 Promise）</strong>
             <pre><code class="lang-tsx">// patra-learn/src/app/lines/[line]/[station]/page.tsx
 import { notFound } from "next/navigation";
@@ -1067,7 +1067,7 @@ export default async function StationPage({
 }</code></pre>
             <p>运行：<code>pnpm build</code>　预期：构建输出里 <code>/lines/[line]/[station]</code> 生成 13 个静态页（●  SSG 标记）。<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test</code> 全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/src
 git commit -m "feat(learn): 课程页路由 + ArticleLayout + 13 篇文章骨架（任务 6/16）"</code></pre>
@@ -1075,7 +1075,7 @@ git commit -m "feat(learn): 课程页路由 + ArticleLayout + 13 篇文章骨架
         </ol>
       </article>
 
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="in-progress">
         <header>
           <h2>任务 7：首页与 MetroMap 网络图</h2>
           <dl class="files">
@@ -2102,12 +2102,28 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>质量审查修复（commit 783e16603）：CodeBlock 加 navigator.clipboard?. 可选链守卫（tailscale http 非安全上下文防 TypeError）+ firstUnvisited 乱序断言用例；commit subject 因 commitlint subject-case 规则前加「补」字。测试 17 用例全绿，复验通过。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T03:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T03:05">08-28 03:05</time>
+          <a href="#task-6">&sect; Task 6</a>
+        </header>
+        <p>vitest.config.ts 追加 oxc: { jsx: { runtime: "automatic" } }：tsconfig 的 jsx:"preserve" 使 Vite 8 不转译测试里 import 的 .tsx（注册表），Vitest 解析失败；esbuild 选项在 Vite 8 已切 oxc 被忽略，故用 oxc 等价配置（最小修正）。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T03:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T03:30">08-28 03:30</time>
+          <a href="#task-8">&sect; Task 8</a>
+        </header>
+        <p>Task 6 质量审查发现 plan 缺口：课程页无 generateMetadata（13 页共享根 title）。并入 Task 8：给 page.tsx 补 generateMetadata——title 为「站名 · Patra 学习站」，description 用 station.summary。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">2</span> decisions /
-      <span data-counter="change">6</span> changes /
+      <span data-counter="decision">3</span> decisions /
+      <span data-counter="change">7</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">4</span> others
     </footer>
