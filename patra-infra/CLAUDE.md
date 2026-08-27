@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 这个目录是什么
 
-`patra-infra` 是 Patra 的**基建配置目录**，不是应用代码。它只包含：Docker Compose 编排（`docker/`）+ macOS 运维脚本（`scripts/`）。这里没有构建系统、没有测试、没有 lint —— 改动通过 `docker compose` 重启容器或 `launchctl` 重载 agent 来"生效"。
+`patra-infra` 是 Patra 的**基建配置目录**，不是应用代码。它只包含：Docker Compose 编排（`docker/`）+ CD 路由与部署逻辑（`cd/`）+ macOS 运维脚本（`scripts/`）。这里没有构建系统、没有 lint —— 改动通过 `docker compose` 重启容器或 `launchctl` 重载 agent 来"生效"。仅有的可执行测试是 `cd/detect-changes.test.sh` 与 `cd/deploy.test.sh`（纯 bash stub 单测，直接 `bash` 运行，改对应脚本时必须跑）。
 
 完整的部署手册、服务 URL、凭据、故障排查在 `docker/README.md`，本文件只补充架构大图景和容易踩的非显性约束。MacBook ↔ Mac mini 的连接 / 地址 / 路由类问题（含 tailscale、Shadowrocket、各组件 IP 注册）单独记在 `docs/mac-mini-connectivity.md`。
 
@@ -55,7 +55,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 5 个后端应用 + portal 由 GitHub Actions CD 自动部署，链路见 `.github/workflows/cd.yml` / `portal-cd.yml`，设计见 `docs/patra/specs/2026-06-08-backend-multiservice-cd-design.html`（单服务首版见 `2026-06-07-cd-macmini-design.html`）。**2026-08-27 架构修订：构建从 ubuntu(QEMU 交叉编译) 搬回 Mac mini 原生 arm64**——部署不再经翻墙代理从 GHCR 拉大镜像（曾致 EOF/20 分钟超时），amd64 架构错配事故结构性消除；GHCR 降级为「归档/回滚备源」，推送 best-effort 失败不阻塞部署。
 
 - **服务 SSOT**：`patra-infra/cd/services.json`（`name / gradleTask / context / port / image / healthPath / healthMatch`）。**加新服务 = 加一个条目**（再在 compose 加 service 块 + 建 `.env.<svc>`），workflow 逻辑不变。portal 条目为 deploy-only（构建在 portal-cd.yml 的 docker build 内）。
-- **选择性构建**：`patra-infra/cd/detect-changes.sh` 按 git diff 做受影响单元路由，只构建/部署改动的服务。**改公共面**（`patra-api/patra-common*` / `linqibin-commons/*` / `patra-starters/*` / `build-logic` / `gradle` / 根构建脚本 / `service.Dockerfile` / `docker-compose.apps.yaml` / `cd.yml` / `patra-infra/cd/*`）→ **重建全部 5 个**（正确性优先，宁可多建不可漏建）；docs / markdown / 运维脚本改动不触发构建。
+- **选择性构建**：`patra-infra/cd/detect-changes.sh` 按 git diff 做受影响单元路由，只构建/部署改动的服务。**改公共面**（`patra-api/patra-common*` / `linqibin-commons/*` / `patra-starters/*` / `build-logic` / `gradle` / 根构建脚本 / `service.Dockerfile` / `docker-compose.apps.yaml` / `cd.yml` / `patra-infra/cd/*`）→ **重建全部 5 个**（正确性优先，宁可多建不可漏建）；docs / markdown 与 `patra-infra/scripts/*` 运维脚本改动不触发构建。注意 `patra-infra/cd/*` **整体**视为 CD 关键输入（含 `deploy.sh`——部署逻辑变更也应触发全量重建+重部署以立即得到验证，属有意设计而非误伤）。
 - **两段 job**：`detect-changes`（ubuntu，受影响单元路由）→ `build-deploy`（macmini：`gradlew bootJar` → 原生 `docker build` → `deploy.sh` → GHCR 归档推送 best-effort）。
 - **deploy.sh**（`patra-infra/cd/deploy.sh`，有单测 `deploy.test.sh`）：镜像就位（本地优先，缺失才回源 GHCR）→ arm64 断言 → 依赖顺序 up（**object-storage 优先**）→ 健康检查（127.0.0.1，不用 localhost——IPv6 误报实际踩坑）→ 部署后验证（运行容器 tag == 期望）→ 不健康自动回滚到 last-good（记录在 mini `~/.patra/cd/last-good-<svc>`，服务级）。
 - **共享分层 Dockerfile**：`patra-infra/docker/service.Dockerfile` 一份供 5 服务共用（`--build-arg APP_PORT` 区分端口）；5 服务都用 `linqibin.hexagonal-boot` 打 fat jar，Spring Boot 4 `jarmode=tools` 分层结构通用，依赖层在本机 daemon 长期缓存。

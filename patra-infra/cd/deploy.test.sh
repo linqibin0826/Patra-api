@@ -4,6 +4,8 @@
 #   场景1 全健康部署：exit 0，last-good 记录新 tag
 #   场景2 部署后不健康：自动回滚到 last-good 并复检通过，但整体 exit 1
 #   场景3 镜像架构为 amd64：拦截，不执行 compose up，exit 1
+#   场景4 未知服务名：入参校验拒绝，exit 2（防 dispatch 手滑打错服务名后"假成功"）
+#   场景5 非法 SERVICES_JSON：入参校验拒绝，exit 2
 # 运行：bash patra-infra/cd/deploy.test.sh
 # ============================================================================
 # shellcheck disable=SC2016  # 断言用单引号是有意的：延迟到 check() 内 eval 时才展开
@@ -104,6 +106,19 @@ echo amd64 > "$STUB_ARCH"
 bash "$SCRIPT_DIR/deploy.sh" newsha '["catalog"]' > "$TMP/out" 2>&1; rc=$?
 check "场景3 amd64 拦截" 1 "$rc" \
   '! grep -q "up -d catalog" "$STUB_LOG"'
+
+# ---- 场景4：未知服务名拒绝 ----
+setup
+bash "$SCRIPT_DIR/deploy.sh" newsha '["catalog","typo"]' > "$TMP/out" 2>&1; rc=$?
+check "场景4 未知服务名拒绝" 2 "$rc" \
+  '! grep -q "up -d" "$STUB_LOG"' \
+  'grep -q "未知服务" "$TMP/out"'
+
+# ---- 场景5：非法 SERVICES_JSON 拒绝 ----
+setup
+bash "$SCRIPT_DIR/deploy.sh" newsha 'not-json' > "$TMP/out" 2>&1; rc=$?
+check "场景5 非法 JSON 拒绝" 2 "$rc" \
+  '! grep -q "up -d" "$STUB_LOG"'
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

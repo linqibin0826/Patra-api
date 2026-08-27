@@ -41,7 +41,19 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: 🐳 Docker 可用性
-        run: docker info --format 'server={{.ServerVersion}}' && docker ps --format '{{.Names}}' | wc -l
+        run: |
+          set -euo pipefail
+          docker info --format 'server={{.ServerVersion}}'
+          docker ps --format '{{.Names}}' | wc -l
+      - name: 🧾 Runner 版本未过期（--disableupdate 后 30 天红线）
+        # GitHub 要求禁用自更新的 runner 在新版发布 30 天内手动升级，逾期停止派发任务。
+        # 新版一出即告警（严格 != 比较）：告警即行动信号，闲时重跑 install-github-runner.sh 升级。
+        run: |
+          set -euo pipefail
+          CURRENT="$("$HOME/actions-runner/bin/Runner.Listener" --version)"
+          LATEST="$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r '.tag_name | ltrimstr("v")')"
+          echo "当前: $CURRENT / 最新: $LATEST"
+          [ "$CURRENT" = "$LATEST" ] || { echo "::error::runner 版本过期（当前 $CURRENT，最新 $LATEST）。30 天内不升级 GitHub 将停止派发任务，闲时重跑 install-github-runner.sh"; exit 1; }
       - name: 💾 磁盘余量 ≥ 20G
         run: |
           AVAIL=$(df -g / | awk 'NR==2{print $4}')

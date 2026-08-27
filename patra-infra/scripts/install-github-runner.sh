@@ -37,12 +37,18 @@ TARBALL="actions-runner-${ARCH}-${RUNNER_VERSION}.tar.gz"
 mkdir -p "$RUNNER_DIR"
 cd "$RUNNER_DIR"
 
-if [ ! -f "./config.sh" ]; then
-  echo "==> 下载 runner ${RUNNER_VERSION} (${ARCH})"
+# 版本比对下载：新装或版本落后都会更新二进制（重跑本脚本即升级，配合 --disableupdate 的 30 天红线）
+CURRENT_VERSION=""
+[ -x ./bin/Runner.Listener ] && CURRENT_VERSION="$(./bin/Runner.Listener --version 2>/dev/null || true)"
+if [ "$CURRENT_VERSION" != "$RUNNER_VERSION" ]; then
+  echo "==> 下载 runner ${RUNNER_VERSION} (${ARCH})（当前: ${CURRENT_VERSION:-未安装}）"
+  [ -f ./svc.sh ] && ./svc.sh stop 2>/dev/null || true   # 升级前停服务（新装时无 svc.sh；严禁在任务执行中重跑本脚本）
   curl -fSL -o "$TARBALL" \
     "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${TARBALL}"
   tar xzf "$TARBALL"
   rm -f "$TARBALL"
+else
+  echo "==> runner 已是最新 ${RUNNER_VERSION}，跳过下载"
 fi
 
 echo "==> 注册 runner 到 $REPO_URL"
@@ -60,6 +66,13 @@ if [ -z "$JH" ] || [ ! -x "$JH/bin/java" ]; then
   echo "⚠ 未找到 mise 全局 java（CD 构建需要；两台 Mac 同套管理）。先执行：" >&2
   echo "    brew install mise && mise install java@zulu-25.30.17.0 && mise use -g java@zulu-25.30.17.0" >&2
   echo "  再重跑本脚本。" >&2
+  exit 1
+fi
+# 版本/发行版校验：CLAUDE.md 约定钉 Zulu 25，错版本 JDK 写进 .env 会让 CD 构建产物漂移
+JAVA_VERSION_OUT="$("$JH/bin/java" -version 2>&1)"
+if ! echo "$JAVA_VERSION_OUT" | grep -q 'openjdk version "25' || ! echo "$JAVA_VERSION_OUT" | grep -qi zulu; then
+  echo "⚠ JAVA_HOME=$JH 不是 Zulu 25（实际: $(echo "$JAVA_VERSION_OUT" | head -1)）。" >&2
+  echo "  mise use -g java@zulu-25.30.17.0 后重跑本脚本。" >&2
   exit 1
 fi
 cat > .env <<EOF

@@ -94,6 +94,14 @@ rollback() { # $1=svc → 0 已回滚且健康
   ensure_image "$img" "$lg" && up_service "$1" "$lg" && wait_healthy "$1"
 }
 
+# ---- 入参校验：拒绝非法列表与未知服务名（防 dispatch 手滑打错服务名后"假成功"）----
+echo "$SERVICES_JSON" | jq -e 'type == "array" and length > 0 and all(.[]; type == "string")' >/dev/null 2>&1 \
+  || { echo "✗ SERVICES_JSON 必须是非空的服务名字符串数组，实际: $SERVICES_JSON"; exit 2; }
+for req in $(echo "$SERVICES_JSON" | jq -r '.[]'); do
+  jq -e --arg s "$req" '.services | any(.name == $s)' "$SERVICES_FILE" >/dev/null \
+    || { echo "✗ 未知服务: ${req}（不在 services.json）"; exit 2; }
+done
+
 # ---- 主流程 ----
 mkdir -p "$LAST_GOOD_DIR"
 ORDER='object-storage registry gateway catalog ingest portal'

@@ -20,18 +20,10 @@
       <li><a href="#file-structure">文件结构</a></li>
       <li><a href="#tasks">任务列表</a>
         <ol class="toc-tasks">
-          <li class="note" data-type="decision" data-time="2026-08-27T20:25">
-        <header>
-          <span class="note-type">DECISION</span>
-          <time datetime="2026-08-27T20:25">08-27 20:25</time>
-          <a href="#task-5">§ Task 5</a>
-        </header>
-        <p>plan 未规定：actionlint 将自定义 runner label "macmini" 报为未知，新增 .github/actionlint.yaml 声明 self-hosted-runner labels（一劳永逸，后续 workflow 校验不再误报）；cd.yml 构建步骤 ./gradlew $TASKS 加内联 shellcheck disable=SC2086（有意词拆分）。</p>
-      </li>
-      <!-- ENTRY TEMPLATE:
+                <!-- ENTRY TEMPLATE:
           <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
           -->
-          <li data-task-status="in-progress"><a href="#task-1">Task 1 — Mac mini 构建环境准备</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — Mac mini 构建环境准备</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — services.json 补健康元数据 + portal 条目</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — deploy.test.sh（TDD 红）</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — deploy.sh 实现（TDD 绿）</a></li>
@@ -124,7 +116,7 @@ docs/patra/plans/
       data-status 5 类：pending / in-progress / done / blocked / skipped
       -->
 
-      <article class="task" id="task-1" data-status="in-progress">
+      <article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：Mac mini 构建环境准备（ssh 现场操作，与 MacBook 同套）</h2>
           <dl class="files">
@@ -173,7 +165,7 @@ docs/patra/plans/
 ssh linqibin@100.103.73.27 'cd ~/actions-runner &amp;&amp; ./svc.sh stop &amp;&amp; ./svc.sh start &amp;&amp; ./svc.sh status'</code></pre>
             <p>预期：status 显示服务运行中；GitHub → Settings → Actions → Runners 中 macmini 保持 online。</p>
           </li>
-          <li class="step" data-status="in-progress">
+          <li class="step" data-status="done">
             <strong>步骤 5：预热——runner 工作区跑一次 bootJar（灌 Gradle wrapper/依赖缓存）+ 预拉基础镜像</strong>
             <pre><code class="lang-bash">ssh linqibin@100.103.73.27 '
   export http_proxy=http://127.0.0.1:7897 https_proxy=http://127.0.0.1:7897
@@ -962,20 +954,20 @@ git commit -m "docs(infra): CD 节改写为 mini 原生构建架构；归档 cic
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：生成并配置 NTFY_TOPIC</strong>
             <pre><code class="lang-bash">TOPIC="patra-alerts-$(openssl rand -hex 8)"
 gh secret set NTFY_TOPIC -R linqibin0826/patra --body "$TOPIC"
 echo "topic: $TOPIC"</code></pre>
             <p>预期：secret 写入成功。把 topic 值告知用户：手机装 ntfy App（iOS/Android），订阅该 topic 即收通知。topic 含 16 位随机 hex，等同弱密钥，不写入仓库。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="in-progress">
             <strong>步骤 2：请用户创建 RUNNER_ADMIN_TOKEN（唯一需要用户亲手做的事）</strong>
             <p>指引用户：GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token；Repository access 只选 <code>linqibin0826/patra</code>；Repository permissions 只给 <code>Administration: Read-only</code>；有效期建议 1 年。拿到 token 后执行：</p>
             <pre><code class="lang-bash">gh secret set RUNNER_ADMIN_TOKEN -R linqibin0826/patra</code></pre>
             <p>（交互式粘贴，不落 shell 历史。）此步可与 PR 评审并行；未配置前 watchdog 会以明确报错失败——这是有意的显性降级，不做静默跳过。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：推分支、开 draft PR、启动 Monitor</strong>
             <pre><code class="lang-bash">git push -u origin feat/cd-native-build-on-mini
 gh pr create --draft --title "feat(cd): 构建搬回 Mac mini 原生 arm64 + 通知/看门狗/自动回滚" \
@@ -1082,6 +1074,22 @@ gh workflow run runner-watchdog.yml -R linqibin0826/patra</code></pre>
         </header>
         <p>步骤 1（装 Homebrew）跳过：mini 上已有 Homebrew 6.0.19（用户此前自装，含大量包）。此前探测说"无 brew"是非交互 ssh 的 PATH 假象（/opt/homebrew/bin 不在默认 PATH）。步骤 2 起照常执行，两台 Mac 的一致性目标不受影响。</p>
       </li>
+      <li class="note" data-type="decision" data-time="2026-08-27T20:25">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-27T20:25">08-27 20:25</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>plan 未规定：actionlint 将自定义 runner label "macmini" 报为未知，新增 .github/actionlint.yaml 声明 self-hosted-runner labels（一劳永逸，后续 workflow 校验不再误报）；cd.yml 构建步骤 ./gradlew $TASKS 加内联 shellcheck disable=SC2086（有意词拆分）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-27T21:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-27T21:05">08-27 21:05</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>CodeRabbit 首评驱动的计划外变更：deploy.sh 增加入参校验（拒绝非法 SERVICES_JSON 与未知服务名，exit 2，测试新增场景 4/5）；顺带修掉 macOS bash 3.2 多字节坑（$req 紧跟全角括号被并入变量名，须 ${req}）；watchdog canary 补 pipefail 与 runner 版本过期检查；install-github-runner.sh 补版本比对升级路径与 Zulu 25 校验；CLAUDE.md 两处口径修正。</p>
+      </li>
       <!-- ENTRY TEMPLATE:
       <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
         <header>
@@ -1100,7 +1108,7 @@ gh workflow run runner-watchdog.yml -R linqibin0826/patra</code></pre>
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">1</span> decisions /
-      <span data-counter="change">1</span> changes /
+      <span data-counter="change">2</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">0</span> others
     </footer>
