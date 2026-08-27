@@ -229,8 +229,7 @@ export default function ShipAndRollbackArticle() {
             </svg>
           </div>
           <figcaption className="text-xs text-fog">
-            自动回滚的决策树。注意左下角：就算回滚成功、网站照常能访问，这一单也照样以失败收场——
-            "自动兜住了"和"上线成功了"是两回事，不能混。
+            自动回滚的决策树。注意左下角：就算回滚成功、网站照常能访问，这一单也照样以失败收场——"自动兜住了"和"上线成功了"是两回事，不能混。
           </figcaption>
         </figure>
         <p>
@@ -244,42 +243,43 @@ export default function ShipAndRollbackArticle() {
 
       <ArticleSection title="手动回滚：填两个空，两分钟">
         <p>
-          另一种场景是自动验货抓不住的：上线一切健康，第二天你才发现新版逻辑有 bug。这时用剧本留的
-          手动按钮 <Term>workflow_dispatch</Term>——去 Actions 页面（或用 gh 命令）触发
-          cd.yml，填两个参数：哪个服务、回到哪个 tag：
+          另一种场景是自动验货抓不住的：上线一切健康，第二天你才发现新版逻辑有
+          bug。这时用剧本留的手动按钮 <Term>workflow_dispatch</Term>——去 Actions 页面（或用 gh
+          命令）触发 cd.yml，填两个参数：哪个服务、回到哪个 tag：
         </p>
         <CodeBlock command="gh workflow run cd.yml -f service=catalog -f image_tag=<旧sha>" />
         <p>
-          <InlineCode>image_tag</InlineCode> 一旦非空，流水线里所有构建、打镜像、归档推送的步骤
-          整体跳过，直接拿这个 tag 去跑 deploy.sh——旧镜像还躺在 mini 的本机缓存里，整个过程约 2
-          分钟。旧 sha 去哪找？这就是 1 号线 <Term>squash merge</Term> 埋的伏笔：main
-          的历史一行一件事，每个 commit 都是一个可部署的版本号，翻 git log 按提交号精确点名即可。
-          portal 同理，用 portal-cd.yml 的手动按钮、只填 image_tag（它整条剧本只管 portal
-          一个服务）。
+          <InlineCode>image_tag</InlineCode>{" "}
+          一旦非空，流水线里所有构建、打镜像、归档推送的步骤整体跳过，直接拿这个 tag 去跑
+          deploy.sh——旧镜像还躺在 mini 的本机缓存里，整个过程约 2 分钟。旧 sha 去哪找？这就是 1 号线{" "}
+          <Term>squash merge</Term> 埋的伏笔：main 的历史一行一件事，每个 commit
+          都是一个可部署的版本号，翻 git log 按提交号精确点名即可。 portal 同理，用 portal-cd.yml
+          的手动按钮、只填 image_tag（它整条剧本只管 portal 一个服务）。
         </p>
         <p>
-          这条路不是"理论上可行"——上线后专门做过回滚演练：滚回旧版、再滚回新版，双向都实际走通过。
-          没演练过的回滚方案等于没有回滚方案。
+          这条路不是"理论上可行"——上线后专门做过回滚演练：滚回旧版、再滚回新版，双向都实际走通过。没演练过的回滚方案等于没有回滚方案。
         </p>
       </ArticleSection>
 
       <ArticleSection title="档案 #6：打错字的假成功">
         <p>
-          部署闭环站说过 deploy.sh 开工前要"验票"，现在补上它的来历。早期版本里，手动回滚时如果把
-          服务名打错（比如 catalog 手滑成 catalgo），脚本会把它当成"不在名单里的服务"静默跳过——
-          什么都没部署，流水线却一路绿灯报成功。你以为回滚完成了，生产上跑的还是坏版本。
+          部署闭环站说过 deploy.sh
+          开工前要"验票"，现在补上它的来历。早期版本里，手动回滚时如果把服务名打错（比如 catalog
+          手滑成
+          catalgo），脚本会把它当成"不在名单里的服务"静默跳过——什么都没部署，流水线却一路绿灯报成功。你以为回滚完成了，生产上跑的还是坏版本。
         </p>
         <p>
-          这个坑是 AI 评审员 CodeRabbit 在 PR 评审里抓出来的。修法就是现在的入参校验：清单必须是
-          非空数组、每个名字必须在 services.json 花名册里，不认识的名字直接{" "}
-          <InlineCode>exit 2</InlineCode> 拒绝执行。宁可当场报错，绝不假装成功——
+          这个坑是 AI 评审员 CodeRabbit 在 PR
+          评审里抓出来的。修法就是现在的入参校验：清单必须是非空数组、每个名字必须在 services.json
+          花名册里，不认识的名字直接 <InlineCode>exit 2</InlineCode>{" "}
+          拒绝执行。宁可当场报错，绝不假装成功——
           <strong className="text-ink">流水线最危险的状态不是红灯，是骗人的绿灯</strong>。
         </p>
         <p>
-          至此 2 号线到站：从 mini 领任务、本机打包、部署闭环、三道验货，到出事自己退回来， 你点完
+          至此 2 号线到站：从 mini 领任务、本机打包、部署闭环、三道验货，到出事自己退回来，你点完
           Merge 之后的一切都有人（机器人）负责。但还剩一个没人管的问题——这套设施
-          <strong className="text-ink">本身</strong>坏了怎么办？runner 悄悄掉线、磁盘悄悄塞满，
-          谁来发现？换乘 3 号线，守夜线开车。
+          <strong className="text-ink">本身</strong>坏了怎么办？runner
+          悄悄掉线、磁盘悄悄塞满，谁来发现？换乘 3 号线，守夜线开车。
         </p>
       </ArticleSection>
     </>

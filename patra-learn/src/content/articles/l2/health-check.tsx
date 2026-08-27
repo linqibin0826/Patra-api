@@ -9,10 +9,11 @@ export default function HealthCheckArticle() {
     <>
       <ArticleSection title="上线 ≠ 成功：容器起了不等于服务活了">
         <p>
-          上一站 <InlineCode>up -d</InlineCode> 执行完，命令行安静地返回了。这时候庆祝还太早——
-          它只说明<strong className="text-ink">容器进程起来了</strong>，离"服务能接客"还差得远：
-          Spring Boot 要连数据库、注册进 Nacos、把上下文初始化完，任何一步炸了，容器都会顶着
-          "刚启动"的外表当僵尸。所以这套体系的立场是：
+          上一站 <InlineCode>up -d</InlineCode>{" "}
+          执行完，命令行安静地返回了。这时候庆祝还太早——它只说明
+          <strong className="text-ink">容器进程起来了</strong>，离"服务能接客"还差得远： Spring Boot
+          要连数据库、注册进
+          Nacos、把上下文初始化完，任何一步炸了，容器都会顶着"刚启动"的外表当僵尸。所以这套体系的立场是：
           <strong className="text-ink">上线不算数，验货才算数</strong>。验货有三道，一道比一道较真。
         </p>
       </ArticleSection>
@@ -204,8 +205,8 @@ export default function HealthCheckArticle() {
             </svg>
           </div>
           <figcaption className="text-xs text-fog">
-            两条泳道各查各的：容器在里面自查写 health 状态，deploy.sh 在外面轮询要真答复。
-            外面这道等到 UP 还不收工——还得对版，全过才在小本本上记账。
+            两条泳道各查各的：容器在里面自查写 health 状态，deploy.sh
+            在外面轮询要真答复。外面这道等到 UP 还不收工——还得对版，全过才在小本本上记账。
           </figcaption>
         </figure>
       </ArticleSection>
@@ -222,16 +223,23 @@ export default function HealthCheckArticle() {
         <p>
           修复后的现状是：portal 容器内的检查和 deploy.sh 宿主机侧的全部轮询，都写死
           127.0.0.1，明确只走 IPv4。后端容器内的检查用的是 curl（失败会回退试 IPv4），localhost
-          没炸过，所以保留原样——但 deploy.sh 这一侧不赌任何工具的回退行为， 一律
+          没炸过，所以保留原样——但 deploy.sh 这一侧不赌任何工具的回退行为，一律
           127.0.0.1。教训一句话：
           <strong className="text-ink">健康检查的地址，不给名字解析留任何发挥空间</strong>。
+        </p>
+        <p>
+          顺带一提，deploy.sh 这类宿主机脚本还有一个环境级的坑：它们跑在 macOS 自带的 bash 3.2（2006
+          年的老版本）上，中文文案里 <InlineCode>$VAR</InlineCode>{" "}
+          紧跟全角标点时，标点的字节会被并进变量名，直接报"变量不存在"炸掉——所以这套脚本里变量一律写{" "}
+          <InlineCode>{`$\{VAR}`}</InlineCode>。这次翻车的完整故事在 3 号线「四项体检」站（事故档案
+          #5）。
         </p>
       </ArticleSection>
 
       <ArticleSection title="第三道：对版验证，防无声掉包">
         <p>
-          最阴险的失败长这样：<InlineCode>up</InlineCode> 悄悄落到了旧镜像上（比如版本变量没传对），
-          旧版本服务照常健康——前两道检查全绿，但你要上的新代码
+          最阴险的失败长这样：<InlineCode>up</InlineCode>{" "}
+          悄悄落到了旧镜像上（比如版本变量没传对），旧版本服务照常健康——前两道检查全绿，但你要上的新代码
           <strong className="text-ink">根本没上去</strong>。表面成功，实际什么都没发生。
         </p>
         <p>

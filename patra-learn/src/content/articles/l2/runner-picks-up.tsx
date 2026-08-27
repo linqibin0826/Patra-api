@@ -13,12 +13,12 @@ export default function RunnerPicksUpArticle() {
           （portal 另有一份同款 <InlineCode>portal-cd.yml</InlineCode>）。但这条线的{" "}
           <Term>runner</Term> 和 1 号线不一样：1 号线的考场全是 GitHub 免费租的云机器（
           <InlineCode>ubuntu-latest</InlineCode>
-          ，一次性、用完销毁），它们在地球另一端，摸不到你家里那 24 个容器。要"把新版本换上去"，
-          活儿必须落在容器所在的那台机器上——家里那台 Mac mini。
+          ，一次性、用完销毁），它们在地球另一端，摸不到你家里那 24
+          个容器。要"把新版本换上去"，活儿必须落在容器所在的那台机器上——家里那台 Mac mini。
         </p>
         <p>
           于是 mini 上装了一个常驻程序，注册进 <Term>GitHub Actions</Term> 当编外演员——这就是
-          self-hosted runner。云机器是临时工，考完即走；它是常驻演员， 由 macOS 的 launchd
+          self-hosted runner。云机器是临时工，考完即走；它是常驻演员，由 macOS 的 launchd
           托管在后台，一直守着"有没有我的活"。
         </p>
       </ArticleSection>
@@ -27,8 +27,8 @@ export default function RunnerPicksUpArticle() {
         <p>
           很多人第一反应是"GitHub 怎么连进你家网络？"——答案是
           <strong className="text-ink">不连</strong>
-          。方向反过来：mini 上的 runner 主动向 GitHub 发起出站长轮询，"有活吗？"
-          有活，任务就沿着这条 mini 自己拨出去的连接递回来。
+          。方向反过来：mini 上的 runner 主动向 GitHub
+          发起出站长轮询，"有活吗？"有活，任务就沿着这条 mini 自己拨出去的连接递回来。
         </p>
         <figure className="flex flex-col gap-2">
           <div className="overflow-x-auto rounded-xl border border-line bg-surface p-4">
@@ -172,8 +172,8 @@ export default function RunnerPicksUpArticle() {
             </svg>
           </div>
           <figcaption className="text-xs text-fog">
-            连接永远由 mini 主动拨出。不需要公网 IP、不需要端口转发，防火墙上不用为它打任何洞——
-            "领任务"这件事对家里的网络是零暴露的。
+            连接永远由 mini 主动拨出。不需要公网
+            IP、不需要端口转发，防火墙上不用为它打任何洞——"领任务"这件事对家里的网络是零暴露的。
           </figcaption>
         </figure>
         <p>
@@ -196,14 +196,13 @@ export default function RunnerPicksUpArticle() {
           所以规矩定死在触发器上：<InlineCode>cd.yml</InlineCode> 和{" "}
           <InlineCode>portal-cd.yml</InlineCode> 只监听两种事件——
           <InlineCode>push</InlineCode> 到 main，和手动按钮 <Term>workflow_dispatch</Term>；
-          <strong className="text-ink">不监听 pull_request</strong>。也就是说 mini 只执行
-          两种代码：已经过你审查、被 1 号线全绿放行、合并进 main 的；或你亲手点按钮指定的。fork PR
-          里的代码想上这台机器，唯一的路是先过 1 号线考试和你的 review——而考它的是云端一次性机器，
-          考完连机器都销毁了。
+          <strong className="text-ink">不监听 pull_request</strong>。也就是说 mini
+          只执行两种代码：已经过你审查、被 1 号线全绿放行、合并进 main
+          的；或你亲手点按钮指定的。fork PR 里的代码想上这台机器，唯一的路是先过 1 号线考试和你的
+          review——而考它的是云端一次性机器，考完连机器都销毁了。
         </p>
         <p>
-          再叠加上一节的"零入站"：陌生代码进不来，陌生连接也进不来。这台家用机器敢当生产服务器，
-          靠的就是这两道墙。
+          再叠加上一节的"零入站"：陌生代码进不来，陌生连接也进不来。这台家用机器敢当生产服务器，靠的就是这两道墙。
         </p>
       </ArticleSection>
 
@@ -220,20 +219,19 @@ export default function RunnerPicksUpArticle() {
         </p>
         <p>
           另一个刻意的选择是注册时带 <InlineCode>--disableupdate</InlineCode>
-          ，关掉 runner 的自动更新——launchd 环境里自更新的下载曾经走不了代理直接卡死。
-          代价是升级得人工来：闲时重跑安装脚本即可（它会比对版本、只更新二进制）。 什么时候必须升，3
+          ，关掉 runner 的自动更新——launchd
+          环境里自更新的下载曾经走不了代理直接卡死。代价是升级得人工来：闲时重跑安装脚本即可（它会比对版本、只更新二进制）。什么时候必须升，3
           号线守夜站会专门盯着。唯一的红线：
           <strong className="text-ink">派发任务期间严禁重启 runner</strong>
           ——会当场杀死正在执行的 Worker，任务显示成莫名其妙的 cancelled。
         </p>
         <CodeBlock command="bash patra-infra/scripts/install-github-runner.sh <REGISTRATION_TOKEN>" />
         <p>
-          这条命令就是 runner 的全部运维：安装、升级、离线后重新注册，都是它。脚本头部的注释块
-          即运维手册，翻车经验全沉淀在里面。
+          这条命令就是 runner
+          的全部运维：安装、升级、离线后重新注册，都是它。脚本头部的注释块即运维手册，翻车经验全沉淀在里面。
         </p>
         <p>
-          好，演员领到活了。任务清单上写着：把改过的服务打成新镜像。下一站看它怎么打——
-          以及为什么"在哪台机器上打"曾经酿成一场持续三个月的事故。
+          好，演员领到活了。任务清单上写着：把改过的服务打成新镜像。下一站看它怎么打——以及为什么"在哪台机器上打"曾经酿成一场持续三个月的事故。
         </p>
       </ArticleSection>
     </>

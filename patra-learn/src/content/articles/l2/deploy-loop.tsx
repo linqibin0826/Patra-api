@@ -9,8 +9,7 @@ export default function DeployLoopArticle() {
     <>
       <ArticleSection title="最后一公里，交给一个带单测的脚本">
         <p>
-          "换上新镜像"这四个字，展开是一串必须按顺序做对的事：镜像在不在、格式对不对、
-          先起谁后起谁、起来之后活没活、活了是不是真的新版本。这段逻辑没有散落在{" "}
+          "换上新镜像"这句话，展开是一串必须按顺序做对的事：镜像在不在、格式对不对、先起谁后起谁、起来之后活没活、活了是不是真的新版本。这段逻辑没有散落在{" "}
           <Term>workflow</Term> 的 yml 里，而是收进一个专门的脚本{" "}
           <InlineCode>patra-infra/cd/deploy.sh</InlineCode>——后端的 cd.yml 和前端的 portal-cd.yml
           共用它，而且它自己带一套单元测试（<InlineCode>deploy.test.sh</InlineCode>
@@ -22,30 +21,31 @@ export default function DeployLoopArticle() {
 
       <ArticleSection title="第 0 步：先验票——入参校验">
         <p>
-          正式干活之前，脚本先检查手里的单子合不合法：服务清单必须是非空的字符串数组， 且
-          <strong className="text-ink">每个名字都必须在花名册里</strong>。有任何一个不认识的名字，
-          直接 <InlineCode>exit 2</InlineCode> 拒绝执行——一个字都不部署。这条看似多余的检查
-          是被一次真实翻车逼出来的（打错服务名却报"部署成功"），下下站的事故档案里细讲。
+          正式干活之前，脚本先检查手里的单子合不合法：服务清单必须是非空的字符串数组，且
+          <strong className="text-ink">每个名字都必须在花名册里</strong>
+          。有任何一个不认识的名字，直接 <InlineCode>exit 2</InlineCode>{" "}
+          拒绝执行——一个字都不部署。这条看似多余的检查是被一次真实翻车逼出来的（打错服务名却报"部署成功"），下下站的事故档案里细讲。
         </p>
         <p>
           花名册指的是同目录的 <InlineCode>services.json</InlineCode>——整条 CD
-          的单一事实源（SSOT）。每个服务一个条目：叫什么名、gradle 任务是哪个、端口多少、
-          镜像叫什么、健康检查探哪个地址。cd.yml 的构建步骤和 deploy.sh 都只按名字来这里查，
-          从不自己枚举。于是"加一个新服务"变成纯配置活：加一个条目（再补上 compose 里的 service
-          块），<strong className="text-ink">workflow 逻辑一行不用改</strong>。
+          的单一事实源（SSOT）。每个服务一个条目：叫什么名、gradle
+          任务是哪个、端口多少、镜像叫什么、健康检查探哪个地址。cd.yml 的构建步骤和 deploy.sh
+          都只按名字来这里查，从不自己枚举。于是"加一个新服务"变成纯配置活：加一个条目（再补上
+          compose 里的 service 块），<strong className="text-ink">workflow 逻辑一行不用改</strong>。
         </p>
       </ArticleSection>
 
       <ArticleSection title="镜像就位，顺手验一次格式">
         <p>
-          每个服务开工前先确认镜像在本机 daemon 里。正常上线时它必然在——上一站刚在这台机器上打的。
-          镜像不在本地只有一种正经场景：回滚旧版本、而本机缓存恰好被清了。这时才去 <Term>GHCR</Term>{" "}
-          备份网盘回源拉取，网络不给力就指数退避重试：等 30 秒、60 秒、120
+          每个服务开工前先确认镜像在本机 daemon
+          里。正常上线时它必然在——上一站刚在这台机器上打的。镜像不在本地只有一种正经场景：回滚旧版本、而本机缓存恰好被清了。这时才去{" "}
+          <Term>GHCR</Term> 备份网盘回源拉取，网络不给力就指数退避重试：等 30 秒、60 秒、120
           秒各试一轮，都失败才认输。
         </p>
         <p>
-          镜像到手，再断言一次架构必须是 arm64——上一站说过打包已搬回本机，正常产物不可能错；
-          这道断言防的是<strong className="text-ink">从 GHCR 拉回来的历史归档</strong>
+          镜像到手，再断言一次架构必须是
+          arm64——上一站说过打包已搬回本机，正常产物不可能错；这道断言防的是
+          <strong className="text-ink">从 GHCR 拉回来的历史归档</strong>
           ：架构改造之前的旧镜像有 amd64 的，回滚时若不检查就会把三个月事故的主角重新请回来。
         </p>
       </ArticleSection>
@@ -56,8 +56,9 @@ export default function DeployLoopArticle() {
           <InlineCode>
             ORDER=&apos;object-storage registry gateway catalog ingest portal&apos;
           </InlineCode>
-          。object-storage 排最前，因为 catalog 和 ingest 运行时要调它——跟开饭先上米饭一个道理。
-          脚本按这个顺序过一遍，<strong className="text-ink">只处理本次名单里点到名的服务</strong>
+          。object-storage 排最前，因为 catalog 和 ingest
+          运行时要调它——跟开饭先上米饭一个道理。脚本按这个顺序过一遍，
+          <strong className="text-ink">只处理本次名单里点到名的服务</strong>
           ，没改的服务连碰都不碰。轮到谁，就用带版本号的环境变量（如{" "}
           <InlineCode>CATALOG_IMAGE_TAG</InlineCode>）执行 <Term>docker compose</Term> 的{" "}
           <InlineCode>up -d</InlineCode>，把旧容器换成新镜像。
@@ -267,8 +268,8 @@ export default function DeployLoopArticle() {
             </svg>
           </div>
           <figcaption className="text-xs text-fog">
-            deploy.sh 的一轮闭环。前三步是资格审查，后三步才动真格；名单里每个服务按依赖顺序
-            各走一遍这条流水线，谁失败都不影响别人走完。
+            deploy.sh
+            的一轮闭环。前三步是资格审查，后三步才动真格；名单里每个服务按依赖顺序各走一遍这条流水线，谁失败都不影响别人走完。
           </figcaption>
         </figure>
       </ArticleSection>
@@ -283,14 +284,12 @@ export default function DeployLoopArticle() {
           注意两个细节。一是<strong className="text-ink">每个服务一份账</strong>
           ，不是整批一份：catalog 的 last-good 和 ingest 的各记各的，回滚时互不牵连。二是
           <strong className="text-ink">通过一个记一个</strong>
-          ，不等整批结束：就算这批里最后一个服务翻了车，前面成功的几个也已经把自己的新版本记上账了。
-          这本账就是下下站"自动回滚"的全部底气——出事的时候，机器人翻的就是它。
+          ，不等整批结束：就算这批里最后一个服务翻了车，前面成功的几个也已经把自己的新版本记上账了。这本账就是下下站"自动回滚"的全部底气——出事的时候，机器人翻的就是它。
         </p>
         <p>
           收尾前脚本还会顺手 <InlineCode>docker image prune</InlineCode>{" "}
-          清理无主镜像，别让几百次部署把磁盘塞满。不过先别急着谈收尾——流水线中间那格
-          "健康检查"，两个字背后全是坑。下一站专门讲：怎么才算"活着"，以及 localhost
-          怎么背叛过这套系统。
+          清理无主镜像，别让几百次部署把磁盘塞满。不过先别急着谈收尾——流水线中间那格"健康检查"，两个字背后全是坑。下一站专门讲：怎么才算"活着"，以及
+          localhost 怎么背叛过这套系统。
         </p>
       </ArticleSection>
     </>

@@ -17,8 +17,7 @@ export default function NativeBuildArticle() {
         <p>
           旧架构里打包都在云端 ubuntu 机器上做：后端靠 QEMU 模拟出 arm64 交叉编译，又慢又险；portal
           更隐蔽——构建产物干脆就是 amd64，推上去、拉回来、在 mini 上靠 macOS 的 Rosetta
-          转译层默默跑了三个月，没有任何报错，也没有任何人发现。表面一切正常，实际每一次请求都在
-          "翻译"中损耗，而流水线自始至终绿灯。
+          转译层默默跑了三个月，没有任何报错，也没有任何人发现。表面一切正常，实际每一次请求都在"翻译"中损耗，而流水线自始至终绿灯。
         </p>
         <p>
           这类事故最吓人的地方不是坏，是<strong className="text-ink">坏得无声</strong>
@@ -30,7 +29,7 @@ export default function NativeBuildArticle() {
         <p>
           2026 年 8 月的架构决策：<strong className="text-ink">构建搬回 mini 本机</strong>
           。领到任务的 <Term>runner</Term> 直接在这台 arm64
-          机器上编译、打镜像、原地部署——不模拟、不搬运， 格式从物理上不可能再错。
+          机器上编译、打镜像、原地部署——不模拟、不搬运，格式从物理上不可能再错。
         </p>
         <figure className="flex flex-col gap-2">
           <div className="overflow-x-auto rounded-xl border border-line bg-surface p-4">
@@ -311,7 +310,7 @@ export default function NativeBuildArticle() {
           </figcaption>
         </figure>
         <p>
-          附带的收益：部署不再需要从外网拉几百 MB 镜像，曾经的 EOF、超时、 "下载被掐断显示成
+          附带的收益：部署不再需要从外网拉几百 MB 镜像，曾经的 EOF、超时、"下载被掐断显示成
           cancelled"一类的网络事故连根拔掉。
         </p>
       </ArticleSection>
@@ -341,32 +340,32 @@ export default function NativeBuildArticle() {
 
       <ArticleSection title="portal 怎么打：整条流水线装进 Dockerfile">
         <p>
-          portal 走的是另一种哲学：Java 服务是"仓库里先构建、Dockerfile 只负责装"，portal 则把
-          构建全过程都写进了自己的 <InlineCode>patra-portal/Dockerfile</InlineCode>——三个阶段，
-          装依赖（deps）→ <InlineCode>next build</InlineCode>（builder）→ 精简运行镜像（runner），
-          pnpm 装依赖和编译都发生在 <InlineCode>docker build</InlineCode> 内部。所以{" "}
-          <InlineCode>portal-cd.yml</InlineCode> 里没有任何 gradle 或 pnpm 步骤，一条 docker build
-          从源码直达镜像。锁文件不变时依赖层同样命中缓存，套路和后端一致。
+          portal 走的是另一种哲学：Java 服务是"仓库里先构建、Dockerfile 只负责装"，portal
+          则把构建全过程都写进了自己的 <InlineCode>patra-portal/Dockerfile</InlineCode>
+          ——三个阶段，装依赖（deps）→ <InlineCode>next build</InlineCode>（builder）→
+          精简运行镜像（runner）， pnpm 装依赖和编译都发生在 <InlineCode>docker build</InlineCode>{" "}
+          内部。所以 <InlineCode>portal-cd.yml</InlineCode> 里没有任何 gradle 或 pnpm 步骤，一条
+          docker build 从源码直达镜像。锁文件不变时依赖层同样命中缓存，套路和后端一致。
         </p>
       </ArticleSection>
 
       <ArticleSection title="GHCR 的新角色：从必经之路降级为备份网盘">
         <p>
-          镜像打好后直接留在本机 Docker daemon 里，部署根本不经过 <Term>GHCR</Term>。但每次构建完，
-          流水线还是会顺手把镜像推一份上去——标记为 <strong className="text-ink">best-effort</strong>
+          镜像打好后直接留在本机 Docker daemon 里，部署根本不经过 <Term>GHCR</Term>
+          。但每次构建完，流水线还是会顺手把镜像推一份上去——标记为{" "}
+          <strong className="text-ink">best-effort</strong>
           ：这一步在剧本里写明允许失败（
           <InlineCode>continue-on-error: true</InlineCode>
           ），推不上去只记一条 warning，绝不拦着上线。
         </p>
         <p>
           留这个备份是为了一种场景：哪天要回滚到旧版本，而本机的镜像缓存恰好被清理了——那时才去 GHCR
-          把旧镜像拉回来。它从"部署的必经之路"降级成了"回滚的备源"，从关键链路上退役，脾气再差也
-          影响不到任何人。
+          把旧镜像拉回来。它从"部署的必经之路"降级成了"回滚的备源"，从关键链路上退役，脾气再差也影响不到任何人。
         </p>
         <p>
-          至此新镜像已经躺在 mini 的本机 daemon 里，就差最后一步：把正在跑的旧容器换下来。
-          这一步远比 <InlineCode>docker compose up</InlineCode> 一条命令复杂——换上去、验活、
-          出事还得自己退回来。下一站，部署闭环。
+          至此新镜像已经躺在 mini 的本机 daemon 里，就差最后一步：把正在跑的旧容器换下来。这一步远比{" "}
+          <InlineCode>docker compose up</InlineCode>{" "}
+          一条命令复杂——换上去、验活、出事还得自己退回来。下一站，部署闭环。
         </p>
       </ArticleSection>
     </>
