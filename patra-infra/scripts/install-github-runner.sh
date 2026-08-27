@@ -85,6 +85,7 @@ EOF
 echo "==> .env 已写入（代理 + JAVA_HOME=$JH）"
 
 echo "==> 安装为 launchd 服务并启动"
+./svc.sh uninstall 2>/dev/null || true   # 幂等：升级/重装时旧服务已存在，先卸再装
 ./svc.sh install
 ./svc.sh start
 ./svc.sh status
