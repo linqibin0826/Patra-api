@@ -172,7 +172,7 @@ type OpsCard  = { action; scenario; command; note; lineColor }</code></pre>
       <ol>
         <li><code>patra-learn/Dockerfile</code>：照抄 portal 的 multi-stage standalone 构建，容器端口 4001。</li>
         <li><code>patra-infra/docker/</code> compose：新增 <code>patra-learn</code> 服务（网络/暴露策略与 portal 内网部分一致，仅 tailscale 可达）。</li>
-        <li><code>patra-infra/cd/services.json</code>：新增条目 <code>{ name: "patra-learn", port: 4001, healthPath: "/api/health", gradleTask: null }</code>；<code>deploy.sh</code> 的 <code>ORDER</code> 末尾追加 <code>patra-learn</code>——健康检查、last-good、自动回滚机制零改动自动生效。</li>
+        <li><code>patra-infra/cd/services.json</code>：新增条目 <code>{ name: "learn", port: 4001, healthPath: "/api/health", gradleTask: null }</code>（短名对齐 portal 惯例，容器名仍为 patra-learn）；<code>deploy.sh</code> 的 <code>ORDER</code> 末尾追加 <code>learn</code>——健康检查、last-good、自动回滚机制零改动自动生效。</li>
         <li><code>.github/workflows/learn-cd.yml</code>：从 portal-cd.yml 复制，路径过滤 <code>patra-learn/**</code>，mini 原生构建 arm64 镜像 → deploy.sh → GHCR 归档（best-effort）。CI 侧同样复制 portal 的 lint/typecheck/test 工作流模式。</li>
       </ol>
     </section>
