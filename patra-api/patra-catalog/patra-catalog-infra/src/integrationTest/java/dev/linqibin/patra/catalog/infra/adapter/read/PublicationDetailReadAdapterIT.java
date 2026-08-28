@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.linqibin.patra.catalog.domain.model.enums.DisambiguationStatus;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.EvidenceLevel;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
 import dev.linqibin.patra.catalog.infra.config.CatalogITPostgreSQLContainerInitializer;
 import dev.linqibin.patra.catalog.infra.persistence.entity.AuthorEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.MeshDescriptorEntity;
@@ -20,6 +21,7 @@ import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
 import dev.linqibin.patra.common.model.enums.PublicationIdentifierType;
 import dev.linqibin.starter.jpa.autoconfig.JpaAuditingConfig;
 import dev.linqibin.starter.jpa.id.SnowflakeIdGenerator;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,11 +71,12 @@ class PublicationDetailReadAdapterIT {
   void shouldDeserializeStructuredSectionsInOrder() {
     Long venueId = saveVenue("NEJM");
     Long pubId = savePublication(venueId, "RCT Study", "10.1000/rct", "11111111");
-    String sectionsJson =
-        "[{\"label\":\"BACKGROUND\",\"text\":\"Background text.\"},"
-            + "{\"label\":\"METHODS\",\"text\":\"Methods text.\"},"
-            + "{\"label\":\"RESULTS\",\"text\":\"Results text.\"}]";
-    saveAbstract(pubId, "structured", sectionsJson, null);
+    List<PublicationAbstractSection> sections =
+        List.of(
+            PublicationAbstractSection.of("BACKGROUND", "Background text."),
+            PublicationAbstractSection.of("METHODS", "Methods text."),
+            PublicationAbstractSection.of("RESULTS", "Results text."));
+    saveAbstract(pubId, "structured", sections, null);
     em.flush();
     em.clear();
 
@@ -231,7 +234,10 @@ class PublicationDetailReadAdapterIT {
   }
 
   private void saveAbstract(
-      Long pubId, String abstractType, String structuredSections, String plainText) {
+      Long pubId,
+      String abstractType,
+      List<PublicationAbstractSection> structuredSections,
+      String plainText) {
     PublicationAbstractEntity a = new PublicationAbstractEntity();
     a.setId(SnowflakeIdGenerator.getId());
     a.setPublicationId(pubId);

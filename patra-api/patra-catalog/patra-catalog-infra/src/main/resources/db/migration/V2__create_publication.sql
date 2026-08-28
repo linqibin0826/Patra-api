@@ -233,6 +233,7 @@ CREATE TABLE cat_publication_alternative_abstract (
     language_name       VARCHAR(50)     NULL,
     plain_text          TEXT            NULL,
     structured_sections JSONB           NULL,
+    copyright           VARCHAR(1000)   NULL,
     translation_type    VARCHAR(50)     NULL,
     translator          VARCHAR(100)    NULL,
     translation_date    DATE            NULL,

@@ -83,7 +83,12 @@ class PublicationImportResultMapperTest {
       PublicationTypeData pubType = PublicationTypeData.of("D016428", "Journal Article", "MeSH", 1);
       SupplMeshData supplMesh = SupplMeshData.of("C538003", 1);
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of("zh", "Publisher", "中文摘要", List.of(), null, 1);
+          AlternativeAbstractData.builder()
+              .languageCode("zh")
+              .abstractType("Publisher")
+              .plainText("中文摘要")
+              .abstractOrder(1)
+              .build();
       PublicationDateData date = PublicationDateData.of("published", 2024, 3, 15, 1);
       InvestigatorData investigator =
           InvestigatorData.builder()
@@ -340,7 +345,12 @@ class PublicationImportResultMapperTest {
     void should_map_publisher_to_official() {
       // given
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of("zh", "Publisher", "中文摘要", List.of(), null, 1);
+          AlternativeAbstractData.builder()
+              .languageCode("zh")
+              .abstractType("Publisher")
+              .plainText("中文摘要")
+              .abstractOrder(1)
+              .build();
 
       PublicationImportResult result =
           PublicationImportResult.builder()
@@ -364,15 +374,16 @@ class PublicationImportResultMapperTest {
     void should_pass_through_sections_and_copyright() {
       // given
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of(
-              "zh",
-              "Publisher",
-              null,
-              List.of(
-                  PublicationAbstractSection.of("目的", "评估疗效。"),
-                  PublicationAbstractSection.of(null, "补充说明。")),
-              "版权所有 2024",
-              1);
+          AlternativeAbstractData.builder()
+              .languageCode("zh")
+              .abstractType("Publisher")
+              .sections(
+                  List.of(
+                      PublicationAbstractSection.of("目的", "评估疗效。"),
+                      PublicationAbstractSection.of(null, "补充说明。")))
+              .copyright("版权所有 2024")
+              .abstractOrder(1)
+              .build();
 
       PublicationImportResult result =
           PublicationImportResult.builder()
@@ -407,8 +418,12 @@ class PublicationImportResultMapperTest {
     void should_map_professional_types(String abstractType) {
       // given
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of(
-              "en", abstractType, "Professional abstract", List.of(), null, 1);
+          AlternativeAbstractData.builder()
+              .languageCode("en")
+              .abstractType(abstractType)
+              .plainText("Professional abstract")
+              .abstractOrder(1)
+              .build();
 
       PublicationImportResult result =
           PublicationImportResult.builder()
@@ -433,7 +448,12 @@ class PublicationImportResultMapperTest {
     void should_map_null_or_unknown_to_official(String abstractType) {
       // given
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of("en", abstractType, "Some abstract", List.of(), null, 1);
+          AlternativeAbstractData.builder()
+              .languageCode("en")
+              .abstractType(abstractType)
+              .plainText("Some abstract")
+              .abstractOrder(1)
+              .build();
 
       PublicationImportResult result =
           PublicationImportResult.builder()

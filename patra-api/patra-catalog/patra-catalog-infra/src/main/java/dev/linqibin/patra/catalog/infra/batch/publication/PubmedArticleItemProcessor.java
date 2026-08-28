@@ -391,7 +391,7 @@ public class PubmedArticleItemProcessor
     }
 
     String plainText = joinSectionsAsPlainText(sections);
-    boolean structured = sections.stream().anyMatch(PublicationAbstractSection::isLabeled);
+    boolean structured = sections.stream().anyMatch(PublicationAbstractSection::hasLabel);
     if (structured) {
       return PublicationAbstract.ofBoth(plainText, sections, copyright);
     }
@@ -421,7 +421,7 @@ public class PubmedArticleItemProcessor
     return sections.stream()
         .map(
             section ->
-                section.isLabeled() ? section.label() + ": " + section.text() : section.text())
+                section.hasLabel() ? section.label() + ": " + section.text() : section.text())
         .collect(Collectors.joining("\n"));
   }
 
@@ -838,13 +838,14 @@ public class PubmedArticleItemProcessor
           sections.isEmpty() ? altAbstract.getText() : joinSectionsAsPlainText(sections);
 
       result.add(
-          AlternativeAbstractData.of(
-              langCode,
-              altAbstract.getType(),
-              plainText,
-              sections,
-              altAbstract.getCopyright(),
-              order++));
+          AlternativeAbstractData.builder()
+              .languageCode(langCode)
+              .abstractType(altAbstract.getType())
+              .plainText(plainText)
+              .sections(sections)
+              .copyright(altAbstract.getCopyright())
+              .abstractOrder(order++)
+              .build());
     }
 
     return result;

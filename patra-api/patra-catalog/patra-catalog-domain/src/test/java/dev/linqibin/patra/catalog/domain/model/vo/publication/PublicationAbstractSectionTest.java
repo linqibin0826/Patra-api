@@ -19,14 +19,14 @@ class PublicationAbstractSectionTest {
     PublicationAbstractSection section = PublicationAbstractSection.of("METHODS", "some text");
 
     assertThat(section.label()).isEqualTo("METHODS");
-    assertThat(section.isLabeled()).isTrue();
+    assertThat(section.hasLabel()).isTrue();
   }
 
   @Test
   @DisplayName("空白标签应归一化为 null")
   void of_blankLabel_shouldNormalizeToNull() {
     assertThat(PublicationAbstractSection.of("  ", "t").label()).isNull();
-    assertThat(PublicationAbstractSection.of("", "t").isLabeled()).isFalse();
+    assertThat(PublicationAbstractSection.of("", "t").hasLabel()).isFalse();
     assertThat(PublicationAbstractSection.of(null, "t").label()).isNull();
   }
 

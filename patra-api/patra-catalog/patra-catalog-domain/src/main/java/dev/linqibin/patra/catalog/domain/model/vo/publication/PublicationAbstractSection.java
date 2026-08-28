@@ -39,8 +39,12 @@ public record PublicationAbstractSection(String label, String text) implements S
 
   /// 是否带标签段落（STRUCTURED 判型依据）。
   ///
+  /// 命名刻意避开 `isXxx` / `getXxx` bean getter 形态——本记录会由 Hibernate 的
+  /// JsonFormatMapper 直接序列化进 jsonb 列，`isLabeled()` 会被 Jackson 拾取为
+  /// 额外的 `labeled` 属性写入库中，进而击穿读端的严格反序列化。
+  ///
   /// @return true 如果 label 非空
-  public boolean isLabeled() {
+  public boolean hasLabel() {
     return label != null;
   }
 }

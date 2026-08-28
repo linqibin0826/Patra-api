@@ -1,10 +1,12 @@
 package dev.linqibin.patra.catalog.infra.persistence.entity;
 
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
 import dev.linqibin.starter.jpa.entity.ValueObjectJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -18,7 +20,7 @@ import org.hibernate.type.SqlTypes;
 ///
 /// - `publication_id` 文献 ID，外键关联 cat_publication.id（唯一约束）
 /// - `plain_text` 纯文本摘要
-/// - `structured_sections` 结构化摘要（JSON 对象）
+/// - `structured_sections` 结构化摘要（有序数组 `[{"label","text"}]`）
 /// - `abstract_type` 摘要类型：structured/unstructured/graphical/none
 ///
 /// **索引说明**：
@@ -47,10 +49,10 @@ public class PublicationAbstractEntity extends ValueObjectJpaEntity {
   @Column(name = "plain_text", columnDefinition = "TEXT")
   private String plainText;
 
-  /// 结构化摘要段落（JSON 对象）
+  /// 结构化摘要段落（有序数组 `[{"label","text"}]`；纯文本摘要为 null）
   @JdbcTypeCode(SqlTypes.JSON)
-  @Column(name = "structured_sections", columnDefinition = "JSON")
-  private String structuredSections;
+  @Column(name = "structured_sections", columnDefinition = "jsonb")
+  private List<PublicationAbstractSection> structuredSections;
 
   /// 版权信息
   @Column(name = "copyright", length = 1000)

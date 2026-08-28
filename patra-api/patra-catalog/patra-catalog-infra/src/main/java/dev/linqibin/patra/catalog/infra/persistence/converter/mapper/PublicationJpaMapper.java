@@ -37,7 +37,6 @@ import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationMetadataEn
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationOaLocationEntity;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.util.List;
-import java.util.Map;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
@@ -289,7 +288,8 @@ public abstract class PublicationJpaMapper {
     PublicationAbstractEntity entity = new PublicationAbstractEntity();
     entity.setPublicationId(publicationId);
     entity.setPlainText(pubAbstract.plainText());
-    entity.setStructuredSections(mapToJson(pubAbstract.structuredSections()));
+    entity.setStructuredSections(
+        pubAbstract.structuredSections().isEmpty() ? null : pubAbstract.structuredSections());
     entity.setCopyright(pubAbstract.copyright());
     entity.setAbstractType(
         pubAbstract.abstractType() != null ? pubAbstract.abstractType().name() : null);
@@ -306,7 +306,7 @@ public abstract class PublicationJpaMapper {
     }
     return PublicationAbstract.builder()
         .plainText(entity.getPlainText())
-        .structuredSections(jsonToMap(entity.getStructuredSections()))
+        .structuredSections(entity.getStructuredSections())
         .copyright(entity.getCopyright())
         .abstractType(stringToAbstractType(entity.getAbstractType()))
         .build();
@@ -442,7 +442,9 @@ public abstract class PublicationJpaMapper {
     entity.setSourceType(altAbstract.sourceType());
     entity.setLanguageName(altAbstract.languageName());
     entity.setPlainText(altAbstract.plainText());
-    entity.setStructuredSections(mapToJson(altAbstract.structuredSections()));
+    entity.setStructuredSections(
+        altAbstract.structuredSections().isEmpty() ? null : altAbstract.structuredSections());
+    entity.setCopyright(altAbstract.copyright());
     entity.setTranslationType(
         altAbstract.translationType() != null ? altAbstract.translationType().name() : null);
     entity.setTranslator(altAbstract.translator());
@@ -468,7 +470,8 @@ public abstract class PublicationJpaMapper {
         .sourceType(entity.getSourceType())
         .languageName(entity.getLanguageName())
         .plainText(entity.getPlainText())
-        .structuredSections(jsonToMap(entity.getStructuredSections()))
+        .structuredSections(entity.getStructuredSections())
+        .copyright(entity.getCopyright())
         .translationType(stringToTranslationType(entity.getTranslationType()))
         .translator(entity.getTranslator())
         .translationDate(entity.getTranslationDate())
@@ -593,32 +596,6 @@ public abstract class PublicationJpaMapper {
   }
 
   // ========== JSON 转换辅助方法 ==========
-
-  /// 将 Map 转换为 JSON 字符串。
-  private String mapToJson(Map<String, String> map) {
-    if (map == null || map.isEmpty()) {
-      return null;
-    }
-    try {
-      return objectMapper.writeValueAsString(map);
-    } catch (JsonProcessingException e) {
-      log.warn("Map 转 JSON 失败: {}", e.getMessage());
-      return null;
-    }
-  }
-
-  /// 将 JSON 字符串转换为 Map。
-  private Map<String, String> jsonToMap(String json) {
-    if (StrUtil.isBlank(json)) {
-      return Map.of();
-    }
-    try {
-      return objectMapper.readValue(json, new TypeReference<>() {});
-    } catch (JsonProcessingException e) {
-      log.warn("JSON 转 Map 失败: {}", e.getMessage());
-      return Map.of();
-    }
-  }
 
   /// 将 List 转换为 JSON 字符串。
   private String listToJson(List<String> list) {

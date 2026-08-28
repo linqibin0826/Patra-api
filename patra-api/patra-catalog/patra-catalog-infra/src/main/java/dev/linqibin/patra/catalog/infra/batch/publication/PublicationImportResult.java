@@ -337,18 +337,6 @@ public record PublicationImportResult(
     public AlternativeAbstractData {
       sections = sections != null ? List.copyOf(sections) : List.of();
     }
-
-    /// 创建翻译摘要数据。
-    public static AlternativeAbstractData of(
-        String languageCode,
-        String abstractType,
-        String plainText,
-        List<PublicationAbstractSection> sections,
-        String copyright,
-        Integer order) {
-      return new AlternativeAbstractData(
-          languageCode, abstractType, plainText, sections, copyright, order);
-    }
   }
 
   // ==================== 日期数据类型 ====================
