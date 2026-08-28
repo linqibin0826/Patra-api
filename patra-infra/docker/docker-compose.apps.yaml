@@ -105,6 +105,20 @@ services:
       test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4000/api/health" ]
       <<: *app-healthcheck
 
+  learn:
+    image: ghcr.io/linqibin0826/patra-learn:${LEARN_IMAGE_TAG:-latest}
+    container_name: patra-learn
+    restart: unless-stopped
+    ports: [ "4001:4001" ]
+    # learn 是纯静态学习站（无后端依赖），不读 .env.common
+    env_file:
+      - .env.learn
+    healthcheck:
+      # 用 127.0.0.1 而非 localhost：容器内 localhost 先解析 ::1（IPv6），
+      # 而 Next.js standalone 只监听 IPv4（同 portal 的坑）
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4001/api/health" ]
+      <<: *app-healthcheck
+
 networks:
   default:
     # 各子栈独立 project，共享外部网络 patra-net（由 scripts/compose-all.sh 首次创建）

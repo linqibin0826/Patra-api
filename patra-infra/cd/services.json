@@ -1,5 +1,5 @@
 {
-  "_comment": "后端服务 CD 单一事实源（SSOT）。cd.yml 的 detect-changes / build / deploy 与 deploy.sh 都从这里按 name 查询（绝不枚举）。加新服务=加一个条目，不改 workflow 逻辑。healthPath/healthMatch 供 deploy.sh 健康检查（healthMatch 缺省=仅要求 HTTP 成功）。portal 条目为 deploy-only（gradleTask=null，构建在 portal-cd.yml 的 docker build 内完成，勿在 cd.yml dispatch 填 portal）。srcPrefix 保留供人工查阅路径归属；context 是 docker build 上下文（boot 模块，build/libs 所在）。",
+  "_comment": "后端服务 CD 单一事实源（SSOT）。cd.yml 的 detect-changes / build / deploy 与 deploy.sh 都从这里按 name 查询（绝不枚举）。加新服务=加一个条目，不改 workflow 逻辑。healthPath/healthMatch 供 deploy.sh 健康检查（healthMatch 缺省=仅要求 HTTP 成功）。portal / learn 条目为 deploy-only（gradleTask=null，构建在 portal-cd.yml / learn-cd.yml 的 docker build 内完成，勿在 cd.yml dispatch 填 portal/learn）。srcPrefix 保留供人工查阅路径归属；context 是 docker build 上下文（boot 模块，build/libs 所在）。",
   "services": [
     {
       "name": "registry",
@@ -58,6 +58,15 @@
       "srcPrefix": "patra-portal/",
       "port": 4000,
       "image": "ghcr.io/linqibin0826/patra-portal",
+      "healthPath": "/api/health"
+    },
+    {
+      "name": "learn",
+      "gradleTask": null,
+      "context": "patra-learn",
+      "srcPrefix": "patra-learn/",
+      "port": 4001,
+      "image": "ghcr.io/linqibin0826/patra-learn",
       "healthPath": "/api/health"
     }
   ]

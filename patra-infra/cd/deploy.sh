@@ -104,7 +104,7 @@ done
 
 # ---- 主流程 ----
 mkdir -p "$LAST_GOOD_DIR"
-ORDER='object-storage registry gateway catalog ingest portal'
+ORDER='object-storage registry gateway catalog ingest portal learn'
 fail=0
 deployed=""
 for svc in $ORDER; do

@@ -1,0 +1,84 @@
+name: Learn CD
+
+# 学习站 learn 持续部署（Mac mini 原生构建）：merge 到 main（或手动触发）
+#   → build-deploy（Mac mini runner）：原生 arm64 docker build（pnpm 构建全在 Dockerfile 内）
+#     → deploy.sh（部署+健康检查+部署后验证+自动回滚）→ GHCR 归档推送（best-effort）
+# 架构决策（2026-08-27）：与 cd.yml 同步改为 mini 原生构建——旧 ubuntu 构建产物是
+#   amd64、在 mini 上靠 Rosetta 跑，就此消灭；GHCR 降级为「归档/回滚备源」。
+# 安全：只监听 push:main 与 workflow_dispatch，不监听 pull_request，
+#       保证 self-hosted runner 永不执行未经审查的 fork PR 代码。
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'patra-learn/**'
+      # learn 与后端共享 docker-compose.apps.yaml（spec 决策 4）；learn 编排/坐标变更也要重新部署。
+      # 代价：后端 service 块改动也会触发 learn 重建+重部署（幂等无害，与 cd.yml 侧的共享耦合对称）。
+      - 'patra-infra/docker/docker-compose.apps.yaml'
+      - 'patra-infra/docker/.env.learn'
+      - '.github/workflows/learn-cd.yml'
+      - '!**/*.md'
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: '镜像 tag（留空=构建并部署本次 commit；回滚填旧 sha）'
+        required: false
+        default: ''
+
+concurrency:
+  group: learn-cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---- Mac mini 上原生构建 + 部署（回滚时跳过构建步骤）----
+  build-deploy:
+    name: build-deploy
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      # macOS runner 不走 docker login（launchd 非交互无法解锁钥匙串 -25308），
+      # 凭据 base64 写入 DOCKER_CONFIG/config.json 绕过钥匙串。
+      DOCKER_CONFIG: ${{ github.workspace }}/.patra-docker-cfg
+      IMAGE_TAG_INPUT: ${{ github.event.inputs.image_tag }}
+      IMAGE: ghcr.io/linqibin0826/patra-learn
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: 🔑 配置 GHCR 凭据（写 auths + 软链 compose 插件，绕过 macOS 钥匙串）
+        run: |
+          mkdir -p "$DOCKER_CONFIG"
+          ln -sf "$HOME/.docker/cli-plugins" "$DOCKER_CONFIG/cli-plugins"
+          AUTH=$(printf '%s' "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" | base64 | tr -d '\n')
+          printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$AUTH" > "$DOCKER_CONFIG/config.json"
+
+      - name: 🐳 Build image（仅非回滚；原生 arm64——旧 ubuntu 构建产物是 amd64 靠 Rosetta 跑，就此消灭）
+        if: env.IMAGE_TAG_INPUT == ''
+        run: |
+          docker build -f patra-learn/Dockerfile \
+            -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" patra-learn
+
+      - name: 🚀 Deploy（复用 deploy.sh：健康检查/部署后验证/自动回滚）
+        run: |
+          TAG="${IMAGE_TAG_INPUT:-${{ github.sha }}}"
+          bash patra-infra/cd/deploy.sh "$TAG" '["learn"]'
+
+      - name: 📦 GHCR 归档推送（best-effort：GHCR 只是回滚备源，失败不阻塞部署）
+        if: env.IMAGE_TAG_INPUT == ''
+        continue-on-error: true
+        run: |
+          docker push "$IMAGE:${{ github.sha }}" && docker push "$IMAGE:latest" \
+            || echo "::warning::learn 归档推送失败（不阻塞）"
+
+      - name: 🧹 清理 GHCR 凭据（self-hosted 持久 workspace，防 config.json 落盘残留）
+        if: always()
+        run: rm -rf "$DOCKER_CONFIG"
