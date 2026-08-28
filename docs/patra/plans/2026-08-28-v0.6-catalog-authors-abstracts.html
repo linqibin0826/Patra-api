@@ -29,8 +29,8 @@
           <li data-task-status="done"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
           <li data-task-status="done"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
-          <li data-task-status="in-progress"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
-          <li data-task-status="pending"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
+          <li data-task-status="in-progress"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
           <li data-task-status="pending"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
           <li data-task-status="pending"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
           <li data-task-status="pending"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
@@ -964,7 +964,7 @@ git commit -m "feat(catalog): Processor 摘要三态分流与 plainText 统一�
         </ol>
       </article>
 
-      <article class="task" id="task-7" data-status="in-progress">
+      <article class="task" id="task-7" data-status="done">
         <header>
           <h2>任务 7：Processor 作者快照构建（姓名规则 / ORCID 归一化 / attachAuthors）</h2>
           <dl class="files">
@@ -974,7 +974,7 @@ git commit -m "feat(catalog): Processor 摘要三态分流与 plainText 统一�
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试</strong>
             <pre><code class="lang-java">class PubmedArticleItemProcessorAuthorTest {
   // 构造助手：author(...) 组装 CanonicalPublication.Author；invokeBuildAuthors(...) 调 Processor
@@ -1039,7 +1039,7 @@ git commit -m "feat(catalog): Processor 摘要三态分流与 plainText 统一�
             <p>（ORCID 样例 <code>0000-0002-1825-0097</code> 是 ORCID 官方文档示例，ISO 7064 校验位合法。）运行对应 test 命令确认编译失败。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现 buildAuthorSnapshots + normalizeOrcid</strong>
             <p>Processor 新增（并在 <code>buildPublicationAggregate</code> 里 attach——见步骤 3）：</p>
             <pre><code class="lang-java">  /// 构建作者快照列表（姓名规则见 PublicationAuthorSnapshot.deriveDisplayName）。
@@ -1142,7 +1142,7 @@ git commit -m "feat(catalog): Processor 摘要三态分流与 plainText 统一�
   }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：挂载到聚合</strong>
             <p><code>buildPublicationAggregate</code> 中 <code>attachAbstract</code> 块之后追加：</p>
             <pre><code class="lang-java">    // 补充作者快照（唯一事实来源挂聚合；author_id 软关联由 Repository 层填充）
@@ -1153,7 +1153,7 @@ git commit -m "feat(catalog): Processor 摘要三态分流与 plainText 统一�
             <p>运行步骤 1 全部测试，预期全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/batch \
   patra-api/patra-catalog/patra-catalog-infra/src/test
@@ -1162,7 +1162,7 @@ git commit -m "feat(catalog): Processor 作者快照构建与 ORCID 归一化（
         </ol>
       </article>
 
-      <article class="task" id="task-8" data-status="pending">
+      <article class="task" id="task-8" data-status="in-progress">
         <header>
           <h2>任务 8：摘要 Entity 类型化 + V2 copyright 列 + JpaMapper 去手工序列化</h2>
           <dl class="files">
@@ -2381,12 +2381,46 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查抓到 plan 覆盖缺口并已修：翻译摘要 plainText 原直接透传 Canonical text（parser 空格拼接丢 label 形态），与主摘要 "LABEL: text\n" 不一致。修为 <code>sections.isEmpty() ? text : joinSectionsAsPlainText(sections)</code>——「唯一生成点」不变式在主/alt 两链路成立，且 plainText 恒非空白（跳过条件先行拦截）。补 text+sections 并存与段落全滤两用例（三态分流 7、process() 42 全绿）。</p>
       </li>
+      <li class="note" data-type="decision" data-time="2026-08-29T01:10">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T01:10">08-29 01:10</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>测法沿任务 6 先例：并入 PubmedArticleItemProcessorTest 的 @Nested（process() 全链路断言 getAuthors()）而非 plan 的独立类+反射——额外覆盖「已挂载到聚合」。两条遗留裁决落实：作者 order 唯一性由 Processor 保证（成功 add 后才 order++，连续无洞有用例）、聚合不加不变量；domain 补「二次 attach 整体替换」用例。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T01:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T01:10">08-29 01:10</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>normalizeOrcid 未用 hutool：改用文件已静态导入的 commons StringUtils.trimToNull；URL 前缀剥离用大写常量列表且<strong>必须先 toUpperCase 再剥前缀</strong>——Orcid VO 正则只收大写 X 且其内部 toUpperCase 发生在校验后，小写 x 会先被 isValid 拒掉。extractOrcid 复用既有 (List&lt;Identifier&gt;) 重载（investigator 路径共用），未新写。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T01:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T01:10">08-29 01:10</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>buildAffiliationSnapshots 对空白机构原文跳过（VO 构造器 notBlank 会抛异常中断整批导入），跳过后 affOrder 仍连续——测试加了中间空白项断言 1、2 编号。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T02:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T02:00">08-29 02:00</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>质量审查驱动加固：① PublicationAuthorAffiliationSnapshot 紧凑构造器加 2000 截断（affiliation_string 是唯一无上游约束的无界字段，超长会整篇被 skip 丢弃；与 displayName truncate 同构，截断而非抛异常）；② normalizeOrcid javadoc 顺序改正（先大写再剥前缀是硬约束）；③ 测试补强 4 处（非 ORCID 标识符过滤、invalid 拆分断言、集体作者缺省、initials/suffix 透传锁"不拼名"语义）。<strong>挂任务 10 小尾巴</strong>：truncate 的 notBlank 早于 strip 有病态输入缺口（&gt;2000 前导空白→空串），修法 affiliationString.strip() 前置一行；investigator 路径 ORCID 未归一化（两种形态并存）留任务 10 后决策。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">5</span> decisions /
-      <span data-counter="change">13</span> changes /
+      <span data-counter="decision">6</span> decisions /
+      <span data-counter="change">16</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
       <span data-counter="other">8</span> others
     </footer>
