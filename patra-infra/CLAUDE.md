@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `patra-observability` | otel-collector / prometheus / loki / tempo / grafana / alertmanager |
 | `patra-tailnet` | tailscale-gw（共享出向网关） |
 | `patra-jobs` | mysql-ops / xxl-job-admin / xxl-job-tailnet-route / rocketmq(namesrv+broker+dashboard) |
-| `patra-apps` | registry / object-storage / catalog / ingest / gateway（应用容器，镜像来自 GHCR，由 CD 自动部署） |
+| `patra-apps` | registry / object-storage / catalog / ingest / gateway / portal / learn（应用容器，由 CD 自动部署） |
 
 - **多 project 编排入口是 `scripts/compose-all.sh`**（取代已删除的 `docker-compose.dev.yaml`）。compose 的 `include:` 会把所有子栈合并进同一个 project 无法分组，多 project 只能逐个 `up`，故用脚本编排：`compose-all.sh up [stack...]` / `down` / `ps`。
 - **网络 `patra-net` 声明为 `external: true`**，须先于任何子栈存在；`compose-all.sh up` 会幂等创建。各 project 在共享网络上靠容器/服务名 DNS 互通（跨 project 同样生效，因 DNS 是网络作用域而非 project 作用域）。
@@ -52,9 +52,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Self-hosted Runner 与 CD（多服务，Mac mini 原生构建）
 
-5 个后端应用 + portal 由 GitHub Actions CD 自动部署，链路见 `.github/workflows/cd.yml` / `portal-cd.yml`，设计见 `docs/patra/specs/2026-06-08-backend-multiservice-cd-design.html`（单服务首版见 `2026-06-07-cd-macmini-design.html`）。**2026-08-27 架构修订：构建从 ubuntu(QEMU 交叉编译) 搬回 Mac mini 原生 arm64**——部署不再经翻墙代理从 GHCR 拉大镜像（曾致 EOF/20 分钟超时），amd64 架构错配事故结构性消除；GHCR 降级为「归档/回滚备源」，推送 best-effort 失败不阻塞部署。
+5 个后端应用 + portal + learn 由 GitHub Actions CD 自动部署，链路见 `.github/workflows/cd.yml` / `portal-cd.yml` / `learn-cd.yml`，设计见 `docs/patra/specs/2026-06-08-backend-multiservice-cd-design.html`（单服务首版见 `2026-06-07-cd-macmini-design.html`）。**2026-08-27 架构修订：构建从 ubuntu(QEMU 交叉编译) 搬回 Mac mini 原生 arm64**——部署不再经翻墙代理从 GHCR 拉大镜像（曾致 EOF/20 分钟超时），amd64 架构错配事故结构性消除；GHCR 降级为「归档/回滚备源」，推送 best-effort 失败不阻塞部署。
 
-- **服务 SSOT**：`patra-infra/cd/services.json`（`name / gradleTask / context / port / image / healthPath / healthMatch`）。**加新服务 = 加一个条目**（再在 compose 加 service 块 + 建 `.env.<svc>`），workflow 逻辑不变。portal 条目为 deploy-only（构建在 portal-cd.yml 的 docker build 内）。
+- **服务 SSOT**：`patra-infra/cd/services.json`（`name / gradleTask / context / port / image / healthPath / healthMatch`）。**加新服务 = 加一个条目**（再在 compose 加 service 块 + 建 `.env.<svc>`），workflow 逻辑不变。portal / learn 条目为 deploy-only（构建在 portal-cd.yml / learn-cd.yml 的 docker build 内）。
+- **learn（学习站）**：端口 4001，健康检查 `/api/health`（无 healthMatch，HTTP 成功即算健康），专属 workflow `learn-cd.yml`（pnpm 构建全在 `patra-learn/Dockerfile` 内），compose 服务名 `learn` / 容器 `patra-learn`，环境文件 `.env.learn`（纯静态站，不读 `.env.common`）。首次部署需等 learn-cd 首跑产出镜像，期间整栈 `compose-all.sh up` 报缺 learn 镜像属预期。
 - **选择性构建**：`patra-infra/cd/detect-changes.sh` 按 git diff 做受影响单元路由，只构建/部署改动的服务。**改公共面**（`patra-api/patra-common*` / `linqibin-commons/*` / `patra-starters/*` / `build-logic` / `gradle` / 根构建脚本 / `service.Dockerfile` / `docker-compose.apps.yaml` / `cd.yml` / `patra-infra/cd/*`）→ **重建全部 5 个**（正确性优先，宁可多建不可漏建）；docs / markdown 与 `patra-infra/scripts/*` 运维脚本改动不触发构建。注意 `patra-infra/cd/*` **整体**视为 CD 关键输入（含 `deploy.sh`——部署逻辑变更也应触发全量重建+重部署以立即得到验证，属有意设计而非误伤）。
 - **两段 job**：`detect-changes`（ubuntu，受影响单元路由）→ `build-deploy`（macmini：`gradlew bootJar` → 原生 `docker build` → `deploy.sh` → GHCR 归档推送 best-effort）。
 - **deploy.sh**（`patra-infra/cd/deploy.sh`，有单测 `deploy.test.sh`）：镜像就位（本地优先，缺失才回源 GHCR）→ arm64 断言 → 依赖顺序 up（**object-storage 优先**）→ 健康检查（127.0.0.1，不用 localhost——IPv6 误报实际踩坑）→ 部署后验证（运行容器 tag == 期望）→ 不健康自动回滚到 last-good（记录在 mini `~/.patra/cd/last-good-<svc>`，服务级）。
