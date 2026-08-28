@@ -32,8 +32,8 @@
           <li data-task-status="done"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
           <li data-task-status="done"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
           <li data-task-status="done"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
-          <li data-task-status="in-progress"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
-          <li data-task-status="pending"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
+          <li data-task-status="done"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
+          <li data-task-status="in-progress"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
           <li data-task-status="pending"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
           <li data-task-status="pending"><a href="#task-13">Task 13 — generation 参数全链</a></li>
           <li data-task-status="pending"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
@@ -1285,7 +1285,7 @@ git commit -m "feat(catalog): ORCID 轻量投影批查 DAO（任务 9/16）"</co
         </ol>
       </article>
 
-      <article class="task" id="task-10" data-status="in-progress">
+      <article class="task" id="task-10" data-status="done">
         <header>
           <h2>任务 10：作者写链路（writeAuthorAssociations）+ 聚合恢复 + 闭环 IT</h2>
           <dl class="files">
@@ -1296,7 +1296,7 @@ git commit -m "feat(catalog): ORCID 轻量投影批查 DAO（任务 9/16）"</co
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败 IT（作者聚合闭环）</strong>
             <p>新建 <code>PublicationAuthorRoundTripIT</code>——测试基座沿用仓内现有 <code>PublicationRepositoryAdapter</code> 相关 IT 的注解组合（grep <code>PublicationRepositoryAdapter</code> 在 integrationTest 下的既有用法；如无先例则 <code>@DataJpaTest</code> + <code>@Import({PublicationRepositoryAdapterITConfig...})</code>，MapStruct 实现类用 <code>@ComponentScan</code> 或显式 Import 生成类 <code>PublicationJpaMapperImpl</code>）。用例：</p>
             <pre><code class="lang-java">  @Test
@@ -1346,7 +1346,7 @@ git commit -m "feat(catalog): ORCID 轻量投影批查 DAO（任务 9/16）"</co
             <p>注：第二个用例中 <code>insertAllWithAssociations</code> 会再次 insert 主表——若主表冲突先于作者逻辑，改为直接调用 adapter 上的作者写入私有链路不可行（私有），则将第二用例降级为「先手工 delete 主表行再整体重写」或对 writeAuthorAssociations 的 DELETE-first 行为用 SQL 断言旧作者行 id 已更换。以能证明「同 publication 重写不撞 uk_author_order」为准。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：PublicationAuthorDao</strong>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
 
@@ -1369,7 +1369,7 @@ public interface PublicationAuthorDao extends JpaRepository&lt;PublicationAuthor
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：JpaMapper 作者映射</strong>
             <pre><code class="lang-java">  // ========== 作者快照转换 ==========
 
@@ -1428,7 +1428,7 @@ public interface PublicationAuthorDao extends JpaRepository&lt;PublicationAuthor
   }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：RepositoryAdapter 写链路</strong>
             <p>① 注入三个 DAO：<code>PublicationAuthorDao publicationAuthorDao</code>、<code>PublicationAuthorAffiliationDao publicationAuthorAffiliationDao</code>、<code>AuthorOrcidDao authorOrcidDao</code>（加入「关联数据 DAO」块）。② <code>insertAllWithAssociations</code> 的关联写序列中（<code>writePersonalNameSubjectAssociations</code> 之后）加 <code>writeAuthorAssociations(data);</code>。③ 实现：</p>
             <pre><code class="lang-java">  /// 写入作者关联数据（含机构）。
@@ -1502,7 +1502,7 @@ public interface PublicationAuthorDao extends JpaRepository&lt;PublicationAuthor
   }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：findById / findByPmid 恢复作者</strong>
             <pre><code class="lang-java">  @Override
   public Optional&lt;PublicationAggregate&gt; findById(Long id) {
@@ -1545,7 +1545,7 @@ public interface PublicationAuthorDao extends JpaRepository&lt;PublicationAuthor
   }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：运行 IT 验证 + Commit</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationAuthorRoundTripIT" --tests "*PublicationAuthorAffiliationDaoIT"</code>，预期全绿。</p>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra
@@ -1554,7 +1554,7 @@ git commit -m "feat(catalog): 作者写链路+ORCID软关联+聚合恢复闭环�
         </ol>
       </article>
 
-      <article class="task" id="task-11" data-status="pending">
+      <article class="task" id="task-11" data-status="in-progress">
         <header>
           <h2>任务 11：读端 SQL 改行内名 + parseSections 上下文日志</h2>
           <dl class="files">
@@ -2473,12 +2473,37 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查收口：DAO javadoc 固化契约（单次规模有界/未命中不产生行/uk_orcid 至多一行）；ORCID_ABSENT 样例改校验位合法值；空入参用例命名收敛；IT setUp 补清父表（原生 DELETE 绕 @SoftDelete 改写）。<strong>任务 10 义务</strong>：ORCID 收成后按 5000/片分片调用再合并 Map（PG 绑定参数 65535 悬崖）；(a,b)-&gt;a merge 承接多片。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-29T07:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T07:30">08-29 07:30</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>writeAuthorAssociations 在删旧行后加 entityManager.flush()（plan 代码没有）——Hibernate 同次 flush 内 INSERT 先于 DELETE，不显式 flush 新作者行会撞 uk_author_order（IT 用例 2 跑出的真实报错）。修法与本类既有 replace*Batch 方法一致。三条累积义务全部落实：同篇去重（usedAuthorIds，order 最小行保留）、ORCID 5000 分片批查、affiliation 先整串 strip 再截断（domain 测试红→绿）。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T07:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T07:30">08-29 07:30</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>替换语义 IT 采用 plan 备选预案（先手工删主表行再整体重写）——insertAll 的 mapper 忽略 version → isNew 判新建 → 同 id 二次写主表必 PK 冲突先于作者逻辑，plan 主案不可行已实证。findByDoi/findByPmidOrDoi 未挂 loadAuthors（严格按 plan 只改 findById/findByPmid；一致性属独立决策点）。新 IT 目录与 package 一致，未复制旧 IT 的目录/包漂移问题。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T08:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T08:50">08-29 08:50</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>质量审查驱动的三组改造：① 6 处 toAggregate 全挂 loadAuthors（含 findByDoi/findByPmidOrDoi/两个 venue list finder），port javadoc 写死「完整重建聚合、getAuthors 空即确无作者」契约；② 两 DAO deleteAllByPublicationIdIn 改 @Modifying bulk DML——DELETE 立即下发，flush 定序隐患被消除而非绕开（显式 flush 及注释删除，删旧行范围取 data 全集使替换语义无条件成立）；③ IT 补强（机构删除断言真实化、作者行 id 更换、双作者机构归属、initials/suffix/equalContribution 双向映射）。裁定：venue list finder 零生产调用方，2N 查询不加批量重载（无界列表未来正确形态是随分页签名长出）；port javadoc 成本提示 2 行留作可选尾巴。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">7</span> decisions /
-      <span data-counter="change">20</span> changes /
+      <span data-counter="decision">8</span> decisions /
+      <span data-counter="change">22</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
       <span data-counter="other">10</span> others
     </footer>
