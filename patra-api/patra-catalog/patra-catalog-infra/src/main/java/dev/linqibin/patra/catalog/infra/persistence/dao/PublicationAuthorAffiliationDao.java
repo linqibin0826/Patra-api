@@ -7,6 +7,9 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /// 作者-机构归属 JPA Repository。
 ///
@@ -67,8 +70,15 @@ public interface PublicationAuthorAffiliationDao
 
   /// 按出版物 ID 列表批量删除机构归属（重导替换语义用）。
   ///
+  /// 采用 bulk DML 而非派生删除：DELETE 立即下发，不进入 Hibernate 动作队列，
+  /// 从而避开「同一次 flush 内 INSERT 先于 DELETE」导致新行撞唯一约束的隐患。
+  /// 实体继承 `ValueObjectJpaEntity`（无 `@Version` / 无软删除），bulk DML 无副作用。
+  ///
   /// @param publicationIds 出版物 ID 列表
-  void deleteAllByPublicationIdIn(Collection<Long> publicationIds);
+  @Modifying
+  @Query(
+      "DELETE FROM PublicationAuthorAffiliationEntity e WHERE e.publicationId IN :publicationIds")
+  void deleteAllByPublicationIdIn(@Param("publicationIds") Collection<Long> publicationIds);
 
   // ========== 消歧相关查询 ==========
 

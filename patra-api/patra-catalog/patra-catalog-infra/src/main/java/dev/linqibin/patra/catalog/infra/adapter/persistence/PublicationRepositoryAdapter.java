@@ -6,10 +6,13 @@ import com.ibm.icu.text.Collator;
 import com.ibm.icu.util.ULocale;
 import dev.linqibin.commons.util.StringUtils;
 import dev.linqibin.patra.catalog.domain.model.aggregate.PublicationAggregate;
+import dev.linqibin.patra.catalog.domain.model.enums.DisambiguationStatus;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.ExistingPublicationKeys;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.MeshQualifier;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAlternativeAbstract;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorAffiliationSnapshot;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationCompleteData;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationDate;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationFunding;
@@ -25,10 +28,13 @@ import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationSupplMe
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationTypeInfo;
 import dev.linqibin.patra.catalog.domain.port.repository.PublicationRepository;
 import dev.linqibin.patra.catalog.infra.persistence.converter.mapper.PublicationJpaMapper;
+import dev.linqibin.patra.catalog.infra.persistence.dao.AuthorOrcidDao;
 import dev.linqibin.patra.catalog.infra.persistence.dao.InvestigatorDao;
 import dev.linqibin.patra.catalog.infra.persistence.dao.KeywordDao;
 import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationAbstractDao;
 import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationAlternativeAbstractDao;
+import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationAuthorAffiliationDao;
+import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationAuthorDao;
 import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationDao;
 import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationDateDao;
 import dev.linqibin.patra.catalog.infra.persistence.dao.PublicationFundingDao;
@@ -46,6 +52,8 @@ import dev.linqibin.patra.catalog.infra.persistence.entity.InvestigatorEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.KeywordEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAbstractEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAlternativeAbstractEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorAffiliationEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationDateEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationFundingEntity;
@@ -106,6 +114,9 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
   /// 批量操作时每批次的大小，超过此值会 flush 并 clear 以防内存溢出。
   private static final int BATCH_FLUSH_SIZE = 500;
 
+  /// ORCID 批量软关联查询的分片大小（PostgreSQL 单条语句绑定参数上限 65535）。
+  private static final int ORCID_BATCH_SIZE = 5000;
+
   /// ICU4J Collator，用于解析后内存对象的 collation-aware 去重，与 DB 无关；
   /// PRIMARY 强度对齐外部数据源的 accent-/case-insensitive 期望（spec §4.24 / §4.55）。
   /// DB collation = `C`（确定性，性能优先）。
@@ -140,13 +151,16 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
   private final InvestigatorDao investigatorDao;
   private final PublicationInvestigatorDao publicationInvestigatorDao;
   private final PublicationPersonalNameSubjectDao personalNameSubjectDao;
+  private final PublicationAuthorDao publicationAuthorDao;
+  private final PublicationAuthorAffiliationDao publicationAuthorAffiliationDao;
+  private final AuthorOrcidDao authorOrcidDao;
 
   @Override
   public Optional<PublicationAggregate> findById(Long id) {
     if (id == null) {
       return Optional.empty();
     }
-    return jpaRepository.findById(id).map(jpaConverter::toAggregate);
+    return jpaRepository.findById(id).map(jpaConverter::toAggregate).map(this::loadAuthors);
   }
 
   @Override
@@ -154,7 +168,38 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
     if (pmid == null || pmid.isBlank()) {
       return Optional.empty();
     }
-    return jpaRepository.findByPmid(pmid).map(jpaConverter::toAggregate);
+    return jpaRepository.findByPmid(pmid).map(jpaConverter::toAggregate).map(this::loadAuthors);
+  }
+
+  /// 恢复聚合根的作者快照（含机构，按顺序还原）。
+  ///
+  /// @param aggregate 已恢复主数据的聚合根
+  /// @return 挂载作者快照后的同一聚合根实例
+  private PublicationAggregate loadAuthors(PublicationAggregate aggregate) {
+    if (aggregate.getId() == null) {
+      return aggregate;
+    }
+
+    List<PublicationAuthorEntity> authorEntities =
+        publicationAuthorDao.findAllByPublicationIdOrderByAuthorOrderAsc(aggregate.getId().value());
+    if (authorEntities.isEmpty()) {
+      aggregate.attachAuthors(List.of());
+      return aggregate;
+    }
+
+    List<Long> pubAuthorIds = authorEntities.stream().map(PublicationAuthorEntity::getId).toList();
+    Map<Long, List<PublicationAuthorAffiliationEntity>> affiliationsByPubAuthorId =
+        publicationAuthorAffiliationDao.findAllByPubAuthorIdIn(pubAuthorIds).stream()
+            .collect(Collectors.groupingBy(PublicationAuthorAffiliationEntity::getPubAuthorId));
+
+    aggregate.attachAuthors(
+        authorEntities.stream()
+            .map(
+                entity ->
+                    jpaConverter.toAuthorSnapshot(
+                        entity, affiliationsByPubAuthorId.getOrDefault(entity.getId(), List.of())))
+            .toList());
+    return aggregate;
   }
 
   @Override
@@ -162,7 +207,7 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
     if (doi == null || doi.isBlank()) {
       return Optional.empty();
     }
-    return jpaRepository.findByDoi(doi).map(jpaConverter::toAggregate);
+    return jpaRepository.findByDoi(doi).map(jpaConverter::toAggregate).map(this::loadAuthors);
   }
 
   @Override
@@ -170,7 +215,10 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
     if ((pmid == null || pmid.isBlank()) && (doi == null || doi.isBlank())) {
       return Optional.empty();
     }
-    return jpaRepository.findByPmidOrDoi(pmid, doi).map(jpaConverter::toAggregate);
+    return jpaRepository
+        .findByPmidOrDoi(pmid, doi)
+        .map(jpaConverter::toAggregate)
+        .map(this::loadAuthors);
   }
 
   @Override
@@ -247,6 +295,7 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
     }
     return jpaRepository.findByVenueInstanceId(venueInstanceId).stream()
         .map(jpaConverter::toAggregate)
+        .map(this::loadAuthors)
         .toList();
   }
 
@@ -255,7 +304,10 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
     if (venueId == null) {
       return List.of();
     }
-    return jpaRepository.findByVenueId(venueId).stream().map(jpaConverter::toAggregate).toList();
+    return jpaRepository.findByVenueId(venueId).stream()
+        .map(jpaConverter::toAggregate)
+        .map(this::loadAuthors)
+        .toList();
   }
 
   @Override
@@ -349,6 +401,7 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
       writeAbstractAssociations(data);
       writeInvestigatorAssociations(data);
       writePersonalNameSubjectAssociations(data);
+      writeAuthorAssociations(data);
 
       log.info("批量写入 {} 条 Publication（含关联数据）完成", data.size());
     } catch (RuntimeException ex) {
@@ -943,6 +996,102 @@ public class PublicationRepositoryAdapter implements PublicationRepository {
       batchSaveWithFlush(entities, personalNameSubjectDao);
       log.debug("写入 {} 条人物主题关联", entities.size());
     }
+  }
+
+  /// 写入作者关联数据（含机构归属）。
+  ///
+  /// **顺序保证**：预分配作者行 ID → 构造机构行 `pub_author_id` → 作者行落库 → 机构行落库。
+  /// 机构行引用作者行 ID，故作者行 ID 必须在写入前预分配（`batchSaveWithFlush` 每批 clear，
+  /// 无法依赖回填）。
+  ///
+  /// **替换语义**：无条件按本批全部 `publication_id` 删旧行（机构行先于作者行），
+  /// 本轮无作者的文献同样清掉上一轮遗留行；删除走 bulk DML 立即下发，
+  /// 幂等重导不会撞 `uk_author_order`。
+  ///
+  /// **ORCID 软关联**：批量查 `cat_author`（分片，见 [#resolveOrcidAuthorIds]），
+  /// 命中即填 `author_id`，绝不因导入向 `cat_author` 新建行；同篇多个作者命中同一作者时，
+  /// 仅首次命中的行保留 `author_id`（部分唯一索引 `uk_pub_author` 约束），
+  /// 其余置 null 而非整批失败。
+  private void writeAuthorAssociations(List<PublicationCompleteData> data) {
+    List<Long> publicationIds =
+        data.stream().map(PublicationCompleteData::getPublicationId).toList();
+    publicationAuthorAffiliationDao.deleteAllByPublicationIdIn(publicationIds);
+    publicationAuthorDao.deleteAllByPublicationIdIn(publicationIds);
+
+    Map<String, Long> orcidToAuthorId = resolveOrcidAuthorIds(data);
+
+    List<PublicationAuthorEntity> authorRows = new ArrayList<>();
+    List<PublicationAuthorAffiliationEntity> affiliationRows = new ArrayList<>();
+    for (PublicationCompleteData item : data) {
+      Long publicationId = item.getPublicationId();
+      Set<Long> usedAuthorIds = new HashSet<>();
+
+      for (PublicationAuthorSnapshot snapshot : item.publication().getAuthors()) {
+        Long resolvedAuthorId =
+            snapshot.orcid() != null ? orcidToAuthorId.get(snapshot.orcid()) : null;
+        if (resolvedAuthorId != null && !usedAuthorIds.add(resolvedAuthorId)) {
+          // 同篇重复命中：仅遍历中首次命中的行保留软关联（作者列表按 order 升序时即 order 最小行）
+          log.debug(
+              "同篇重复命中作者：publicationId={}, authorId={}, authorOrder={}",
+              publicationId,
+              resolvedAuthorId,
+              snapshot.order());
+          resolvedAuthorId = null;
+        }
+
+        PublicationAuthorEntity authorEntity =
+            jpaConverter.toAuthorEntity(snapshot, publicationId, resolvedAuthorId);
+        authorEntity.setId(SnowflakeIdGenerator.getId());
+        authorRows.add(authorEntity);
+
+        for (PublicationAuthorAffiliationSnapshot affiliation : snapshot.affiliations()) {
+          affiliationRows.add(
+              PublicationAuthorAffiliationEntity.builder()
+                  .id(SnowflakeIdGenerator.getId())
+                  .pubAuthorId(authorEntity.getId())
+                  .publicationId(publicationId)
+                  .affiliationOrder(affiliation.order())
+                  .affiliationString(affiliation.affiliationString())
+                  .disambiguationStatus(DisambiguationStatus.PENDING)
+                  .build());
+        }
+      }
+    }
+
+    batchSaveWithFlush(authorRows, publicationAuthorDao);
+    log.debug("写入 {} 条作者关联", authorRows.size());
+
+    batchSaveWithFlush(affiliationRows, publicationAuthorAffiliationDao);
+    log.debug("写入 {} 条作者机构归属", affiliationRows.size());
+  }
+
+  /// 分片批量解析 ORCID → 已消歧作者 ID。
+  ///
+  /// 单次 `IN` 参数量受 PostgreSQL 绑定参数上限（65535）约束，故按
+  /// [#ORCID_BATCH_SIZE] 分片查询后合并；ORCID 全局唯一，重复键取先到者。
+  ///
+  /// @param data 本批文献数据（无作者的条目不贡献 ORCID）
+  /// @return ORCID → 作者 ID 映射（未命中的 ORCID 不出现在结果中）
+  private Map<String, Long> resolveOrcidAuthorIds(List<PublicationCompleteData> data) {
+    List<String> orcids =
+        data.stream()
+            .flatMap(item -> item.publication().getAuthors().stream())
+            .map(PublicationAuthorSnapshot::orcid)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+    if (orcids.isEmpty()) {
+      return Map.of();
+    }
+
+    Map<String, Long> result = new HashMap<>();
+    for (int i = 0; i < orcids.size(); i += ORCID_BATCH_SIZE) {
+      List<String> slice = orcids.subList(i, Math.min(i + ORCID_BATCH_SIZE, orcids.size()));
+      authorOrcidDao
+          .findAuthorIdsByOrcidIn(slice)
+          .forEach(view -> result.merge(view.getOrcid(), view.getAuthorId(), (a, b) -> a));
+    }
+    return result;
   }
 
   @Override

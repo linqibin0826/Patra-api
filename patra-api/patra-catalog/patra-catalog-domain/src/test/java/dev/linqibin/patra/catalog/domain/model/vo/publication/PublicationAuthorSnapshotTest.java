@@ -133,6 +133,16 @@ class PublicationAuthorSnapshotTest {
     assertThat(snap.affiliationString()).hasSize(2000);
   }
 
+  @Test
+  @DisplayName("超长前导空白的机构原文应先去空白再截断，不得退化为空串")
+  void affiliationSnapshot_leadingWhitespaceBeyondLimit_shouldKeepContent() {
+    String padded = " ".repeat(2100) + "Harvard";
+
+    var snap = PublicationAuthorAffiliationSnapshot.of(1, padded);
+
+    assertThat(snap.affiliationString()).isEqualTo("Harvard");
+  }
+
   /// 构造仅指定集体作者名的快照。
   ///
   /// @param collectiveName 集体作者名

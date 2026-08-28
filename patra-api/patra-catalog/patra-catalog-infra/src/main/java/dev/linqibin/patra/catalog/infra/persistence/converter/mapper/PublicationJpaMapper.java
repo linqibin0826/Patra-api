@@ -21,6 +21,8 @@ import dev.linqibin.patra.catalog.domain.model.enums.VersionType;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.LanguageInfo;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAlternativeAbstract;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorAffiliationSnapshot;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationDate;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationId;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationIdentifier;
@@ -30,12 +32,15 @@ import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueInstanceId;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAbstractEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAlternativeAbstractEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorAffiliationEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationDateEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationIdentifierEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationMetadataEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationOaLocationEntity;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
+import java.util.Comparator;
 import java.util.List;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -540,6 +545,77 @@ public abstract class PublicationJpaMapper {
         .checkedDate(entity.getCheckedDate())
         .isActive(Boolean.TRUE.equals(entity.getIsActive()))
         .pmcid(entity.getPmcid())
+        .build();
+  }
+
+  // ========== 作者转换 ==========
+
+  /// 将作者快照转换为 JPA 实体。
+  ///
+  /// `is_corresponding_author` 恒为 false：PubMed 不提供显式通讯作者标记，
+  /// 不据启发式规则伪造该语义字段。
+  ///
+  /// @param snapshot 作者快照
+  /// @param publicationId 文献 ID
+  /// @param resolvedAuthorId ORCID 命中的已消歧作者 ID（未命中或同篇去重后为 null）
+  /// @return JPA 实体
+  public PublicationAuthorEntity toAuthorEntity(
+      PublicationAuthorSnapshot snapshot, Long publicationId, Long resolvedAuthorId) {
+    if (snapshot == null) {
+      return null;
+    }
+    return PublicationAuthorEntity.builder()
+        .publicationId(publicationId)
+        .authorId(resolvedAuthorId)
+        .authorOrder(snapshot.order())
+        .displayName(snapshot.displayName())
+        .lastName(snapshot.lastName())
+        .foreName(snapshot.foreName())
+        .initials(snapshot.initials())
+        .suffix(snapshot.suffix())
+        .collectiveName(snapshot.collectiveName())
+        .orcid(snapshot.orcid())
+        .firstAuthor(snapshot.firstAuthor())
+        .correspondingAuthor(false)
+        .equalContribution(snapshot.equalContribution())
+        .build();
+  }
+
+  /// 将 JPA 实体及其机构行转换为作者快照（聚合恢复用）。
+  ///
+  /// @param entity 作者关联实体
+  /// @param affiliations 该作者的机构行（顺序不限，方法内按 `affiliation_order` 升序重排）
+  /// @return 作者快照
+  public PublicationAuthorSnapshot toAuthorSnapshot(
+      PublicationAuthorEntity entity, List<PublicationAuthorAffiliationEntity> affiliations) {
+    if (entity == null) {
+      return null;
+    }
+    List<PublicationAuthorAffiliationSnapshot> affiliationSnapshots =
+        affiliations == null
+            ? List.of()
+            : affiliations.stream()
+                .sorted(
+                    Comparator.comparing(PublicationAuthorAffiliationEntity::getAffiliationOrder))
+                .map(
+                    affiliation ->
+                        PublicationAuthorAffiliationSnapshot.of(
+                            affiliation.getAffiliationOrder(), affiliation.getAffiliationString()))
+                .toList();
+
+    return PublicationAuthorSnapshot.builder()
+        .order(entity.getAuthorOrder())
+        .lastName(entity.getLastName())
+        .foreName(entity.getForeName())
+        .initials(entity.getInitials())
+        .suffix(entity.getSuffix())
+        .collectiveName(entity.getCollectiveName())
+        .displayName(entity.getDisplayName())
+        .orcid(entity.getOrcid())
+        .authorId(entity.getAuthorId())
+        .firstAuthor(Boolean.TRUE.equals(entity.getFirstAuthor()))
+        .equalContribution(Boolean.TRUE.equals(entity.getEqualContribution()))
+        .affiliations(affiliationSnapshots)
         .build();
   }
 

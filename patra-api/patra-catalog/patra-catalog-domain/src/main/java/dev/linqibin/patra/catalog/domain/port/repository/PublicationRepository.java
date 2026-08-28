@@ -21,6 +21,7 @@ import java.util.Set;
 /// - PublicationAggregate：聚合根
 /// - PublicationIdentifier：值对象集合（保护标识符唯一性不变量）
 /// - PublicationAbstract：嵌入式值对象（与主文献 1:1 关系）
+/// - PublicationAuthorSnapshot：作者快照集合（含机构快照，文献视角的唯一事实来源）
 ///
 /// **设计原则**：
 ///
@@ -28,6 +29,8 @@ import java.util.Set;
 /// - 实现在 Infrastructure 层，遵循依赖倒置原则（DIP）
 /// - 以聚合为单位加载和保存，维护聚合一致性
 /// - 方法返回领域对象，而非 DO（数据对象）
+/// - 所有返回 `PublicationAggregate` 的查询方法均返回**完整重建**的聚合：
+///   作者快照（含机构）随聚合一并加载，`getAuthors()` 为空即代表该文献确无作者数据
 ///
 /// **补充数据管理**：
 ///
@@ -50,19 +53,19 @@ public interface PublicationRepository {
   /// 根据 ID 查找文献。
   ///
   /// @param id 文献 ID
-  /// @return 文献聚合根
+  /// @return 文献聚合根（含作者快照）
   Optional<PublicationAggregate> findById(Long id);
 
   /// 根据 PMID 查找文献。
   ///
   /// @param pmid PubMed ID
-  /// @return 文献聚合根
+  /// @return 文献聚合根（含作者快照）
   Optional<PublicationAggregate> findByPmid(String pmid);
 
   /// 根据 DOI 查找文献。
   ///
   /// @param doi Digital Object Identifier
-  /// @return 文献聚合根
+  /// @return 文献聚合根（含作者快照）
   Optional<PublicationAggregate> findByDoi(String doi);
 
   /// 根据 PMID 或 DOI 查找文献（任一匹配即可）。
@@ -71,7 +74,7 @@ public interface PublicationRepository {
   ///
   /// @param pmid PubMed ID（可为 null）
   /// @param doi Digital Object Identifier（可为 null）
-  /// @return 文献聚合根
+  /// @return 文献聚合根（含作者快照）
   Optional<PublicationAggregate> findByPmidOrDoi(String pmid, String doi);
 
   /// 检查 PMID 是否已存在。
@@ -98,13 +101,13 @@ public interface PublicationRepository {
   /// 根据载体实例 ID 查找文献列表。
   ///
   /// @param venueInstanceId 载体实例 ID
-  /// @return 文献列表
+  /// @return 文献列表（每条均含作者快照）
   List<PublicationAggregate> findByVenueInstanceId(Long venueInstanceId);
 
   /// 根据载体 ID 查找文献列表。
   ///
   /// @param venueId 载体 ID
-  /// @return 文献列表
+  /// @return 文献列表（每条均含作者快照）
   List<PublicationAggregate> findByVenueId(Long venueId);
 
   /// 统计指定载体的文献数量。

@@ -21,16 +21,19 @@ public record PublicationAuthorAffiliationSnapshot(int order, String affiliation
   /// 机构原文列宽上限（与 DDL `affiliation_string VARCHAR(2000)` 对齐）。
   private static final int AFFILIATION_STRING_MAX_LENGTH = 2000;
 
-  /// 紧凑构造器：校验顺序与机构原文，超长机构原文按列宽截断。
+  /// 紧凑构造器：校验顺序与机构原文，先去首尾空白再按列宽截断。
   ///
   /// 机构原文是唯一无上游长度约束的字段（PubMed `AffiliationInfo` 为自由文本），
   /// 超长时截断而非抛异常：一条超长机构不应导致整篇文献被跳过。
+  ///
+  /// 截断前先整串 `strip()`：否则前导空白超过列宽的病态输入会被截成纯空白，
+  /// 再经截断后 strip 退化为空串，与"机构原文非空"的不变量矛盾。
   ///
   /// @throws IllegalArgumentException 如果顺序小于 1 或机构原文为空白
   public PublicationAuthorAffiliationSnapshot {
     Assert.isTrue(order >= 1, "机构顺序必须 >= 1");
     Assert.notBlank(affiliationString, "机构原文不能为空");
-    affiliationString = truncate(affiliationString);
+    affiliationString = truncate(affiliationString.strip());
   }
 
   /// 按机构原文列宽截断，并去除截断后可能残留的首尾空白。
