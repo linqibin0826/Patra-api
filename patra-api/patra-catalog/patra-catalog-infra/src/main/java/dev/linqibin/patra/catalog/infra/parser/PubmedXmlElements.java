@@ -99,6 +99,7 @@ public final class PubmedXmlElements {
     public static final String PUBLICATION_STATUS = "PublicationStatus";
     public static final String ABSTRACT = "Abstract";
     public static final String ABSTRACT_TEXT = "AbstractText";
+    public static final String COPYRIGHT_INFORMATION = "CopyrightInformation";
     public static final String PUBLICATION_TYPE_LIST = "PublicationTypeList";
     public static final String PUBLICATION_TYPE = "PublicationType";
     public static final String PAGINATION = "Pagination";
