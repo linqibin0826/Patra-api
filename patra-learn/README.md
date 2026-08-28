@@ -47,9 +47,10 @@ src/
 │   ├── glossary.ts / incidents.ts / cheatsheet.ts
 │   └── integrity.test.ts               # 内容防线：引用完整性 + 数量校验
 ├── components/                         # metro-map / article-layout / check-in-button / …
-└── lib/
-    ├── content.ts                      # 拓扑查询（openStationRefs / adjacentStations / firstUnvisited）
-    └── progress.ts                     # localStorage 打卡进度（key: patra-learn.progress.v1）
+├── lib/
+│   ├── content.ts                      # 拓扑查询（openStationRefs / adjacentStations / firstUnvisited）
+│   └── progress.ts                     # localStorage 打卡进度（key: patra-learn.progress.v1）
+└── types/globals.d.ts                  # ambient 声明
 
 tests/smoke.spec.ts                     # Playwright e2e（仅本地）
 ```
@@ -60,6 +61,10 @@ tests/smoke.spec.ts                     # Playwright e2e（仅本地）
 - **`Station`**：`id / name / summary`；每个开通站在 `articles/index.ts` 注册一篇文章组件，路由 `/lines/<line>/<station>`。
 - **`StationRef`**（`` `${LineId}/${string}` ``）：全站互链的统一引用——词条的 `appearsAt`、档案的 `relatedStation`、小抄的 `lineId` 都指回站/线，`integrity.test.ts` 保证引用真实存在、注册表与拓扑一一对应。
 - **换乘节点** `TRANSFER_NODE`：l1 终点「合并进 main」→ l2 起点的视觉连接，不计入 13 站、无文章（MetroMap 中坐标硬编码，改拓扑需同步 `metro-map.tsx`）。
+
+## CI
+
+learn 在 `.github/workflows/ci.yml` 有专属 job（`learn_changed` 门控，仅 learn 变更时触发）：lint → typecheck → test → build，已纳入 `required-check` 合并门禁（未触发时按 allowed-skips 放行）。e2e 不进 CI，只在本地跑（`pnpm test:e2e`）。
 
 ## 部署
 

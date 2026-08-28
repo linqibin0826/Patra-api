@@ -10,9 +10,10 @@ Patra **内部学习站**（onboarding + 回顾）——把本仓库的 CI / CD 
 
 内容全部是仓库内 TS/TSX 数据与组件，没有 CMS：
 
-- **加一站**：`src/content/lines.ts` 对应线加 `Station` → `src/content/articles/<line>/<id>.tsx` 建文章组件 → `src/content/articles/index.ts` 注册。三步缺一，`integrity.test.ts` 会红到你补齐。
+- **加一站**：`src/content/lines.ts` 对应线加 `Station` → `src/content/articles/<line>/<id>.tsx` 建文章组件 → `src/content/articles/index.ts` 注册。三步缺一，`integrity.test.ts` 会红到你补齐；三步做完后，integrity 的站数断言（`[4, 5, 4]` / 13 站）也要同步改测试期望值。
 - **加词条 / 事故档案 / 操作卡**：改 `src/content/glossary.ts` / `incidents.ts` / `cheatsheet.ts`，同样有 integrity 校验兜底（数量、编号、`StationRef` 引用必须真实存在）。
-- **开新线**：`LINES` 加条目（或把规划线 `status: "planned"` 改 `"open"`）。注意 `metro-map.tsx` 的**换乘节点坐标是硬编码**（l1 末站 x = `X0 + STEP * 3`、l1/l2 行号写死）——改线路拓扑（l1 站数、线序、换乘关系）必须同步 `src/components/metro-map.tsx`。
+- **开新线**：`LINES` 加条目（或把规划线 `status: "planned"` 改 `"open"`），integrity 的开通线断言同步更新；MetroMap 硬编码注意点见下条。
+- **MetroMap 无测试兜底（静默失败面）**：`src/components/metro-map.tsx` 的画布宽度 `width = X0 + STEP * 5 + 60` 不随最长线站数变化，换乘节点坐标（l1 末站 x = `X0 + STEP * 3`、l1/l2 行号）同样写死——给最长线加站或改线路拓扑（l1 站数、线序、换乘关系）必须同步这些公式，且没有任何测试会红，只能肉眼验证首页。
 
 ## 设计系统来源
 
