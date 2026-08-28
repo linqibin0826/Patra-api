@@ -1,7 +1,5 @@
 package dev.linqibin.patra.catalog.infra.adapter.read;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel.AbstractSectionView;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel.AuthorView;
@@ -16,6 +14,8 @@ import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Repository;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 /// 文献详情 CQRS 读适配器。
 ///
@@ -32,9 +32,13 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
   /// 出版类型拼接分隔符，与 SQL 中 `string_agg(..., E'\x1f', ...)` 一致（U+001F）。
   private static final String DELIMITER = "";
 
-  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
   private final PublicationDetailDao publicationDetailDao;
+
+  /// Spring 托管的 Jackson 3 ObjectMapper。
+  ///
+  /// 写端 FormatMapper 是 starter-jpa 内的独立 Jackson 3 实例，二者配置不共享——
+  /// 段落 wire format 由 `PublicationJpaMapperTest` 的 key 集合断言钉死。
+  private final ObjectMapper objectMapper;
 
   @Override
   public Optional<PublicationDetailReadModel> findById(long id) {
@@ -55,7 +59,8 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
                   .publicationYear(main.getPublicationYear())
                   .evidenceLevel(evidenceLevel)
                   .abstractType(main.getAbstractType())
-                  .abstractSections(parseSections(main.getStructuredSectionsJson()))
+                  .abstractSections(
+                      parseSections(id, main.getAbstractType(), main.getStructuredSectionsJson()))
                   .abstractPlainText(main.getAbstractPlainText())
                   .doi(main.getDoi())
                   .pmid(main.getPmid())
@@ -87,16 +92,28 @@ public class PublicationDetailReadAdapter implements PublicationDetailReadPort {
     return List.of(agg.split(DELIMITER, -1));
   }
 
-  private List<AbstractSectionView> parseSections(String json) {
+  /// 解析结构化摘要 JSON（有序数组形态）。
+  ///
+  /// 解析失败降级为空列表并 error 记录（重建后数据格式可信，失败即 bug 必须响）；
+  /// 不打印摘要正文，仅记 id / 类型 / 异常。
+  ///
+  /// @param publicationId 文献 ID
+  /// @param abstractType 摘要类型
+  /// @param json 结构化摘要 JSON 文本
+  /// @return 摘要段落视图列表，解析失败返回空列表
+  private List<AbstractSectionView> parseSections(
+      long publicationId, String abstractType, String json) {
     if (json == null || json.isBlank()) {
       return List.of();
     }
     try {
-      return OBJECT_MAPPER.readValue(json, new TypeReference<List<AbstractSectionView>>() {});
+      return objectMapper.readValue(json, new TypeReference<List<AbstractSectionView>>() {});
     } catch (Exception e) {
-      log.warn(
-          "Failed to parse structured_sections JSON, falling back to empty list: {}",
-          e.getMessage());
+      log.error(
+          "structured_sections 解析失败，降级空列表：publicationId={}, abstractType={}",
+          publicationId,
+          abstractType,
+          e);
       return List.of();
     }
   }

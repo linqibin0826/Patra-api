@@ -41,7 +41,8 @@ public record PublicationAbstractSection(String label, String text) implements S
   ///
   /// 命名刻意避开 `isXxx` / `getXxx` bean getter 形态——本记录会由 Hibernate 的
   /// JsonFormatMapper 直接序列化进 jsonb 列，`isLabeled()` 会被 Jackson 拾取为
-  /// 额外的 `labeled` 属性写入库中，进而击穿读端的严格反序列化。
+  /// 额外的 `labeled` 属性写入库中，污染库内 wire format
+  /// （`PublicationJpaMapperTest` 的 key 集合断言会红）。
   ///
   /// @return true 如果 label 非空
   public boolean hasLabel() {

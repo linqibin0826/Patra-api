@@ -27,6 +27,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
@@ -36,7 +37,11 @@ import org.springframework.test.context.ContextConfiguration;
 @DataJpaTest
 @ContextConfiguration(initializers = CatalogITPostgreSQLContainerInitializer.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class})
+@Import({
+  PublicationDetailReadAdapter.class,
+  JpaAuditingConfig.class,
+  JacksonAutoConfiguration.class
+})
 @ActiveProfiles("test")
 @DisplayName("PublicationDetailReadAdapter 文献详情查询集成测试")
 class PublicationDetailReadAdapterIT {
@@ -342,5 +347,50 @@ class PublicationDetailReadAdapterIT {
 
     assertThat(model.provenanceCode()).isEqualTo("PUBMED");
     assertThat(model.fullTextUrl()).isEqualTo("https://publisher.example.com/article/oa");
+  }
+
+  @Test
+  @DisplayName("作者名来自行内快照：author_id 为 NULL（未消歧）时照常展示")
+  void authorName_fromInlineSnapshot_withoutLinkedAuthor() {
+    Long venueId = saveVenue("Snapshot Journal");
+    Long pubId = savePublication(venueId, "Snapshot Study", "10.1/x", "99999999");
+    // 重建后生产主形态：author_id 为 NULL（仅 ORCID 命中已消歧作者时才填充）。
+    savePublicationAuthor(pubId, null, "Snapshot Name", 1, true, false);
+    em.flush();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.authors()).hasSize(1);
+    assertThat(model.authors().getFirst().name()).isEqualTo("Snapshot Name");
+  }
+
+  @Test
+  @DisplayName("malformed structured_sections：降级空列表，plainText 照常返回")
+  void malformedSectionsJson_degradesGracefully() {
+    Long venueId = saveVenue("Malformed Journal");
+    Long pubId = savePublication(venueId, "Malformed Study", "10.1/y", "99999998");
+    saveAbstract(
+        pubId,
+        "STRUCTURED",
+        List.of(PublicationAbstractSection.of("BACKGROUND", "Background text.")),
+        "plain fallback");
+    em.flush();
+    // Entity 已类型化（List<PublicationAbstractSection>），无法直塞坏 JSON——用原生 SQL 注入坏形态。
+    em.getEntityManager()
+        .createNativeQuery(
+            """
+            UPDATE cat_publication_abstract
+               SET structured_sections = to_jsonb('not-a-json-array'::text)
+             WHERE publication_id = :id
+            """)
+        .setParameter("id", pubId)
+        .executeUpdate();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.abstractSections()).isEmpty();
+    assertThat(model.abstractPlainText()).isEqualTo("plain fallback");
   }
 }

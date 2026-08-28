@@ -2,9 +2,6 @@ package dev.linqibin.patra.catalog.infra.persistence.converter.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.linqibin.patra.catalog.domain.model.enums.AbstractType;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel.AbstractSectionView;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
@@ -20,6 +17,8 @@ import org.hibernate.type.format.FormatMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 /// PublicationJpaMapper 摘要映射单元测试。
 ///
@@ -197,22 +196,23 @@ class PublicationJpaMapperTest {
                   PublicationAbstractSection.of(null, "tail")));
 
       // 钉死 wire format：任何新增的 bean getter（如曾经的 isLabeled() → "labeled"）都会打破此断言，
-      // 并进而击穿读端 PublicationDetailReadAdapter 的严格反序列化。
+      // 并把派生属性污染进库内 wire format（读端宽松反序列化不会报错，只能靠本断言拦截）。
       assertThat(json)
           .isEqualTo(
               "[{\"label\":\"BACKGROUND\",\"text\":\"bg\"},{\"label\":null,\"text\":\"tail\"}]");
     }
 
     @Test
-    @DisplayName("序列化产物应能被读端严格反序列化（未知属性即失败）")
-    void shouldBeStrictlyDeserializableByReadSide() throws Exception {
+    @DisplayName("序列化产物应能被读端还原为 AbstractSectionView")
+    void shouldBeDeserializableByReadSide() {
       String json = serialize(List.of(PublicationAbstractSection.of("METHODS", "m")));
 
-      ObjectMapper strictReader =
-          new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
+      // 读端 PublicationDetailReadAdapter 用 Spring 托管的 Jackson 3 mapper（宽松，未知属性被忽略），
+      // 此处同款构造，只验证 label/text 能正确还原；派生属性泄漏由上面的 key 集合断言拦截。
+      ObjectMapper readSideMapper = new ObjectMapper();
 
       List<AbstractSectionView> views =
-          strictReader.readValue(json, new TypeReference<List<AbstractSectionView>>() {});
+          readSideMapper.readValue(json, new TypeReference<List<AbstractSectionView>>() {});
 
       assertThat(views).containsExactly(AbstractSectionView.of("METHODS", "m"));
     }
