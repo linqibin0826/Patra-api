@@ -37,8 +37,8 @@
           <li data-task-status="done"><a href="#task-12">Task 12 — 事故档案馆与操作小抄页</a></li>
           <li data-task-status="done"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
           <li data-task-status="done"><a href="#task-14">Task 14 — Dockerfile 与本地容器验证</a></li>
-          <li data-task-status="in-progress"><a href="#task-15">Task 15 — CI/CD 接入</a></li>
-          <li data-task-status="pending"><a href="#task-16">Task 16 — 文档收尾</a></li>
+          <li data-task-status="done"><a href="#task-15">Task 15 — CI/CD 接入</a></li>
+          <li data-task-status="in-progress"><a href="#task-16">Task 16 — 文档收尾</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -1831,7 +1831,7 @@ git commit -m "build(learn): standalone 三阶段 Dockerfile（4001）+ 本地�
         </ol>
       </article>
 
-      <article class="task" id="task-15" data-status="in-progress">
+      <article class="task" id="task-15" data-status="done">
         <header>
           <h2>任务 15：CI/CD 接入</h2>
           <dl class="files">
@@ -1840,7 +1840,7 @@ git commit -m "build(learn): standalone 三阶段 Dockerfile（4001）+ 本地�
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：detect-changes 先写失败测试（TDD）</strong>
             <p>打开 <code>patra-infra/cd/detect-changes.test.sh</code>，仿照现有 portal 用例追加三个场景（沿用该文件现成的断言函数与 classify 喂 stdin 的模式）：</p>
             <ul>
@@ -1850,7 +1850,7 @@ git commit -m "build(learn): standalone 三阶段 Dockerfile（4001）+ 本地�
             </ul>
             <p>同时把现有断言中比较整个 JSON 的用例按需补上 <code>learn_changed</code> 字段。运行：<code>bash patra-infra/cd/detect-changes.test.sh</code>　预期：<span class="pill high">红</span>。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：改 detect-changes.sh——learn 与 portal 完全同构</strong>
             <p>机械修改（bash 3.2 兼容、变量一律 <code>${VAR}</code>）：</p>
             <ul>
@@ -1860,12 +1860,12 @@ git commit -m "build(learn): standalone 三阶段 Dockerfile（4001）+ 本地�
             </ul>
             <p>运行：<code>bash patra-infra/cd/detect-changes.test.sh</code>　预期：<span class="pill low">绿</span>（全部用例，含原有 portal 用例）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：ci.yml 增加 learn job</strong>
             <p>三处修改：① detect-changes job 的 <code>outputs</code> 增加 <code>learn_changed: ${{ steps.detect.outputs.learn_changed }}</code>，detect step 的写 GITHUB_OUTPUT 处增加 <code>echo "learn_changed=$(echo "$R" | jq -r '.learn_changed')" &gt;&gt; "$GITHUB_OUTPUT"</code>；② 复制整个 <code>portal:</code> job 块为 <code>learn:</code> job，做替换：job 名/name → learn，<code>if</code> 条件用 <code>needs.detect-changes.outputs.learn_changed == 'true'</code>，working-directory / node-version-file / cache-dependency-path / Next.js cache path+key 里的 <code>patra-portal</code> 全部 → <code>patra-learn</code>，e2e/playwright 相关步骤删除（learn 的 e2e 只在本地跑——记为计划内决定）；③ <code>required-check</code> job 的 <code>needs</code> 数组加 <code>learn</code>，<code>allowed-skips</code> 加 <code>learn</code>。</p>
             <p>验证：<code>actionlint .github/workflows/ci.yml</code>（mini/本机有 actionlint；没有则 <code>brew install actionlint</code>）无报错。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：compose 服务块 + .env.learn</strong>
             <pre><code class="lang-yaml"># 追加到 patra-infra/docker/docker-compose.apps.yaml 的 services: 下（portal 块之后）
   learn:
@@ -1887,7 +1887,7 @@ PORT=4001
 NODE_ENV=production</code></pre>
             <p>验证：<code>docker compose -f patra-infra/docker/docker-compose.apps.yaml config --quiet</code> 通过。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：services.json 条目 + deploy.sh ORDER</strong>
             <pre><code class="lang-json">// 追加到 patra-infra/cd/services.json 的 services 数组末尾（portal 之后）
 {
@@ -1903,7 +1903,7 @@ NODE_ENV=production</code></pre>
             <pre><code class="lang-bash">ORDER='object-storage registry gateway catalog ingest portal learn'</code></pre>
             <p>验证：<code>bash patra-infra/cd/deploy.test.sh</code> 仍 PASS=5（deploy.test.sh 用自己的 fixture services 文件，不受影响——若有用例引用真实 services.json 则按其断言补 learn）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：learn-cd.yml（portal-cd.yml 全文复制 + 替换）</strong>
             <p><code>cp .github/workflows/portal-cd.yml .github/workflows/learn-cd.yml</code> 后做且仅做以下替换（其余行原样保留，包括 DOCKER_CONFIG 钥匙串绕过、GHCR best-effort 注释）：</p>
             <table>
@@ -1921,7 +1921,7 @@ NODE_ENV=production</code></pre>
             </table>
             <p>验证：<code>actionlint .github/workflows/learn-cd.yml</code> 无报错；<code>grep -c portal .github/workflows/learn-cd.yml</code> 输出 0（防漏改）。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：Commit</strong>
             <pre><code class="lang-bash">git add patra-infra .github/workflows
 git commit -m "ci(learn): CI learn job + learn-cd 工作流 + compose/services/deploy 接线（任务 15/16）"</code></pre>
@@ -1929,7 +1929,7 @@ git commit -m "ci(learn): CI learn job + learn-cd 工作流 + compose/services/d
         </ol>
       </article>
 
-      <article class="task" id="task-16" data-status="pending">
+      <article class="task" id="task-16" data-status="in-progress">
         <header>
           <h2>任务 16：文档收尾</h2>
           <dl class="files">
@@ -2230,12 +2230,28 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>环境插曲：本机 OrbStack docker daemon 完全卡死（version/_ping 无响应，orb restart 也挂），强杀 OrbStack 进程重启后恢复，原有容器自动拉起。与本任务代码无关。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T14:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T14:40">08-28 14:40</time>
+          <a href="#task-15">&sect; Task 15</a>
+        </header>
+        <p>①ci.yml detect step 的 GITHUB_OUTPUT 重定向合并为 { …; } &gt;&gt; 组——SC2129 为改动前既有 actionlint 报错（stash 对比确认），不修无法达成「actionlint 无报错」验收门；②commit subject「CI」开头被 subject-case 拒，改「ci(learn): 增加 learn CI job…」；③.env.learn 注释用 .env.portal 同款 banner 风格。schedule 置 learn=true、dispatch 不置——与 portal 同构（通读确认 portal 置 true 仅 workflow 变更与 schedule 两处）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T15:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T15:20">08-28 15:20</time>
+          <a href="#task-15">&sect; Task 15</a>
+        </header>
+        <p>质量审查修复（58f92c0f7）：learn CI job 补 pnpm build 步骤（纯 SSG 站 CI 不验证构建=最大回归面裸奔，plan 缺口；.next/cache 缓存随之生效）+ detect-changes.sh 顶部 LEARN_CHANGED=false 初始化（消环境注入面）。复验通过。另记：learn 首次部署有 bootstrap 窗口（合入 main 后 learn-cd 首跑完成前，mini 整栈 up 会因无 learn 镜像报错）——Task 16 文档要写一句。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">19</span> changes /
+      <span data-counter="change">21</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">5</span> others
     </footer>
