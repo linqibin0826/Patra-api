@@ -25,8 +25,8 @@
           -->
           <li data-task-status="done"><a href="#task-1">Task 1 — 作者侧 DDL 与 Entity 原子改造</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
-          <li data-task-status="in-progress"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
-          <li data-task-status="pending"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
+          <li data-task-status="in-progress"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
@@ -478,7 +478,7 @@ git commit -m "feat(catalog): 摘要领域类型定型——共享 section recor
         </ol>
       </article>
 
-      <article class="task" id="task-3" data-status="in-progress">
+      <article class="task" id="task-3" data-status="done">
         <header>
           <h2>任务 3：作者快照 VO（含 displayName 派生规则）</h2>
           <dl class="files">
@@ -488,7 +488,7 @@ git commit -m "feat(catalog): 摘要领域类型定型——共享 section recor
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试（displayName 派生 + 防御拷贝）</strong>
             <pre><code class="lang-java">class PublicationAuthorSnapshotTest {
 
@@ -545,7 +545,7 @@ git commit -m "feat(catalog): 摘要领域类型定型——共享 section recor
             <p>运行 <code>./gradlew :patra-catalog:patra-catalog-domain:test --tests "*PublicationAuthorSnapshotTest"</code>，预期编译失败。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现两个快照 VO</strong>
             <pre><code class="lang-java">/// 作者-机构快照值对象（文献视角的机构原文，不做标准化）。
 ///
@@ -654,7 +654,7 @@ public record PublicationAuthorSnapshot(
             <p>运行步骤 1 命令，预期全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain
 git commit -m "feat(catalog): 作者/机构快照 VO 与 displayName 派生规则（任务 3/16）"</code></pre>
@@ -662,7 +662,7 @@ git commit -m "feat(catalog): 作者/机构快照 VO 与 displayName 派生规�
         </ol>
       </article>
 
-      <article class="task" id="task-4" data-status="pending">
+      <article class="task" id="task-4" data-status="in-progress">
         <header>
           <h2>任务 4：PublicationAggregate 携带作者快照</h2>
           <dl class="files">
@@ -2254,14 +2254,39 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>小尾巴：PublicationAlternativeAbstract.findSectionsByLabel 的 trim 行为无独立断言（实现已同步改），任务 6/8 顺手补一条带空白入参的断言。hasCopyright 按 YAGNI 裁决不做（全仓零调用方）。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T19:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T19:35">08-28 19:35</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>测试类与用例补中文 @DisplayName（对齐同包 PublicationAbstractSectionTest 风格），断言逻辑与 plan 给定一致。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T19:35">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T19:35">08-28 19:35</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>javadoc 中 PublicationAggregate 引用用反引号而非 [链接]（跨包未 import，链接会解析失败）；truncate 私有方法按「所有访问级别都要 javadoc」补了 @param/@return。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T20:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T20:10">08-28 20:10</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>质量审查驱动的四项超 plan 加固（plan 步骤 1/2 代码块为修复前形态，以实现为准）：① collectiveWins 测试改真竞争者（同时给 lastName 与 collectiveName）；② 紧凑构造器 collectiveName trimToNull（isCollective 空白语义自洽）；③ displayName ≤200 上限收进紧凑构造器（超长抛 IAE，不再静默拖到 PG）——<strong>任务 4/7/10 注意：手工 build 快照的 displayName 必须走 deriveDisplayName（输出恒 ≤200）</strong>；④ truncate 加 .strip() 消尾随空格（199A+" "+50B 截断点恰为空格 → 结果 199 字符，测试已锁）。残留一行边界测试（derive 产出的 200 字符可被构造器接受）挂任务 4 顺带补。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">3</span> decisions /
-      <span data-counter="change">5</span> changes /
+      <span data-counter="change">7</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">4</span> others
+      <span data-counter="other">5</span> others
     </footer>
   </aside>
 
