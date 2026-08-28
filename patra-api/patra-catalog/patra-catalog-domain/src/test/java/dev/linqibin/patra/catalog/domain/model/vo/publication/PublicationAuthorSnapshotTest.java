@@ -1,6 +1,7 @@
 package dev.linqibin.patra.catalog.domain.model.vo.publication;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
@@ -90,6 +91,14 @@ class PublicationAuthorSnapshotTest {
     assertThatThrownBy(
             () -> PublicationAuthorSnapshot.builder().order(1).displayName("A".repeat(201)).build())
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  @DisplayName("恰好 200 字符的展示名可被构造器接受（derive 与 ctor 边界一致）")
+  void snapshot_displayNameExactly200_shouldBeAccepted() {
+    assertThatCode(
+            () -> PublicationAuthorSnapshot.builder().order(1).displayName("A".repeat(200)).build())
+        .doesNotThrowAnyException();
   }
 
   @Test
