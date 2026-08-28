@@ -245,6 +245,8 @@ jobs:
         run: pnpm typecheck
       - name: 🧪 Unit test (Vitest)
         run: pnpm test
+      - name: 🏗 Build (Next.js SSG)
+        run: pnpm build
 
   # ---- 5) coverage：仅全量（full_run/nightly）聚合上传，服务级 PR 不伪装全仓 ----
   coverage:

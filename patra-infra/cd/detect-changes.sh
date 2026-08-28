@@ -19,6 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRAPH="$SCRIPT_DIR/module-graph.json"
 ALL_UNITS='["registry","object-storage","catalog","ingest","gateway","foundation"]'
+LEARN_CHANGED=false   # 全局初始化：防环境注入假阳性 / 非布尔值炸 --argjson
 
 emit() { # $1=units_json $2=portal $3=docs_only $4=full_run $5=coverage_mode（learn 走全局 LEARN_CHANGED）
   local learn="${LEARN_CHANGED:-false}"
