@@ -24,8 +24,8 @@
           <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
           -->
           <li data-task-status="done"><a href="#task-1">Task 1 — 作者侧 DDL 与 Entity 原子改造</a></li>
-          <li data-task-status="in-progress"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
-          <li data-task-status="pending"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
+          <li data-task-status="in-progress"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
@@ -289,7 +289,7 @@ git commit -m "feat(catalog): 作者关联表行内存名+可空软关联 DDL/En
         </ol>
       </article>
 
-      <article class="task" id="task-2" data-status="in-progress">
+      <article class="task" id="task-2" data-status="done">
         <header>
           <h2>任务 2：摘要领域类型定型——PublicationAbstractSection + 两个 VO 重设计</h2>
           <dl class="files">
@@ -300,7 +300,7 @@ git commit -m "feat(catalog): 作者关联表行内存名+可空软关联 DDL/En
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写 PublicationAbstractSection 失败测试</strong>
             <p>新建 <code>patra-catalog-domain/src/test/java/dev/linqibin/patra/catalog/domain/model/vo/publication/PublicationAbstractSectionTest.java</code>：</p>
             <pre><code class="lang-java">class PublicationAbstractSectionTest {
@@ -332,12 +332,12 @@ git commit -m "feat(catalog): 作者关联表行内存名+可空软关联 DDL/En
 }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行确认失败</strong>
             <p>运行：<code>cd patra-api &amp;&amp; ./gradlew :patra-catalog:patra-catalog-domain:test --tests "*PublicationAbstractSectionTest"</code>，预期编译失败（类不存在）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：实现 PublicationAbstractSection</strong>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.vo.publication;
 
@@ -382,7 +382,7 @@ public record PublicationAbstractSection(String label, String text) implements S
             <p>运行步骤 2 命令，预期 4 个测试通过。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：写 PublicationAbstract 新语义失败测试</strong>
             <p>改写现有 <code>PublicationAbstractTest</code>（如无则新建），核心用例：</p>
             <pre><code class="lang-java">  @Test
@@ -426,7 +426,7 @@ public record PublicationAbstractSection(String label, String text) implements S
   }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：重设计 PublicationAbstract（Map→List、列表语义）</strong>
             <p>record 组件改为 <code>List&lt;PublicationAbstractSection&gt; structuredSections</code>；紧凑构造器改：</p>
             <pre><code class="lang-java">  public PublicationAbstract {
@@ -459,18 +459,18 @@ public record PublicationAbstractSection(String label, String text) implements S
             <p><code>getSectionCount()</code> 改 <code>structuredSections.size()</code>；<code>hasContent()</code> 改 <code>StrUtil.isNotBlank(plainText) || !structuredSections.isEmpty()</code>；<code>getFullText()</code> 的结构化分支改 <code>structuredSections.stream().map(PublicationAbstractSection::text).collect(Collectors.joining(" "))</code>。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：PublicationAlternativeAbstract 同步改造</strong>
             <p>① record 组件 <code>Map&lt;String, String&gt; structuredSections</code> → <code>List&lt;PublicationAbstractSection&gt; structuredSections</code>，紧凑构造器 <code>List.copyOf / List.of()</code>；② 新增组件 <code>String copyright</code>（放 structuredSections 之后；@Builder 生成，工厂方法 ofOfficial/ofProfessional/ofMachine 不用带 copyright）；③ <code>getSection(String)</code> 删除，加同款 <code>findSectionsByLabel</code>；<code>getFullText()</code> 同款改法。补两条单测：List 防御拷贝 + copyright 透传。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：编译波及清点（只改 domain 内）</strong>
             <p>运行 <code>./gradlew :patra-catalog:patra-catalog-domain:compileJava :patra-catalog:patra-catalog-domain:test</code>。domain 内其他引用旧 Map API 的代码/测试就地改为列表语义。<strong>infra 层此时预期编译失败</strong>（Processor / JpaMapper 仍用 Map）——这是任务 6/8 的工作，本任务只保证 domain 模块绿。</p>
             <p>预期：domain test 全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 8：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain
 git commit -m "feat(catalog): 摘要领域类型定型——共享 section record + 有序数组语义（任务 2/16）"</code></pre>
@@ -478,7 +478,7 @@ git commit -m "feat(catalog): 摘要领域类型定型——共享 section recor
         </ol>
       </article>
 
-      <article class="task" id="task-3" data-status="pending">
+      <article class="task" id="task-3" data-status="in-progress">
         <header>
           <h2>任务 3：作者快照 VO（含 displayName 派生规则）</h2>
           <dl class="files">
@@ -2211,14 +2211,57 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查指出 uk_pub_author 唯一部分索引会被「同篇重复 ORCID → 同 resolvedAuthorId」阻断重导（整批回滚）。裁决：不改 DDL（spec 定唯一索引），在任务 10 写链路补去重不变量——同篇同 resolvedAuthorId 仅 author_order 最小行保留 authorId，其余置 null，并加 IT 覆盖「同篇两作者同 ORCID」。派生 delete 非 bulk DML 的性能提示也留任务 10 压测裁决。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T18:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T18:20">08-28 18:20</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>plan 步骤 4 给 4 个用例，实际写 6 个：补 getSectionCount/isStructured 与 hasContent/NONE 判型两条——被改动方法原本无覆盖，属 TDD 缺口补齐。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T18:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T18:20">08-28 18:20</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>两 VO 类级 javadoc 使用示例引用了已删除的 Map API（Map.of / getSection），plan 未提——已同步改为 List.of(PublicationAbstractSection.of(...)) 与 findSectionsByLabel，并给 copyright 补 @param。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T18:20">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T18:20">08-28 18:20</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>两个既有 VO 的 @since 保持 0.1.0（仅新建的 PublicationAbstractSection 标 0.6.0）。infra 编译失败面已确认为 6 处 2 文件（PubmedArticleItemProcessor:377,379 + PublicationJpaMapper:292,309,445,471），归任务 6/8 闭合。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T19:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T19:05">08-28 19:05</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>质量审查驱动的三处超 plan 加固：① 判型推断三分支补 builder 路径测试（JpaMapper 读路径 abstractType=null 生产可达）；② findSectionsByLabel 入参 trim+大小写不敏感（写侧已 trim 的对称）；③ ofStructured 两重载加 Assert.notEmpty 快速失败（工厂名承诺 STRUCTURED）。builder/ofBoth 刻意不加约束——builder 须保留读侧重建自由（历史数据 STRUCTURED 但 sections 为 null 时不能抛）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T19:05">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T19:05">08-28 19:05</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>小尾巴：PublicationAlternativeAbstract.findSectionsByLabel 的 trim 行为无独立断言（实现已同步改），任务 6/8 顺手补一条带空白入参的断言。hasCopyright 按 YAGNI 裁决不做（全仓零调用方）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">3</span> decisions /
-      <span data-counter="change">2</span> changes /
+      <span data-counter="change">5</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">2</span> others
+      <span data-counter="other">4</span> others
     </footer>
   </aside>
 
