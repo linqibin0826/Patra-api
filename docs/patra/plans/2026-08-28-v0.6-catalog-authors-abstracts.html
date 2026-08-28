@@ -34,8 +34,8 @@
           <li data-task-status="done"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
           <li data-task-status="done"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
           <li data-task-status="done"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
-          <li data-task-status="in-progress"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
-          <li data-task-status="pending"><a href="#task-13">Task 13 — generation 参数全链</a></li>
+          <li data-task-status="done"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
+          <li data-task-status="in-progress"><a href="#task-13">Task 13 — generation 参数全链</a></li>
           <li data-task-status="pending"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
           <li data-task-status="pending"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
           <li data-task-status="pending"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
@@ -1650,7 +1650,7 @@ git commit -m "feat(catalog): 详情/Feed 作者读行内快照 + parseSections 
         </ol>
       </article>
 
-      <article class="task" id="task-12" data-status="in-progress">
+      <article class="task" id="task-12" data-status="done">
         <header>
           <h2>任务 12：摘要写读 round-trip IT（断言矩阵）</h2>
           <dl class="files">
@@ -1660,7 +1660,7 @@ git commit -m "feat(catalog): 详情/Feed 作者读行内快照 + parseSections 
         <p>当初 schema 不一致漏网的根因是 IT 手造数组数据、从未走真实写路径——本 IT 用 <strong>RepositoryAdapter 真实写入 → 双读路径恢复</strong> 闭环，jsonb 形态用 native query 断言。测试基座与任务 10 的 RoundTripIT 相同。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写 IT（spec §6.3 断言矩阵全覆盖）</strong>
             <pre><code class="lang-java">  @Test
   @DisplayName("结构化摘要：jsonb array 落库、顺序/重复 label/无 label 段保持、双读路径恢复")
@@ -1749,7 +1749,7 @@ git commit -m "feat(catalog): 详情/Feed 作者读行内快照 + parseSections 
   }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：运行验证 + Commit</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationAbstractRoundTripIT"</code>，预期全绿。若 FormatMapper 对 <code>List&lt;record&gt;</code> 反序列化失败（泛型擦除路径），这是必须当场解决的阻断——检查 Entity 字段是否被 Hibernate 识别为参数化类型（必要时字段上补 <code>@JavaType</code> 或在 record 上确认无自定义序列化干扰），并记 Implementation Notes。</p>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/integrationTest
@@ -1758,7 +1758,7 @@ git commit -m "test(catalog): 摘要写读 round-trip IT 断言矩阵（任务 1
         </ol>
       </article>
 
-<article class="task" id="task-13" data-status="pending">
+<article class="task" id="task-13" data-status="in-progress">
         <header>
           <h2>任务 13：generation identifying 参数全链打通</h2>
           <dl class="files">
@@ -2523,14 +2523,48 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查收口：① 「与写端同源」注释改事实表述（两个 Jackson 3 实例配置不共享，wire format 由 key 集合断言钉死）；② 任务 8 的严格读端锚随读端切宽松 Jackson 3 而失效——改为读端同款宽松还原锚，拦截未知属性的职责显式归 key 集合断言（hasLabel javadoc 措辞同步）；③ Detail 快照用例 author_id 改 NULL（生产主形态，护栏覆盖反而更大——任何 JOIN cat_author 复活即红）；④ saveSoftDeletedAuthor 删除（Detail SQL 已不引用 cat_author 无鉴别力，软删回归集中 Feed 侧 Renamed/Snapshot 用例，两侧各守一个失效模式）。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-29T11:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T11:30">08-29 11:30</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>P1 落实：@Import starter-jpa 的 HibernatePropertiesCustomizer + 新增常驻用例断言 SessionFactory 的 JsonFormatMapper isInstanceOf Jackson3JsonFormatMapper（谁删 Import 就红）。反证实验坐实：默认切片走 Hibernate 内置 Jackson 2 的 JacksonJsonFormatMapper；且反证时其余用例仍绿——两代 Jackson 对本 wire format 恰好同构，<strong>只靠 wire format/key 集合断言不足以证 P1，实例类型断言是必要关卡</strong>（已写进测试类 javadoc）。P2 的 jsonb_object_keys 断言主表与 alt 表都做了。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T11:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T11:30">08-29 11:30</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>SQL NULL 断言改 `structured_sections IS NULL`（避开 native NULL 标量 getSingleResult 不确定性）+ Entity 侧断言 null 而非 []；翻译摘要只做 jsonb+Entity 闭环——Detail 读 SQL 不读 alt 表，无读路径可断言。plan 预警的 List&lt;record&gt; 泛型擦除阻断未发生，零生产代码改动。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T12:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T12:20">08-29 12:20</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>质量审查收口：alt 三字段断言（translationType 枚举→列契约全仓唯一覆盖点，String 断言 "OFFICIAL"）；abstract_type 端到端双侧断言（Entity/读模型各一——失败定位切开写歪/读歪）；两路径 tuple 全矩阵（锁顺序+值+总数）；elementKeysOf 子查询形态防无关行毒化；structuredSectionsIsNull 助手同族集中。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T12:20">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T12:20">08-29 12:20</time>
+          <a href="#task-16">§ Task 16</a>
+        </header>
+        <p><strong>独立收尾事项</strong>（不阻塞本 plan，合并后另行处理）：PublicationAbstractRoundTripIT 是全仓唯一 @Import HibernatePropertiesCustomizer 的测试——catalog 另外约 20 个 @DataJpaTest 切片（含 ingest/registry）仍跑在 Hibernate 内置 Jackson 2 FormatMapper 上，而带 SqlTypes.JSON 的 Entity 有 19 个。建议把该 @Import 上提到 CatalogITBootstrap 一处修好全 catalog 切片（该 customizer 还改 batch_size/ALLOW_METADATA_ON_BOOT 等，需跑全量 IT 验证）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">9</span> decisions /
-      <span data-counter="change">24</span> changes /
+      <span data-counter="decision">10</span> decisions /
+      <span data-counter="change">26</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
-      <span data-counter="other">10</span> others
+      <span data-counter="other">11</span> others
     </footer>
   </aside>
 
