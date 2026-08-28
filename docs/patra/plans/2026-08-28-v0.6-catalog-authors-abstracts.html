@@ -28,8 +28,8 @@
           <li data-task-status="done"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
           <li data-task-status="done"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
-          <li data-task-status="in-progress"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
-          <li data-task-status="pending"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
+          <li data-task-status="in-progress"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
           <li data-task-status="pending"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
           <li data-task-status="pending"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
           <li data-task-status="pending"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
@@ -828,7 +828,7 @@ git commit -m "feat(catalog): Parser 主摘要 copyright + OtherAbstract section
         </ol>
       </article>
 
-      <article class="task" id="task-6" data-status="in-progress">
+      <article class="task" id="task-6" data-status="done">
         <header>
           <h2>任务 6：Processor 摘要三态分流 + plain_text 统一生成 + Alternative 数据链</h2>
           <dl class="files">
@@ -839,7 +839,7 @@ git commit -m "feat(catalog): Parser 主摘要 copyright + OtherAbstract section
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试（摘要三态判型 + plain_text 规则）</strong>
             <p>Processor 现有测试类追加（或新建 <code>PubmedArticleItemProcessorAbstractTest</code>，用反射或包内可见性直测 <code>buildPublicationAbstract</code>——参照该测试类现有测法；若现有测法走 <code>process()</code> 全链 mock，则沿用）：</p>
             <pre><code class="lang-java">  @Test
@@ -880,7 +880,7 @@ git commit -m "feat(catalog): Parser 主摘要 copyright + OtherAbstract section
   }</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：重写 buildPublicationAbstract</strong>
             <pre><code class="lang-java">  /// 构建摘要信息（两形态一等公民）。
   ///
@@ -932,7 +932,7 @@ git commit -m "feat(catalog): Parser 主摘要 copyright + OtherAbstract section
             <p>运行步骤 1 测试，预期全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：AlternativeAbstractData 加 sections + Mapper 映射补全</strong>
             <p>① <code>PublicationImportResult.AlternativeAbstractData</code> 增加组件 <code>List&lt;PublicationAbstractSection&gt; sections</code>（放 plainText 之后），<code>of(...)</code> 加参、紧凑构造器 <code>List.copyOf / List.of()</code>；② <code>buildAlternativeAbstractData</code>：跳过条件从「text 空即跳过」改为「text 与 sections 均空才跳过」，并映射 sections：</p>
             <pre><code class="lang-java">      List&lt;PublicationAbstractSection&gt; sections =
@@ -949,13 +949,13 @@ git commit -m "feat(catalog): Parser 主摘要 copyright + OtherAbstract section
             <p>③ <code>PublicationImportResultMapper.toAlternativeAbstract</code> 补两条缺失映射：<code>.structuredSections(data.sections())</code> 与 <code>.copyright(data.copyright())</code>（copyright 字段任务 2 已加到 VO）。④ <code>PublicationImportResultMapperTest</code> 补断言：sections 与 copyright 透传。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：运行验证</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:test --tests "*PubmedArticleItemProcessor*" --tests "*PublicationImportResultMapperTest" --tests "*CanonicalPublicationParsingStrategyTest"</code></p>
             <p>预期：全绿（JpaMapper 的 Map→List 编译错误若仍在，先做任务 8 步骤 2 的最小 Entity/Mapper 改动使编译通过——两任务同编译单元，commit 分开）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/batch \
   patra-api/patra-catalog/patra-catalog-infra/src/test
@@ -964,7 +964,7 @@ git commit -m "feat(catalog): Processor 摘要三态分流与 plainText 统一�
         </ol>
       </article>
 
-      <article class="task" id="task-7" data-status="pending">
+      <article class="task" id="task-7" data-status="in-progress">
         <header>
           <h2>任务 7：Processor 作者快照构建（姓名规则 / ORCID 归一化 / attachAuthors）</h2>
           <dl class="files">
@@ -2347,13 +2347,47 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>遗留动作：任务 8 编译闭合后必须补跑官方 <code>:patra-api:patra-catalog:patra-catalog-infra:test --tests "*CanonicalPublicationParsingStrategyTest"</code>（当前 5 个新用例只被隔离 javac 验证过）。环境观察：gradle 多任务首跑偶发无因 BUILD FAILED、重跑即绿，疑似 configuration cache 抖动——CI 同类失败先怀疑这个。</p>
       </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T23:40">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T23:40">08-28 23:40</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>plan 建议反射直测 buildPublicationAbstract，实际沿用 Processor 测试类既有测法——process() 全链路 + Mockito stub，断言取 result.publication().getPublicationAbstract()。另补 plan 外 2 用例：空白段落被过滤、无段落有 text 时回退纯文本。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T23:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T23:40">08-28 23:40</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>顺手修 2 处任务 2 波及的既有测试：should_map_structured_abstract 的 getSection() 断言改 findSectionsByLabel + plainText 拼接断言；Mapper 测试 4 处 AlternativeAbstractData.of() 调用点补参。commit subject 因 commitlint subject-case 去掉英文首词。</p>
+      </li>
+
+      <li class="note" data-type="tradeoff" data-time="2026-08-28T23:40">
+        <header>
+          <span class="note-type">TRADEOFF</span>
+          <time datetime="2026-08-28T23:40">08-28 23:40</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>① AlternativeAbstractData 既存违规（@Builder + of() 并存）随加参变成 6 参 of()——按 plan 只加参未收敛，任务 8 决策是否删 of()。② JpaMapper 最小垫片（mapToJson→sectionsToJson 机械改名）留工作区未提交——commit bbea24967 单独 checkout 时 infra 主源编译不过，属 plan 安排的中间态，任务 8 正式闭合。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T00:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T00:20">08-29 00:20</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>质量审查抓到 plan 覆盖缺口并已修：翻译摘要 plainText 原直接透传 Canonical text（parser 空格拼接丢 label 形态），与主摘要 "LABEL: text\n" 不一致。修为 <code>sections.isEmpty() ? text : joinSectionsAsPlainText(sections)</code>——「唯一生成点」不变式在主/alt 两链路成立，且 plainText 恒非空白（跳过条件先行拦截）。补 text+sections 并存与段落全滤两用例（三态分流 7、process() 42 全绿）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">11</span> changes /
-      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="decision">5</span> decisions /
+      <span data-counter="change">13</span> changes /
+      <span data-counter="tradeoff">1</span> tradeoffs /
       <span data-counter="other">8</span> others
     </footer>
   </aside>
