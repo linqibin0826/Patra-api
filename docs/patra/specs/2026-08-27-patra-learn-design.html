@@ -183,7 +183,7 @@ type OpsCard  = { action; scenario; command; note; lineColor }</code></pre>
         <li><strong>内容完整性测试</strong>（Vitest，核心防线）：所有 <code>StationRef</code>（词条 appearsAt / 档案 relatedStation）指向真实开通站；每个开通站的文章组件文件存在且可 import；线路/站点/词条/档案 id 无重复；开通站总数 = 13。加内容的 TDD 循环：先写引用与数据 → 测试红 → 补文章 → 绿。</li>
         <li><strong>进度库单测</strong>：打卡 / 取消 / 重复打卡幂等 / localStorage 抛异常时降级为零进度。</li>
         <li><strong>Playwright 冒烟</strong>（3 条）：首页渲染 13 个站点节点；课程页打卡 → 返回首页站点点亮 → 刷新仍点亮；图鉴搜索输入后卡片过滤生效。</li>
-        <li>Biome + <code>tsc --noEmit</code> 进 pre-commit（husky + lint-staged，同 portal）。</li>
+        <li>Biome + <code>tsc --noEmit</code> 由仓库根 pre-commit 与 CI learn job 覆盖（不装 husky/lint-staged，避免与根 hooks 冲突——实现期决策，见 plan notes）。</li>
       </ul>
     </section>
 
