@@ -30,8 +30,8 @@
           <li data-task-status="done"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
           <li data-task-status="done"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
           <li data-task-status="done"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
-          <li data-task-status="in-progress"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
-          <li data-task-status="pending"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
+          <li data-task-status="in-progress"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
           <li data-task-status="pending"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
           <li data-task-status="pending"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
           <li data-task-status="pending"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
@@ -1162,7 +1162,7 @@ git commit -m "feat(catalog): Processor 作者快照构建与 ORCID 归一化（
         </ol>
       </article>
 
-      <article class="task" id="task-8" data-status="in-progress">
+      <article class="task" id="task-8" data-status="done">
         <header>
           <h2>任务 8：摘要 Entity 类型化 + V2 copyright 列 + JpaMapper 去手工序列化</h2>
           <dl class="files">
@@ -1173,13 +1173,13 @@ git commit -m "feat(catalog): Processor 作者快照构建与 ORCID 归一化（
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：V2 补列</strong>
             <p><code>cat_publication_alternative_abstract</code> 的 <code>structured_sections JSONB NULL,</code> 之后加一行：</p>
             <pre><code class="lang-sql">    copyright           VARCHAR(1000)   NULL,</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：两个摘要 Entity 类型化</strong>
             <p><code>PublicationAbstractEntity</code>：</p>
             <pre><code class="lang-java">  /// 结构化摘要段落（有序数组 [{"label","text"}]；纯文本摘要为 null）
@@ -1193,18 +1193,18 @@ git commit -m "feat(catalog): Processor 作者快照构建与 ORCID 归一化（
             <p>类 javadoc 中「JSON 对象」措辞同步改「有序数组」。（Jackson 3 FormatMapper 对 <code>List&lt;record&gt;</code> 走正常序列化——String 透传特例只对 String 目标类型生效，类型化后天然单点。）</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：JpaMapper 改造</strong>
             <p>① <code>toAbstractEntity</code>：<code>entity.setStructuredSections(pubAbstract.structuredSections().isEmpty() ? null : pubAbstract.structuredSections());</code>（其余行不变）。② <code>toAbstract</code>：<code>.structuredSections(entity.getStructuredSections())</code>（VO 紧凑构造器兜 null→List.of()）。③ <code>toAlternativeAbstractEntity</code>：同款 sections 置换 + <code>entity.setCopyright(altAbstract.copyright());</code>；<code>toAlternativeAbstract</code>：<code>.structuredSections(entity.getStructuredSections())</code> + <code>.copyright(entity.getCopyright())</code>。④ <strong>删除</strong> <code>mapToJson</code> / <code>jsonToMap</code> 两个方法（静默吞异常源；<code>listToJson</code>/<code>jsonToList</code> 有其他消费者，保留）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：编译闭合 + 全模块单测</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:test :patra-catalog:patra-catalog-app:test :patra-catalog:patra-catalog-adapter:test</code></p>
             <p>预期：任务 2 引发的 Map→List 编译波及至此全部闭合，全绿。任何残留引用点（如 API 路径 converter）就地改列表语义——改动如超出机械替换，记 Implementation Notes。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/resources/db/migration/V2__create_publication.sql \
   patra-api/patra-catalog/patra-catalog-infra/src/main/java patra-api/patra-catalog/patra-catalog-infra/src/test
@@ -1213,7 +1213,7 @@ git commit -m "feat(catalog): 摘要 Entity 类型化 jsonb + 删手工 JSON 序
         </ol>
       </article>
 
-<article class="task" id="task-9" data-status="pending">
+<article class="task" id="task-9" data-status="in-progress">
         <header>
           <h2>任务 9：ORCID 轻量投影批查 DAO</h2>
           <dl class="files">
@@ -2415,14 +2415,47 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查驱动加固：① PublicationAuthorAffiliationSnapshot 紧凑构造器加 2000 截断（affiliation_string 是唯一无上游约束的无界字段，超长会整篇被 skip 丢弃；与 displayName truncate 同构，截断而非抛异常）；② normalizeOrcid javadoc 顺序改正（先大写再剥前缀是硬约束）；③ 测试补强 4 处（非 ORCID 标识符过滤、invalid 拆分断言、集体作者缺省、initials/suffix 透传锁"不拼名"语义）。<strong>挂任务 10 小尾巴</strong>：truncate 的 notBlank 早于 strip 有病态输入缺口（&gt;2000 前导空白→空串），修法 affiliationString.strip() 前置一行；investigator 路径 ORCID 未归一化（两种形态并存）留任务 10 后决策。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-29T03:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T03:05">08-29 03:05</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>plan 说不动 IT 源集，但 Entity 类型化后 PublicationDetailReadAdapterIT.saveAbstract(String) 编译断裂——做最小机械适配（形参换 List&lt;PublicationAbstractSection&gt;、JSON 字面量换构造列表），断言语义未动。另：plan 假设「JpaMapper 现有单测改写」，实际不存在该测试类——新建 PublicationJpaMapperTest（6 用例：List 原样落 Entity、空列表→SQL NULL、null→空列表、alt sections+copyright 双向，不断言 JSON 字符串）。任务 6 的 JpaMapper 垫片被本 commit 完全取代，删 sectionsToJson/jsonToSections；listToJson/jsonToList 保留（metadata 消费）。AlternativeAbstractData.of() 按裁决删除（6 处调用点改 builder）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T03:05">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T03:05">08-29 03:05</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>三模块 2262 测试中 2 条失败为 LetPubProxyConnectivityTest 外网连通（letpub.com.cn 无响应；shell 带 PROXY_AUTH_* 环境变量才会被执行），与改动零交集。顺带发现 PublicationImportResult 另有多个 record 存在 @Builder+of() 并存既存违规（KeywordData 等）——超本 plan 范围未动，留待独立清理。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-29T03:40">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T03:40">08-29 03:40</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>任务 8 质量审查两条<strong>任务 12 硬性前置</strong>：① @DataJpaTest 切片没拉 starter-jpa 的 HibernatePropertiesCustomizer，IT 实际跑在 Hibernate 内置 Jackson 2 上（与生产的 Jackson3JsonFormatMapper 不同链路、严格性相反）——round-trip IT 必须显式 @Import 该 customizer（或在 IT 基座统一注入 JSON_FORMAT_MAPPER），否则证不到生产行为；② jsonb_typeof='array' 断言强度不够（多余属性也满足），须补 jsonb_object_keys 断言 key 恰为 {label,text}。另提醒任务 16/收尾：合并后、runbook 执行前 CD 不得把 catalog 推 mini（Flyway validateOnMigrate 会让服务起不来）——runbook 步骤 2 的 CD 隔离顺序必须先行。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T04:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T04:30">08-29 04:30</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p><strong>Critical 修复</strong>：PublicationAbstractSection.isLabeled() 被 Jackson 拾取为 bean 属性，把 "labeled" 写进 jsonb——读端严格 Jackson 2 反序列化 AbstractSectionView 会静默降级空列表（v0.5 症状类复现）。重命名为 hasLabel()（javadoc 写明刻意避开 bean getter 形态防回退；4 调用点零残留；未用 @JsonIgnore 保 domain 零 Jackson 依赖）。补两条 wire format 回归锚：生产同款 Jackson3JsonFormatMapper 精确串断言 + 严格 Jackson 2 读端路径复刻（反向验证会红）。PublicationDetailReadAdapterIT 10/10 复绿。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">6</span> decisions /
-      <span data-counter="change">16</span> changes /
+      <span data-counter="change">18</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
-      <span data-counter="other">8</span> others
+      <span data-counter="other">10</span> others
     </footer>
   </aside>
 
