@@ -26,8 +26,8 @@
           <li data-task-status="done"><a href="#task-1">Task 1 — 作者侧 DDL 与 Entity 原子改造</a></li>
           <li data-task-status="done"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
-          <li data-task-status="in-progress"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
-          <li data-task-status="pending"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
+          <li data-task-status="in-progress"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
           <li data-task-status="pending"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
           <li data-task-status="pending"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
@@ -662,7 +662,7 @@ git commit -m "feat(catalog): 作者/机构快照 VO 与 displayName 派生规�
         </ol>
       </article>
 
-      <article class="task" id="task-4" data-status="in-progress">
+      <article class="task" id="task-4" data-status="done">
         <header>
           <h2>任务 4：PublicationAggregate 携带作者快照</h2>
           <dl class="files">
@@ -673,7 +673,7 @@ git commit -m "feat(catalog): 作者/机构快照 VO 与 displayName 派生规�
         <p>沿用聚合现有 <code>attachAbstract</code> 惯用法（create 后挂载，不动 create/restore 的 21/22 参签名）；<code>attachAuthors</code> 为 public——导入路径与 Repository 恢复路径共用（现有 <code>syncAbstract</code> 的包私有形态跨模块调不到，属既有死代码，不效仿）。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试</strong>
             <pre><code class="lang-java">  @Nested
   class AuthorSnapshotTests {
@@ -705,7 +705,7 @@ git commit -m "feat(catalog): 作者/机构快照 VO 与 displayName 派生规�
             <p>运行 <code>./gradlew :patra-catalog:patra-catalog-domain:test --tests "*PublicationAggregateTest"</code>，预期编译失败。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现聚合改动</strong>
             <p>在「摘要（嵌入式值对象）」字段块之后新增字段与方法（构造器内不必赋值——字段声明处直接初始化）：</p>
             <pre><code class="lang-java">  // ========== 作者快照（文献视角，独立表 cat_publication_author，属聚合边界内） ==========
@@ -730,7 +730,7 @@ git commit -m "feat(catalog): 作者/机构快照 VO 与 displayName 派生规�
             <p>（类上已有 <code>@Getter</code>，<code>getAuthors()</code> 自动生成。）运行步骤 1 命令，预期全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain
 git commit -m "feat(catalog): 聚合根携带作者快照 attachAuthors（任务 4/16）"</code></pre>
@@ -738,7 +738,7 @@ git commit -m "feat(catalog): 聚合根携带作者快照 attachAuthors（任务
         </ol>
       </article>
 
-<article class="task" id="task-5" data-status="pending">
+<article class="task" id="task-5" data-status="in-progress">
         <header>
           <h2>任务 5：common-model 与 Parser 改造（主摘要 copyright + AlternativeAbstract sections 不拍平）</h2>
           <dl class="files">
@@ -2279,14 +2279,39 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查驱动的四项超 plan 加固（plan 步骤 1/2 代码块为修复前形态，以实现为准）：① collectiveWins 测试改真竞争者（同时给 lastName 与 collectiveName）；② 紧凑构造器 collectiveName trimToNull（isCollective 空白语义自洽）；③ displayName ≤200 上限收进紧凑构造器（超长抛 IAE，不再静默拖到 PG）——<strong>任务 4/7/10 注意：手工 build 快照的 displayName 必须走 deriveDisplayName（输出恒 ≤200）</strong>；④ truncate 加 .strip() 消尾随空格（199A+" "+50B 截断点恰为空格 → 结果 199 字符，测试已锁）。残留一行边界测试（derive 产出的 200 字符可被构造器接受）挂任务 4 顺带补。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T20:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T20:40">08-28 20:40</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>plan 假设 PublicationAggregateTest 已存在可复用 createMinimalAggregate 助手——实际不存在（domain 仅 Venue/Mesh/Author/Organization 四个聚合测试）。新建该测试类并自写助手（PUBMED + VenueId/VenueInstanceId=1 + title + year=2024，其余 null），风格对齐 VenueAggregateTest。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-28T20:40">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T20:40">08-28 20:40</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>三条聚合测试中两条（防御拷贝 isTrue / 新聚合 isFalse）补了 hasAuthors() 断言（plan 片段只测 getAuthors），让新增方法自身有覆盖；null→空用例未带该断言。任务 3 遗留的 200 字符边界测试已随本任务补入 PublicationAuthorSnapshotTest。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T21:15">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T21:15">08-28 21:15</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>质量审查判可合并，三条 Minor 延后：① attachAuthors「二次挂载整体替换」缺测试守护——挂任务 7 顺带补（防止改成 addAll 语义不被发现）；② 作者 order 列表级唯一性不变量留任务 7 决策（当下加是无消费者的推测校验）；③ 任务 10 注意「恢复即变更」的 delete+insert 写放大在换库重建场景无害、增量同步需显式决策。已核对：聚合无 dirty 标记状态机，attachAuthors 不调 trackChildAdded 与持久化风格一致。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">3</span> decisions /
-      <span data-counter="change">7</span> changes /
+      <span data-counter="decision">4</span> decisions /
+      <span data-counter="change">8</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">5</span> others
+      <span data-counter="other">6</span> others
     </footer>
   </aside>
 
