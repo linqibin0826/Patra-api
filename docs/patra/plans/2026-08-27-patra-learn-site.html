@@ -38,7 +38,7 @@
           <li data-task-status="done"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
           <li data-task-status="done"><a href="#task-14">Task 14 — Dockerfile 与本地容器验证</a></li>
           <li data-task-status="done"><a href="#task-15">Task 15 — CI/CD 接入</a></li>
-          <li data-task-status="in-progress"><a href="#task-16">Task 16 — 文档收尾</a></li>
+          <li data-task-status="done"><a href="#task-16">Task 16 — 文档收尾</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -1929,7 +1929,7 @@ git commit -m "ci(learn): CI learn job + learn-cd 工作流 + compose/services/d
         </ol>
       </article>
 
-      <article class="task" id="task-16" data-status="in-progress">
+      <article class="task" id="task-16" data-status="done">
         <header>
           <h2>任务 16：文档收尾</h2>
           <dl class="files">
@@ -1938,18 +1938,18 @@ git commit -m "ci(learn): CI learn job + learn-cd 工作流 + compose/services/d
           </dl>
         </header>
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：patra-learn/CLAUDE.md（子项目约定，全中文）</strong>
             <p>内容必须覆盖：①定位一句话（内部学习站，仅 tailscale 内网）；②内容即代码的扩展流程——加一站 = lines.ts 加 Station + articles/&lt;line&gt;/&lt;id&gt;.tsx 建文章 + index.ts 注册（integrity 测试会红到你补齐）；加词条/档案/小抄同理改对应 content/*.ts；开新线 = LINES 加条目（status: planned → open）；③设计系统来源 = Claude Design 画布 e2bb7c08（Tokens 页），线路色在数据、中性/语义色在 @theme 的分工；④测试约定（integrity 是防线、e2e 本地跑不进 CI）；⑤端口 4001、部署走 learn-cd.yml。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：patra-learn/README.md（架构概览：目录结构、内容模型图、命令表 dev/build/test/test:e2e/lint）；根 CLAUDE.md 的 Workspace Layout 表追加一行 <code>patra-learn | 学习站（内部 onboarding/回顾） | Next.js 15 …</code>；patra-infra/CLAUDE.md 服务清单处补 learn（4001 / /api/health / learn-cd.yml / deploy-only）。</strong>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：全量回归</strong>
             <p>运行：<code>cd patra-learn &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test &amp;&amp; pnpm build &amp;&amp; pnpm test:e2e</code> 全绿；<code>bash patra-infra/cd/deploy.test.sh &amp;&amp; bash patra-infra/cd/detect-changes.test.sh</code> 全绿。</p>
           </li>
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：Commit</strong>
             <pre><code class="lang-bash">git add patra-learn/CLAUDE.md patra-learn/README.md patra-infra/CLAUDE.md CLAUDE.md
 git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档同步（任务 16/16）"</code></pre>
@@ -2246,12 +2246,28 @@ git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档�
         </header>
         <p>质量审查修复（58f92c0f7）：learn CI job 补 pnpm build 步骤（纯 SSG 站 CI 不验证构建=最大回归面裸奔，plan 缺口；.next/cache 缓存随之生效）+ detect-changes.sh 顶部 LEARN_CHANGED=false 初始化（消环境注入面）。复验通过。另记：learn 首次部署有 bootstrap 窗口（合入 main 后 learn-cd 首跑完成前，mini 整栈 up 会因无 learn 镜像报错）——Task 16 文档要写一句。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T16:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T16:00">08-28 16:00</time>
+          <a href="#task-16">&sect; Task 16</a>
+        </header>
+        <p>infra CLAUDE.md patra-apps 分栈表行补 learn 时顺手补了此前缺失的 portal，并把过时的「镜像来自 GHCR」改为「由 CD 自动部署」（原生构建改造后 GHCR 已是归档备源）。e2e 首跑 1 条 flake（build 清 dev 产物后 /glossary 冷编译超时），重跑 8.7s 全绿。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T16:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T16:40">08-28 16:40</time>
+          <a href="#task-16">&sect; Task 16</a>
+        </header>
+        <p>质量审查建议 fixup（903477ebe）：CLAUDE.md 提 MetroMap 静默失败面为独立注意点（width/换乘坐标硬编码无测试兜底）、补站数断言同步提醒；README 补 CI 节；根表 TS 版本改 5/6（portal 行一并改齐——其 package.json 实为 ^6.0.3）。16/16 任务全部完成。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">21</span> changes /
+      <span data-counter="change">23</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
       <span data-counter="other">5</span> others
     </footer>
