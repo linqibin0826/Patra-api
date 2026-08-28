@@ -35,10 +35,10 @@ export default function Daily0700Article() {
         />
         <p>
           cron 的五个位置从左到右是"分 时 日 月 星期"，<InlineCode>0 23 * * *</InlineCode> 就是"每天
-          23 点 0 分"。但这里有个所有人都会踩一次的坑：
-          <strong className="text-ink">GitHub 的定时器只认 UTC</strong>
-          ，不认你机器上的时区。北京时间是 UTC+8，所以要在北京早上 7 点巡检，闹钟得定在 UTC 前一天的
-          23:00——23 + 8 = 31，减 24 就是次日
+          23 点 0 分"。但这里有个所有人都会踩一次的坑：我们的 workflow 没配 timezone 字段，
+          <strong className="text-ink">GitHub 就按默认的 UTC 来解释这行 cron</strong>
+          。北京时间是 UTC+8，所以要在北京早上 7 点巡检，闹钟得定在 UTC 前一天的 23:00——23 + 8 =
+          31，减 24 就是次日
           07:00。剧本里那行注释把换算结果直接写死在旁边，防的就是半年后自己回来看不懂。
         </p>
         <figure className="flex flex-col gap-2">
@@ -72,7 +72,7 @@ export default function Daily0700Article() {
                 cron &apos;0 23 * * *&apos;
               </text>
               <text x="124" y="82" textAnchor="middle" fontSize="11.5" fill="#565d66">
-                UTC 23:00（GitHub 只认这个）
+                UTC 23:00（未配 timezone 时的默认）
               </text>
               {/* +8h 箭头 */}
               <line x1="224" y1="66" x2="300" y2="66" stroke="#7a5fb8" strokeWidth="2" />

@@ -247,8 +247,9 @@ export default function ParallelExamsArticle() {
         </p>
         <p>
           portal 考场则是前端的对应物：Biome lint、TypeScript 类型检查、Vitest
-          单测都是硬门槛；Playwright E2E 在 PR
-          里是"参考分"（挂了不拦合并），只在夜里的全量考里才计入总分——端到端测试偶发抖动多，不让它平白卡住白天的迭代。
+          单测都是硬门槛；portal 的 Playwright E2E 在 PR
+          里是"参考分"（挂了不拦合并），只在夜里的全量考里才计入总分——端到端测试偶发抖动多，不让它平白卡住白天的迭代；本学习站自己的
+          E2E 更简单，只在本地跑、不进 CI。
         </p>
       </ArticleSection>
 

@@ -25,8 +25,10 @@ export default function NotificationPhilosophyArticle() {
           2026 年 8 月 28 日，这条通道被整个拆除。理由想明白了就很简单：
           <strong className="text-ink">这是单人 dev 环境</strong>
           。自己发布、自己看结果，出了事要通知的人有且只有一个，而 <Term>GitHub Actions</Term>{" "}
-          原生就会在 <Term>workflow</Term> 失败时通知触发它的人——邮件和 GitHub 手机 App 推送，跟你收
-          CI 挂了的通知一模一样，一分钱设施不用建。ntfy 能送到的消息，GitHub 本来就送得到。
+          原生就能在 <Term>workflow</Term> 失败时发通知——前提是你在 GitHub 通知设置里开着 Actions
+          失败通知；定时触发的 workflow，收通知的通常是 workflow 文件的创建者或最后改动 cron
+          的人，在这里都是同一个人。邮件和 GitHub 手机 App 推送，跟你收 CI
+          挂了的通知一模一样，一分钱设施不用建。ntfy 能送到的消息，GitHub 本来就送得到。
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4">
@@ -47,7 +49,7 @@ export default function NotificationPhilosophyArticle() {
             </p>
             <ul className="flex flex-col gap-1.5 text-sm leading-6">
               <li>📱 workflow 失败 → 邮件 + GitHub App 推送</li>
-              <li>🆓 平台自带，默认就开，零部署零维护</li>
+              <li>🆓 平台自带，通知设置里开着就有，零部署零维护</li>
               <li>🧹 少一个能坏的环节，守夜线自身更皮实</li>
               <li>🤫 通知条数没少一条，设施少了一整套</li>
             </ul>

@@ -12,7 +12,7 @@ export function ContinueCard() {
   useEffect(() => setVisited(readProgress()), []);
 
   const total = openStationRefs().length;
-  const doneCount = visited?.filter((r) => openStationRefs().includes(r)).length ?? 0;
+  const doneCount = new Set(visited?.filter((r) => openStationRefs().includes(r)) ?? []).size;
   const nextRef = visited === null ? undefined : firstUnvisited(visited);
   const next = nextRef ? getStation(nextRef) : undefined;
 

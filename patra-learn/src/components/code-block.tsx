@@ -12,7 +12,9 @@ export function CodeBlock({ command }: { command: string }) {
         type="button"
         className="self-end text-xs font-bold text-slate hover:text-ink"
         onClick={() => {
-          navigator.clipboard?.writeText(command).then(
+          const clipboard = navigator.clipboard;
+          if (!clipboard) return;
+          clipboard.writeText(command).then(
             () => setCopied(true),
             () => setCopied(false),
           );
