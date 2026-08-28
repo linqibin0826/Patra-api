@@ -58,26 +58,21 @@ class PublicationAuthorAffiliationDaoIT {
   private Long pubAuthorId1;
   private Long pubAuthorId2;
   private Long publicationId;
-  private Long authorId1;
-  private Long authorId2;
 
   @BeforeEach
   void setUp() {
     pubAuthorId1 = SnowflakeIdGenerator.getId();
     pubAuthorId2 = SnowflakeIdGenerator.getId();
     publicationId = SnowflakeIdGenerator.getId();
-    authorId1 = SnowflakeIdGenerator.getId();
-    authorId2 = SnowflakeIdGenerator.getId();
   }
 
   /// 创建测试用的机构归属实体。
   private PublicationAuthorAffiliationEntity createTestEntity(
-      Long pubAuthorId, Long publicationId, Long authorId, int order) {
+      Long pubAuthorId, Long publicationId, int order) {
     return PublicationAuthorAffiliationEntity.builder()
         .id(SnowflakeIdGenerator.getId())
         .pubAuthorId(pubAuthorId)
         .publicationId(publicationId)
-        .authorId(authorId)
         .affiliationOrder(order)
         .affiliationString("Test University, Department of Computer Science")
         .disambiguationStatus(DisambiguationStatus.PENDING)
@@ -92,7 +87,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("保存 PENDING 状态 - 应该正确存储枚举值")
     void save_pendingStatus_shouldPersistEnumCorrectly() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
 
       // When
       var saved = dao.save(entity);
@@ -110,18 +105,18 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("保存所有消歧状态 - 应该正确存储各枚举值")
     void save_allDisambiguationStatuses_shouldPersistCorrectly() {
       // Given & When: 保存各种状态的实体
-      var pending = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var pending = createTestEntity(pubAuthorId1, publicationId, 1);
       pending.setDisambiguationStatus(DisambiguationStatus.PENDING);
 
-      var matched = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
+      var matched = createTestEntity(pubAuthorId1, publicationId, 2);
       matched.setDisambiguationStatus(DisambiguationStatus.MATCHED);
       matched.setDisambiguationMethod(DisambiguationMethod.ROR_ID);
 
-      var unmatched = createTestEntity(pubAuthorId1, publicationId, authorId1, 3);
+      var unmatched = createTestEntity(pubAuthorId1, publicationId, 3);
       unmatched.setDisambiguationStatus(DisambiguationStatus.UNMATCHED);
       unmatched.setDisambiguationMethod(DisambiguationMethod.NAME_MATCH);
 
-      var ambiguous = createTestEntity(pubAuthorId1, publicationId, authorId1, 4);
+      var ambiguous = createTestEntity(pubAuthorId1, publicationId, 4);
       ambiguous.setDisambiguationStatus(DisambiguationStatus.AMBIGUOUS);
       ambiguous.setDisambiguationMethod(DisambiguationMethod.RINGGOLD);
 
@@ -142,19 +137,19 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("保存所有消歧方法 - 应该正确存储各枚举值")
     void save_allDisambiguationMethods_shouldPersistCorrectly() {
       // Given & When: 保存各种方法的实体
-      var rorId = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var rorId = createTestEntity(pubAuthorId1, publicationId, 1);
       rorId.setDisambiguationMethod(DisambiguationMethod.ROR_ID);
 
-      var ringgold = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
+      var ringgold = createTestEntity(pubAuthorId1, publicationId, 2);
       ringgold.setDisambiguationMethod(DisambiguationMethod.RINGGOLD);
 
-      var grid = createTestEntity(pubAuthorId1, publicationId, authorId1, 3);
+      var grid = createTestEntity(pubAuthorId1, publicationId, 3);
       grid.setDisambiguationMethod(DisambiguationMethod.GRID);
 
-      var nameMatch = createTestEntity(pubAuthorId1, publicationId, authorId1, 4);
+      var nameMatch = createTestEntity(pubAuthorId1, publicationId, 4);
       nameMatch.setDisambiguationMethod(DisambiguationMethod.NAME_MATCH);
 
-      var manual = createTestEntity(pubAuthorId1, publicationId, authorId1, 5);
+      var manual = createTestEntity(pubAuthorId1, publicationId, 5);
       manual.setDisambiguationMethod(DisambiguationMethod.MANUAL);
 
       dao.saveAll(List.of(rorId, ringgold, grid, nameMatch, manual));
@@ -181,9 +176,9 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("查询 PENDING 状态 - 应该返回匹配的实体")
     void findAllByDisambiguationStatus_pending_shouldReturnMatching() {
       // Given
-      var pending1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var pending2 = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
-      var matched = createTestEntity(pubAuthorId1, publicationId, authorId1, 3);
+      var pending1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var pending2 = createTestEntity(pubAuthorId1, publicationId, 2);
+      var matched = createTestEntity(pubAuthorId1, publicationId, 3);
       matched.setDisambiguationStatus(DisambiguationStatus.MATCHED);
 
       dao.saveAll(List.of(pending1, pending2, matched));
@@ -201,10 +196,10 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("统计各状态数量 - 应该返回正确计数")
     void countByDisambiguationStatus_shouldReturnCorrectCount() {
       // Given
-      var pending1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var pending2 = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
-      var pending3 = createTestEntity(pubAuthorId1, publicationId, authorId1, 3);
-      var matched = createTestEntity(pubAuthorId1, publicationId, authorId1, 4);
+      var pending1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var pending2 = createTestEntity(pubAuthorId1, publicationId, 2);
+      var pending3 = createTestEntity(pubAuthorId1, publicationId, 3);
+      var matched = createTestEntity(pubAuthorId1, publicationId, 4);
       matched.setDisambiguationStatus(DisambiguationStatus.MATCHED);
 
       dao.saveAll(List.of(pending1, pending2, pending3, matched));
@@ -220,7 +215,7 @@ class PublicationAuthorAffiliationDaoIT {
     void findByDisambiguationStatus_paged_shouldReturnCorrectPage() {
       // Given: 创建 5 个 PENDING 状态的实体
       for (int i = 1; i <= 5; i++) {
-        var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, i);
+        var entity = createTestEntity(pubAuthorId1, publicationId, i);
         dao.save(entity);
       }
 
@@ -249,9 +244,9 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("按 pubAuthorId 查询 - 应该返回匹配的实体")
     void findAllByPubAuthorId_shouldReturnMatching() {
       // Given
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var aff2 = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
-      var aff3 = createTestEntity(pubAuthorId2, publicationId, authorId2, 1);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var aff2 = createTestEntity(pubAuthorId1, publicationId, 2);
+      var aff3 = createTestEntity(pubAuthorId2, publicationId, 1);
 
       dao.saveAll(List.of(aff1, aff2, aff3));
 
@@ -267,10 +262,10 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("批量按 pubAuthorId 查询 - 应该返回所有匹配的实体")
     void findAllByPubAuthorIdIn_shouldReturnAllMatching() {
       // Given
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var aff2 = createTestEntity(pubAuthorId2, publicationId, authorId2, 1);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var aff2 = createTestEntity(pubAuthorId2, publicationId, 1);
       Long pubAuthorId3 = SnowflakeIdGenerator.getId();
-      var aff3 = createTestEntity(pubAuthorId3, publicationId, authorId1, 1);
+      var aff3 = createTestEntity(pubAuthorId3, publicationId, 1);
 
       dao.saveAll(List.of(aff1, aff2, aff3));
 
@@ -287,9 +282,9 @@ class PublicationAuthorAffiliationDaoIT {
     void findAllByPublicationId_shouldReturnMatching() {
       // Given
       Long publicationId2 = SnowflakeIdGenerator.getId();
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var aff2 = createTestEntity(pubAuthorId2, publicationId, authorId2, 1);
-      var aff3 = createTestEntity(SnowflakeIdGenerator.getId(), publicationId2, authorId1, 1);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var aff2 = createTestEntity(pubAuthorId2, publicationId, 1);
+      var aff3 = createTestEntity(SnowflakeIdGenerator.getId(), publicationId2, 1);
 
       dao.saveAll(List.of(aff1, aff2, aff3));
 
@@ -299,24 +294,6 @@ class PublicationAuthorAffiliationDaoIT {
       // Then
       assertThat(result).hasSize(2);
       assertThat(result).allMatch(e -> e.getPublicationId().equals(publicationId));
-    }
-
-    @Test
-    @DisplayName("按 authorId 查询 - 应该返回匹配的实体")
-    void findAllByAuthorId_shouldReturnMatching() {
-      // Given
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var aff2 = createTestEntity(pubAuthorId2, publicationId, authorId1, 1);
-      var aff3 = createTestEntity(SnowflakeIdGenerator.getId(), publicationId, authorId2, 1);
-
-      dao.saveAll(List.of(aff1, aff2, aff3));
-
-      // When
-      List<PublicationAuthorAffiliationEntity> result = dao.findAllByAuthorId(authorId1);
-
-      // Then
-      assertThat(result).hasSize(2);
-      assertThat(result).allMatch(e -> e.getAuthorId().equals(authorId1));
     }
   }
 
@@ -328,13 +305,13 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("按 ROR ID 查询 - 应该返回匹配的实体")
     void findAllByRorId_shouldReturnMatching() {
       // Given
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
       aff1.setRorId("03vek6s52");
 
-      var aff2 = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
+      var aff2 = createTestEntity(pubAuthorId1, publicationId, 2);
       aff2.setRorId("03vek6s52");
 
-      var aff3 = createTestEntity(pubAuthorId1, publicationId, authorId1, 3);
+      var aff3 = createTestEntity(pubAuthorId1, publicationId, 3);
       aff3.setRorId("other-ror");
 
       dao.saveAll(List.of(aff1, aff2, aff3));
@@ -351,10 +328,10 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("按 Ringgold ID 查询 - 应该返回匹配的实体")
     void findAllByRinggoldId_shouldReturnMatching() {
       // Given
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
       aff1.setRinggoldId("123456");
 
-      var aff2 = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
+      var aff2 = createTestEntity(pubAuthorId1, publicationId, 2);
       aff2.setRinggoldId("789012");
 
       dao.saveAll(List.of(aff1, aff2));
@@ -376,9 +353,9 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("按 pubAuthorId 删除 - 应该删除所有匹配的实体")
     void deleteAllByPubAuthorId_shouldDeleteMatching() {
       // Given
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var aff2 = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
-      var aff3 = createTestEntity(pubAuthorId2, publicationId, authorId2, 1);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var aff2 = createTestEntity(pubAuthorId1, publicationId, 2);
+      var aff3 = createTestEntity(pubAuthorId2, publicationId, 1);
 
       dao.saveAll(List.of(aff1, aff2, aff3));
       assertThat(dao.count()).isEqualTo(3);
@@ -397,9 +374,9 @@ class PublicationAuthorAffiliationDaoIT {
     void deleteAllByPublicationId_shouldDeleteMatching() {
       // Given
       Long publicationId2 = SnowflakeIdGenerator.getId();
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var aff2 = createTestEntity(pubAuthorId2, publicationId, authorId2, 1);
-      var aff3 = createTestEntity(SnowflakeIdGenerator.getId(), publicationId2, authorId1, 1);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var aff2 = createTestEntity(pubAuthorId2, publicationId, 1);
+      var aff3 = createTestEntity(SnowflakeIdGenerator.getId(), publicationId2, 1);
 
       dao.saveAll(List.of(aff1, aff2, aff3));
       assertThat(dao.count()).isEqualTo(3);
@@ -411,6 +388,31 @@ class PublicationAuthorAffiliationDaoIT {
       assertThat(dao.count()).isEqualTo(1);
       assertThat(dao.findAllByPublicationId(publicationId)).isEmpty();
     }
+
+    @Test
+    @DisplayName("按 publicationId 列表批量删除 - 应该删除列表内所有出版物且不误伤列表外")
+    void deleteAllByPublicationIdIn_shouldDeleteAllMatching() {
+      // Given: 三个出版物各 2 行
+      Long publicationId2 = SnowflakeIdGenerator.getId();
+      Long publicationId3 = SnowflakeIdGenerator.getId();
+      Long pubAuthorId3 = SnowflakeIdGenerator.getId();
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var aff2 = createTestEntity(pubAuthorId1, publicationId, 2);
+      var aff3 = createTestEntity(pubAuthorId2, publicationId2, 1);
+      var aff4 = createTestEntity(pubAuthorId2, publicationId2, 2);
+      var aff5 = createTestEntity(pubAuthorId3, publicationId3, 1);
+      var aff6 = createTestEntity(pubAuthorId3, publicationId3, 2);
+
+      dao.saveAll(List.of(aff1, aff2, aff3, aff4, aff5, aff6));
+      assertThat(dao.count()).isEqualTo(6);
+
+      // When: 删除前两个出版物
+      dao.deleteAllByPublicationIdIn(List.of(publicationId, publicationId2));
+
+      // Then: 只剩第三个出版物的 2 行
+      assertThat(dao.count()).isEqualTo(2);
+      assertThat(dao.findAll()).allMatch(e -> e.getPublicationId().equals(publicationId3));
+    }
   }
 
   @Nested
@@ -421,7 +423,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("markAsMatched - 应该正确设置状态、方法、分数和时间戳")
     void markAsMatched_shouldSetAllFields() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       dao.save(entity);
       Long organizationId = SnowflakeIdGenerator.getId();
       Instant beforeMark = Instant.now();
@@ -443,7 +445,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("markAsUnmatched - 应该正确设置状态、方法和时间戳")
     void markAsUnmatched_shouldSetAllFields() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       dao.save(entity);
       Instant beforeMark = Instant.now();
 
@@ -464,7 +466,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("markAsAmbiguous - 应该正确设置状态、方法和时间戳")
     void markAsAmbiguous_shouldSetAllFields() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       dao.save(entity);
       Instant beforeMark = Instant.now();
 
@@ -483,7 +485,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("hasIdentifiers - 有 ROR ID 时返回 true")
     void hasIdentifiers_withRorId_shouldReturnTrue() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       entity.setRorId("03vek6s52");
 
       // When & Then
@@ -494,7 +496,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("hasIdentifiers - 有 Ringgold ID 时返回 true")
     void hasIdentifiers_withRinggoldId_shouldReturnTrue() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       entity.setRinggoldId("123456");
 
       // When & Then
@@ -505,7 +507,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("hasIdentifiers - 有 GRID ID 时返回 true")
     void hasIdentifiers_withGridId_shouldReturnTrue() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       entity.setGridId("grid.12345.6");
 
       // When & Then
@@ -516,7 +518,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("hasIdentifiers - 无任何标识符时返回 false")
     void hasIdentifiers_withNoIdentifiers_shouldReturnFalse() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
 
       // When & Then
       assertThat(entity.hasIdentifiers()).isFalse();
@@ -526,7 +528,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("hasIdentifiers - 空白标识符时返回 false")
     void hasIdentifiers_withBlankIdentifiers_shouldReturnFalse() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       entity.setRorId("   ");
       entity.setRinggoldId("");
 
@@ -538,7 +540,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("isPending - PENDING 状态返回 true")
     void isPending_pendingStatus_shouldReturnTrue() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
 
       // When & Then
       assertThat(entity.isPending()).isTrue();
@@ -549,7 +551,7 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("isMatched - MATCHED 状态返回 true")
     void isMatched_matchedStatus_shouldReturnTrue() {
       // Given
-      var entity = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
+      var entity = createTestEntity(pubAuthorId1, publicationId, 1);
       entity.setDisambiguationStatus(DisambiguationStatus.MATCHED);
 
       // When & Then
@@ -566,9 +568,9 @@ class PublicationAuthorAffiliationDaoIT {
     @DisplayName("同一 pubAuthorId 不同 affiliationOrder - 应该保存成功")
     void save_samePubAuthorDifferentOrder_shouldSucceed() {
       // Given
-      var aff1 = createTestEntity(pubAuthorId1, publicationId, authorId1, 1);
-      var aff2 = createTestEntity(pubAuthorId1, publicationId, authorId1, 2);
-      var aff3 = createTestEntity(pubAuthorId1, publicationId, authorId1, 3);
+      var aff1 = createTestEntity(pubAuthorId1, publicationId, 1);
+      var aff2 = createTestEntity(pubAuthorId1, publicationId, 2);
+      var aff3 = createTestEntity(pubAuthorId1, publicationId, 3);
 
       // When
       dao.saveAll(List.of(aff1, aff2, aff3));

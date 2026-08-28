@@ -140,6 +140,7 @@ class PortalFeedReadAdapterIT {
               .id(SnowflakeIdGenerator.getId())
               .publicationId(publicationId)
               .authorId(a.getId())
+              .displayName(displayNames[i])
               .authorOrder(i + 1)
               .build();
       em.persist(link);
@@ -208,6 +209,7 @@ class PortalFeedReadAdapterIT {
             .id(SnowflakeIdGenerator.getId())
             .publicationId(publicationId)
             .authorId(a.getId())
+            .displayName(displayName)
             .authorOrder(order)
             .build();
     em.persist(link);

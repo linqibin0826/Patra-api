@@ -25,7 +25,7 @@ import lombok.experimental.SuperBuilder;
 ///
 /// - 继承 `ValueObjectJpaEntity`，采用 DELETE/INSERT 模式管理
 /// - 支持一个作者在一篇文献中的多机构归属
-/// - 冗余 `publication_id` 和 `author_id` 避免 JOIN `cat_publication_author`
+/// - 冗余 `publication_id` 避免 JOIN `cat_publication_author`
 /// - 存储机构标识符（ROR/Ringgold/GRID）用于后续消歧
 /// - 消歧结果延迟填充，支持批量处理
 ///
@@ -34,7 +34,6 @@ import lombok.experimental.SuperBuilder;
 /// - `uk_pub_author_order`：作者-文献关联 + 机构顺序唯一索引
 /// - `idx_pub_author`：作者-文献关联索引
 /// - `idx_publication`：出版物索引
-/// - `idx_author`：作者索引
 /// - `idx_organization`：机构索引
 /// - `idx_ror_id`：ROR ID 索引（加速消歧）
 /// - `idx_ringgold_id`：Ringgold ID 索引（加速消歧）
@@ -58,7 +57,6 @@ import lombok.experimental.SuperBuilder;
     indexes = {
       @Index(name = "idx_pub_author", columnList = "pub_author_id"),
       @Index(name = "idx_publication", columnList = "publication_id"),
-      @Index(name = "idx_author", columnList = "author_id"),
       @Index(name = "idx_organization", columnList = "organization_id"),
       @Index(name = "idx_ror_id", columnList = "ror_id"),
       @Index(name = "idx_ringgold_id", columnList = "ringgold_id"),
@@ -66,7 +64,7 @@ import lombok.experimental.SuperBuilder;
     })
 public class PublicationAuthorAffiliationEntity extends ValueObjectJpaEntity {
 
-  // ========== 关联信息（冗余 publication_id/author_id 避免 JOIN） ==========
+  // ========== 关联信息（冗余 publication_id 避免 JOIN） ==========
 
   /// 文献-作者关联 ID（外键：cat_publication_author.id）。
   @Column(name = "pub_author_id", nullable = false)
@@ -75,10 +73,6 @@ public class PublicationAuthorAffiliationEntity extends ValueObjectJpaEntity {
   /// 出版物 ID（冗余，避免 JOIN）。
   @Column(name = "publication_id", nullable = false)
   private Long publicationId;
-
-  /// 作者 ID（冗余，避免 JOIN）。
-  @Column(name = "author_id", nullable = false)
-  private Long authorId;
 
   // ========== 原始机构信息 ==========
 

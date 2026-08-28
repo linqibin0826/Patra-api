@@ -108,9 +108,9 @@ class PublicationDetailReadAdapterIT {
     Long pubId = savePublication(venueId, "Author Order Study", "10.1000/bmj", "33333333");
     Long authorId1 = saveAuthor("John Smith");
     Long authorId2 = saveAuthor("Jane Doe");
-    Long pubAuthorId1 = savePublicationAuthor(pubId, authorId1, 1, true, false);
-    Long pubAuthorId2 = savePublicationAuthor(pubId, authorId2, 2, false, true);
-    saveAffiliation(pubAuthorId1, pubId, authorId1, 1, "Harvard University");
+    Long pubAuthorId1 = savePublicationAuthor(pubId, authorId1, "John Smith", 1, true, false);
+    Long pubAuthorId2 = savePublicationAuthor(pubId, authorId2, "Jane Doe", 2, false, true);
+    saveAffiliation(pubAuthorId1, pubId, 1, "Harvard University");
     em.flush();
     em.clear();
 
@@ -259,11 +259,17 @@ class PublicationDetailReadAdapterIT {
   }
 
   private Long savePublicationAuthor(
-      Long pubId, Long authorId, int order, boolean first, boolean corresponding) {
+      Long pubId,
+      Long authorId,
+      String displayName,
+      int order,
+      boolean first,
+      boolean corresponding) {
     PublicationAuthorEntity pa = new PublicationAuthorEntity();
     pa.setId(SnowflakeIdGenerator.getId());
     pa.setPublicationId(pubId);
     pa.setAuthorId(authorId);
+    pa.setDisplayName(displayName);
     pa.setAuthorOrder(order);
     pa.setFirstAuthor(first);
     pa.setCorrespondingAuthor(corresponding);
@@ -272,13 +278,11 @@ class PublicationDetailReadAdapterIT {
     return pa.getId();
   }
 
-  private void saveAffiliation(
-      Long pubAuthorId, Long pubId, Long authorId, int order, String affiliationString) {
+  private void saveAffiliation(Long pubAuthorId, Long pubId, int order, String affiliationString) {
     PublicationAuthorAffiliationEntity aff = new PublicationAuthorAffiliationEntity();
     aff.setId(SnowflakeIdGenerator.getId());
     aff.setPubAuthorId(pubAuthorId);
     aff.setPublicationId(pubId);
-    aff.setAuthorId(authorId);
     aff.setAffiliationOrder(order);
     aff.setAffiliationString(affiliationString);
     aff.setDisambiguationStatus(DisambiguationStatus.PENDING);
