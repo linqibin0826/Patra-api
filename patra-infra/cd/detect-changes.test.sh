@@ -52,6 +52,13 @@ F="$(printf 'patra-api/patra-catalog/patra-catalog-app/src/main/java/X.java\npat
 assert_field "$F" '.backend_units' '["catalog"]' "混合 backend=catalog"
 assert_field "$F" '.portal_changed' 'true' "混合 portal=true"
 
+echo "== 场景 9：仅 learn（与 portal 同构）=="
+assert_field "patra-learn/src/app/page.tsx" '.learn_changed' 'true' "learn learn_changed"
+assert_field "patra-learn/src/app/page.tsx" '.backend_units' '[]' "learn backend_units 空"
+assert_field "patra-learn/src/app/page.tsx" '.portal_changed' 'false' "learn 不触发 portal"
+assert_field "docs/foo.md" '.learn_changed' 'false' "docs-only 不触发 learn"
+assert_field ".github/workflows/ci.yml" '.learn_changed' 'true' "workflow 额外含 learn"
+
 echo
 echo "通过 $PASS / 失败 $FAIL"
 [ "$FAIL" -eq 0 ]

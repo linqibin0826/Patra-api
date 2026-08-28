@@ -1,0 +1,2278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>patra-learn 学习站实现计划</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <!-- ENTRY TEMPLATE（注释保留供添加 task 时复制）:
+          <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
+          -->
+          <li data-task-status="done"><a href="#task-1">Task 1 — 工程脚手架</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 设计系统 token 与全局布局</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 内容模型与线路拓扑</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — 进度库 progress.ts</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — 内容查询助手与基础组件</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 课程页路由与 13 篇文章骨架</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 首页与 MetroMap 网络图</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — 1 号线 4 篇文章内容</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — 2 号线 5 篇文章内容</a></li>
+          <li data-task-status="done"><a href="#task-10">Task 10 — 3 号线 4 篇文章内容</a></li>
+          <li data-task-status="done"><a href="#task-11">Task 11 — 名词图鉴页</a></li>
+          <li data-task-status="done"><a href="#task-12">Task 12 — 事故档案馆与操作小抄页</a></li>
+          <li data-task-status="done"><a href="#task-13">Task 13 — Playwright 冒烟</a></li>
+          <li data-task-status="done"><a href="#task-14">Task 14 — Dockerfile 与本地容器验证</a></li>
+          <li data-task-status="done"><a href="#task-15">Task 15 — CI/CD 接入</a></li>
+          <li data-task-status="done"><a href="#task-16">Task 16 — 文档收尾</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>patra-learn 学习站实现计划</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-27</span>
+        <span>🌿 feat/patra-learn-site</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>把「Patra 学习站」设计蓝本落地为新子项目 patra-learn：六类页面 + CI/CD 全部 13 站内容 + localStorage 进度 + Mac mini 容器部署（CD 全接入）</dd>
+        <dt>架构</dt> <dd>Next.js 15 全站 SSG（照抄 patra-portal 工程模式），内容 = 类型化 TS 数据（lines/glossary/incidents/cheatsheet）+ 每站一个 TSX 文章组件；线路色走数据内联样式，中性/语义色走 Tailwind v4 @theme token；进度纯客户端 localStorage。</dd>
+        <dt>技术栈</dt> <dd>Next.js 15 / React 19 / TypeScript strict / Tailwind v4 / Biome / Vitest / Playwright / Docker（standalone，端口 4001）</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-08-27-patra-learn-design.html">Patra 学习站（patra-learn）设计规格</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>spec 是单一站点子项目（前端 + 部署接线），无独立子系统，单 plan 覆盖。内容源两处：①「上线线路图」手册 <code>/private/tmp/claude-501/-Users-linqibin-Projects-Products-patra/32b542a8-e3ef-4ba5-96ff-d2754396c7cd/scratchpad/patra-cicd-metro.html</code>（39KB，13 站正文素材；若文件丢失可用 Artifact 工具 read <code>https://claude.ai/code/artifact/068b7d23-6630-4989-8372-b74e76ac5fab</code>）；② 设计画布工作文件 <code>…同 scratchpad…/design-hub/*.dc.html</code>（视觉对照 + 词条/档案/小抄文案，本 plan 已把文案数据全部内联，画布仅作视觉对照）。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>patra-learn/                                    [create] 新子项目根
+├── package.json / next.config.ts / tsconfig.json / biome.json
+│   postcss.config.mjs / vitest.config.ts / playwright.config.ts
+│   .nvmrc / .gitignore / Dockerfile             [create] 工程配置（Task 1/13/14）
+├── src/app/
+│   ├── layout.tsx / globals.css                 [create] 全局布局 + @theme token（Task 2）
+│   ├── page.tsx                                 [create] 首页（Task 7）
+│   ├── lines/[line]/[station]/page.tsx          [create] 课程页（Task 6）
+│   ├── glossary/page.tsx                        [create] 名词图鉴（Task 11）
+│   ├── archive/page.tsx                         [create] 事故档案馆（Task 12）
+│   ├── cheatsheet/page.tsx                      [create] 操作小抄（Task 12）
+│   └── api/health/route.ts                      [create] 健康检查（Task 1）
+├── src/content/
+│   ├── types.ts / lines.ts                      [create] 内容模型 + 拓扑（Task 3）
+│   ├── glossary.ts / incidents.ts / cheatsheet.ts  [create] Task 11/12
+│   ├── integrity.test.ts                        [create] 内容完整性测试（Task 3 起持续扩展）
+│   └── articles/index.ts + l1/*.tsx l2/*.tsx l3/*.tsx  [create] 13 篇文章（Task 6 骨架，8-10 正文）
+├── src/components/
+│   ├── top-bar.tsx / line-chip.tsx / article-section.tsx / term.tsx
+│   ├── code-block.tsx / check-in-button.tsx     [create] Task 2/5
+│   ├── metro-map.tsx                            [create] Task 7
+│   └── article-layout.tsx                       [create] Task 6
+├── src/lib/
+│   ├── progress.ts + progress.test.ts           [create] Task 4
+│   └── content.ts + content.test.ts             [create] Task 5
+├── tests/smoke.spec.ts                          [create] Playwright（Task 13）
+├── CLAUDE.md / README.md                        [create] Task 16
+patra-infra/docker/docker-compose.apps.yaml      [modify] 新增 learn 服务（Task 15）
+patra-infra/docker/.env.learn                    [create] Task 15
+patra-infra/cd/services.json                     [modify] 新增 learn 条目（Task 15）
+patra-infra/cd/deploy.sh                         [modify] ORDER 追加 learn（Task 15）
+patra-infra/cd/detect-changes.sh(.test.sh)       [modify] learn_changed 输出（Task 15）
+.github/workflows/ci.yml                         [modify] learn job（Task 15）
+.github/workflows/learn-cd.yml                   [create] Task 15
+patra-infra/CLAUDE.md                            [modify] 服务清单补 learn（Task 16）</pre>
+      </div>
+      <aside class="callout info">
+        <span class="title">全局约定（每个任务都适用）</span>
+        <ul>
+          <li>工作目录：仓库根 <code>/Users/linqibin/Projects/Products/patra</code>；patra-learn 内命令先 <code>cd patra-learn</code>。</li>
+          <li>服务短名为 <code>learn</code>（对齐 portal 惯例：services.json name=portal / 容器名 patra-portal）；容器名 <code>patra-learn</code>、镜像 <code>ghcr.io/linqibin0826/patra-learn</code>、端口 <code>4001</code>。</li>
+          <li>颜色策略：<strong>线路色</strong>（随数据变的 5 色）从 <code>lines.ts</code> 数据经内联 <code>style</code> 使用；<strong>中性/语义色</strong>用 @theme token utility（<code>bg-bg</code> / <code>text-ink</code> / <code>border-line</code> / <code>text-ok</code>…）。禁止对线路色写 Tailwind arbitrary value 类。</li>
+          <li>不装 husky/lint-staged（仓库根 pre-commit + CI 已覆盖；避免与根 hooks 冲突）。这是计划内决定，无需再记 note。</li>
+          <li>commit message 中文、带任务号，如 <code>feat(learn): 工程脚手架（任务 1/16）</code>。</li>
+        </ul>
+      </aside>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- TASK TEMPLATE（注释保留供添加新 task 时复制）:
+      <article class="task" id="task-N" data-status="pending">
+        <header>
+          <h2>任务 N：[任务标题]</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>[exact/path]</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending"><strong>步骤 1：[描述]</strong></li>
+        </ol>
+      </article>
+      -->
+
+      <article class="task" id="task-1" data-status="done">
+        <header>
+          <h2>任务 1：工程脚手架</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/package.json</code>、<code>next.config.ts</code>、<code>tsconfig.json</code>、<code>biome.json</code>、<code>postcss.config.mjs</code>、<code>vitest.config.ts</code>、<code>.nvmrc</code>、<code>.gitignore</code>、<code>src/app/api/health/route.ts</code>、最小 <code>layout.tsx</code>/<code>page.tsx</code>/<code>globals.css</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：建目录并复制 portal 的通用配置</strong>
+            <pre><code class="lang-bash">mkdir -p patra-learn/src/app/api/health
+cp patra-portal/biome.json patra-portal/postcss.config.mjs patra-portal/.nvmrc patra-learn/
+cp patra-portal/tsconfig.json patra-learn/
+# .gitignore：portal 若有则 cp，否则用下方内容新建
+cp patra-portal/.gitignore patra-learn/.gitignore 2>/dev/null || true</code></pre>
+            <p>若 <code>.gitignore</code> 未复制成功，新建 <code>patra-learn/.gitignore</code>：</p>
+            <pre><code class="lang-text">node_modules/
+.next/
+out/
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts</code></pre>
+            <p>检查 <code>tsconfig.json</code> 含 <code>"paths": { "@/*": ["./src/*"] }</code>（portal 已配则原样保留；没有则补上）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：写 package.json（依赖版本号从 patra-portal/package.json 抄同名条目的版本）</strong>
+            <pre><code class="lang-json">{
+  "name": "patra-learn",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Patra 学习站 — 把你的系统，一条线一条线学明白",
+  "type": "module",
+  "engines": { "node": "&gt;=24.0.0", "pnpm": "&gt;=10.0.0" },
+  "scripts": {
+    "dev": "next dev -p 4001",
+    "build": "next build",
+    "start": "next start -p 4001",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "next": "《抄 portal》",
+    "react": "《抄 portal》",
+    "react-dom": "《抄 portal》",
+    "clsx": "《抄 portal》",
+    "@tailwindcss/postcss": "《抄 portal》",
+    "tailwindcss": "《抄 portal；若 portal 无此条目则与 @tailwindcss/postcss 同版本》"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "《抄 portal》",
+    "@playwright/test": "《抄 portal》",
+    "@types/node": "《抄 portal》",
+    "@types/react": "《抄 portal》",
+    "@types/react-dom": "《抄 portal》",
+    "typescript": "《抄 portal》",
+    "vitest": "《抄 portal》"
+  }
+}</code></pre>
+            <p>「《抄 portal》」= 打开 <code>patra-portal/package.json</code> 把同名依赖的版本字符串原样填入——这是精确指令而非占位。portal 没有的依赖不加。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：next.config.ts 与 vitest.config.ts</strong>
+            <pre><code class="lang-ts">// patra-learn/next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  // 产出自包含 Node server 到 .next/standalone（容器化运行，镜像精简）
+  output: "standalone",
+};
+
+export default nextConfig;</code></pre>
+            <pre><code class="lang-ts">// patra-learn/vitest.config.ts —— 单测只测 .ts 纯逻辑（content/lib），node 环境即可
+import path from "node:path";
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: { include: ["src/**/*.test.ts"], environment: "node" },
+  resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
+});</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：健康检查端点 + 最小 app 骨架</strong>
+            <pre><code class="lang-ts">// patra-learn/src/app/api/health/route.ts —— 与 portal 同款（CD 健康检查依赖）
+import { NextResponse } from "next/server";
+
+const VERSION = process.env.npm_package_version ?? "0.0.0";
+
+export const dynamic = "force-dynamic";
+
+export function GET(): NextResponse {
+  return NextResponse.json({
+    status: "ok",
+    version: VERSION,
+    timestamp: new Date().toISOString(),
+  });
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/app/layout.tsx —— 最小版，Task 2 全量替换
+import "./globals.css";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    &lt;html lang="zh-CN"&gt;
+      &lt;body&gt;{children}&lt;/body&gt;
+    &lt;/html&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/app/page.tsx —— 最小版，Task 7 全量替换
+export default function HomePage() {
+  return &lt;main&gt;Patra 学习站&lt;/main&gt;;
+}</code></pre>
+            <pre><code class="lang-css">/* patra-learn/src/app/globals.css —— 最小版，Task 2 全量替换 */
+@import "tailwindcss";</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 5：安装依赖并验证</strong>
+            <p>运行：<code>cd patra-learn &amp;&amp; pnpm install &amp;&amp; pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm build</code></p>
+            <p>预期：三条命令全部 0 退出。再验证 dev server：<code>pnpm dev &amp;</code> 后 <code>curl -s http://127.0.0.1:4001/api/health</code> 返回 <code>{"status":"ok",…}</code>，然后杀掉 dev 进程。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn
+git commit -m "feat(learn): 工程脚手架——Next.js 15 骨架 + 健康检查端点（任务 1/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：设计系统 token 与全局布局</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/components/top-bar.tsx</code></dd>
+            <dt>修改</dt><dd><code>patra-learn/src/app/globals.css</code>、<code>patra-learn/src/app/layout.tsx</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：globals.css 写入 @theme token（唯一视觉规范来源=画布 Tokens 页）</strong>
+            <pre><code class="lang-css">@import "tailwindcss";
+
+/* 学习站设计系统 token（源：Claude Design 画布 e2bb7c08 Tokens 页）。
+   线路 5 色在 src/content/lines.ts 数据里（内联 style 使用），此处只放会
+   生成 utility 的中性/语义色——每个 token 必须真被 utility 消费（防死类）。 */
+@theme {
+  --color-bg: #fafaf8;       /* 页面底 */
+  --color-surface: #ffffff;  /* 卡片面 */
+  --color-mist: #f1f2ee;     /* 浅灰块（代码底、徽章底） */
+  --color-line: #e3e5df;     /* 描边 */
+  --color-fog: #8b929b;      /* 次要文字 */
+  --color-slate: #565d66;    /* 正文灰 */
+  --color-ink: #22262c;      /* 主文字 */
+
+  --color-ok: #2c9457;       /* 成功/教训 */
+  --color-warn: #b98014;     /* 提醒 */
+  --color-danger: #cc4747;   /* 危险/红线 */
+
+  --font-sans: var(--font-noto-sans-sc), "PingFang SC", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "SF Mono", monospace;
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：layout.tsx 接入 next/font 与 TopBar</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/app/layout.tsx
+import type { Metadata } from "next";
+import { JetBrains_Mono, Noto_Sans_SC } from "next/font/google";
+import { TopBar } from "@/components/top-bar";
+import "./globals.css";
+
+const notoSansSc = Noto_Sans_SC({
+  subsets: ["latin"],
+  weight: ["400", "500", "700", "900"],
+  variable: "--font-noto-sans-sc",
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  variable: "--font-jetbrains-mono",
+});
+
+export const metadata: Metadata = {
+  title: "Patra 学习站",
+  description: "把你的系统，一条线一条线学明白",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    &lt;html lang="zh-CN"&gt;
+      &lt;body
+        className={`${notoSansSc.variable} ${jetbrainsMono.variable} bg-bg font-sans text-ink antialiased`}
+      &gt;
+        &lt;TopBar /&gt;
+        {children}
+      &lt;/body&gt;
+    &lt;/html&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：TopBar 组件（画布各页顶栏的统一实现）</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/components/top-bar.tsx
+import Link from "next/link";
+
+/* 顶栏：左 logo+站名（回首页），右三个全局资源入口。56px 高、白底、底描边（画布规范）。 */
+export function TopBar() {
+  return (
+    &lt;header className="flex h-14 items-center gap-6 border-b border-line bg-surface px-8"&gt;
+      &lt;Link href="/" className="flex items-center gap-3"&gt;
+        &lt;svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden&gt;
+          &lt;path d="M3 13 H23" stroke="#2E66C9" strokeWidth="4" strokeLinecap="round" /&gt;
+          &lt;path d="M13 3 V23" stroke="#D95B32" strokeWidth="4" strokeLinecap="round" /&gt;
+          &lt;circle cx="13" cy="13" r="4.5" fill="#fff" stroke="#22262C" strokeWidth="2.5" /&gt;
+        &lt;/svg&gt;
+        &lt;span className="text-lg font-black"&gt;Patra 学习站&lt;/span&gt;
+      &lt;/Link&gt;
+      &lt;nav className="ml-auto flex items-center gap-5 text-sm text-slate"&gt;
+        &lt;Link href="/glossary" className="hover:text-ink"&gt;名词图鉴&lt;/Link&gt;
+        &lt;Link href="/archive" className="hover:text-ink"&gt;事故档案馆&lt;/Link&gt;
+        &lt;Link href="/cheatsheet" className="hover:text-ink"&gt;操作小抄&lt;/Link&gt;
+      &lt;/nav&gt;
+    &lt;/header&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：验证 token 非死类（spec 风险#2 的验收）</strong>
+            <p>运行：<code>cd patra-learn &amp;&amp; pnpm build &amp;&amp; grep -l 'fafaf8' .next/static/css/*.css &amp;&amp; grep -l 'cc4747\|2c9457' .next/static/css/*.css || echo TOKEN-DEAD</code></p>
+            <p>预期：两个 grep 都命中文件名（<code>--color-ok/danger</code> 此时可能尚未被消费——若 grep 落空，在 TopBar 里临时加一个 <code>text-ok</code>/<code>text-danger</code> 的元素不算数，正确做法是接受「Task 11/12 消费后复验」：本步只强制 <code>bg-bg</code>/<code>border-line</code>/<code>bg-surface</code>/<code>text-ink</code>/<code>text-slate</code> 对应的 hex 出现在产物 CSS；语义色的复验写进 Task 12 步骤 5）。<code>pnpm typecheck &amp;&amp; pnpm lint</code> 通过。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn
+git commit -m "feat(learn): 设计系统 @theme token + 字体 + 顶栏（任务 2/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：内容模型与线路拓扑（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/content/types.ts</code>、<code>src/content/lines.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-learn/src/content/integrity.test.ts</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：先写失败的完整性测试</strong>
+            <pre><code class="lang-ts">// patra-learn/src/content/integrity.test.ts
+import { describe, expect, it } from "vitest";
+import { LINES, TRANSFER_NODE } from "./lines";
+
+const openLines = LINES.filter((l) =&gt; l.status === "open");
+const openStations = openLines.flatMap((l) =&gt; l.stations.map((s) =&gt; `${l.id}/${s.id}`));
+
+describe("线路拓扑完整性", () =&gt; {
+  it("开通线为 l1/l2/l3，规划线为 l4/l5", () =&gt; {
+    expect(openLines.map((l) =&gt; l.id)).toEqual(["l1", "l2", "l3"]);
+    expect(LINES.filter((l) =&gt; l.status === "planned").map((l) =&gt; l.id)).toEqual(["l4", "l5"]);
+  });
+
+  it("开通站总数 = 13（4+5+4）", () =&gt; {
+    expect(openStations).toHaveLength(13);
+    expect(openLines.map((l) =&gt; l.stations.length)).toEqual([4, 5, 4]);
+  });
+
+  it("线/站 id 全局无重复", () =&gt; {
+    const lineIds = LINES.map((l) =&gt; l.id);
+    expect(new Set(lineIds).size).toBe(lineIds.length);
+    const refs = LINES.flatMap((l) =&gt; l.stations.map((s) =&gt; `${l.id}/${s.id}`));
+    expect(new Set(refs).size).toBe(refs.length);
+  });
+
+  it("换乘节点连接 l1→l2", () =&gt; {
+    expect(TRANSFER_NODE).toEqual({ id: "merge-to-main", name: "合并进 main", from: "l1", to: "l2" });
+  });
+
+  it("每条线都有颜色与 soft 变体", () =&gt; {
+    for (const l of LINES) {
+      expect(l.color).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(l.softColor).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+});</code></pre>
+            <p>运行：<code>cd patra-learn &amp;&amp; pnpm test</code>　预期：<span class="pill high">红</span>（lines.ts 不存在，import 失败）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：types.ts</strong>
+            <pre><code class="lang-ts">// patra-learn/src/content/types.ts
+export type LineId = "l1" | "l2" | "l3" | "l4" | "l5";
+
+/** 站点引用：`&lt;lineId&gt;/&lt;stationId&gt;`，如 "l2/native-build"。互链（词条/档案→站）都用它。 */
+export type StationRef = `${LineId}/${string}`;
+
+export interface Station {
+  id: string;
+  name: string;
+  /** 一句话站点简介（首页 hover、课程页副标题、继续通勤卡都用它） */
+  summary: string;
+}
+
+export interface Line {
+  id: LineId;
+  name: string;      // "1 号线 · 质检线"
+  theme: string;     // "合并前的门禁考试（CI）"
+  color: string;     // 线路主色
+  softColor: string; // +12% 明度变体（浅底/hover）
+  status: "open" | "planned";
+  stations: Station[];
+}
+
+export interface GlossaryEntry {
+  term: string;
+  analogy: string;                    // "≈ …" Java 类比
+  explain: string;
+  appearsAt: StationRef[] | "all";    // 出现于（"all" = 全部线路）
+}
+
+export interface Incident {
+  no: number;
+  tag: string;       // "芯片格式装错"
+  title: string;
+  story: string;
+  lesson: string;    // "→ 于是有了：…"
+  relatedStation: StationRef;
+}
+
+export interface OpsCard {
+  action: string;    // "回滚" / "巡检" / "升级"
+  scenario: string;  // 什么时候用
+  command: string;   // 多行命令原文（\n 分行）
+  note: string;      // 命令下方备注
+  lineId: LineId;    // 徽章取该线颜色
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：lines.ts 全量拓扑数据（站名以画布 Sitemap 为准）</strong>
+            <pre><code class="lang-ts">// patra-learn/src/content/lines.ts
+import type { Line } from "./types";
+
+/** 换乘节点：1 号线终点 → 2 号线起点的视觉连接，不计入 13 站、无文章。 */
+export const TRANSFER_NODE = {
+  id: "merge-to-main",
+  name: "合并进 main",
+  from: "l1",
+  to: "l2",
+} as const;
+
+export const LINES: Line[] = [
+  {
+    id: "l1",
+    name: "1 号线 · 质检线",
+    theme: "合并前的门禁考试（CI）",
+    color: "#2e66c9",
+    softColor: "#5b87d6",
+    status: "open",
+    stations: [
+      { id: "write-code", name: "写代码", summary: "一切从分支开始：本地开发、提交规范与推送的最小闭环" },
+      { id: "open-pr", name: "开 PR", summary: "PR 是考场报名：分支保护、必过检查与 squash 合并" },
+      { id: "changed-only", name: "只考改过的", summary: "detect-changes 路由——改哪考哪，docs-only 直接放行" },
+      { id: "parallel-exams", name: "并行考试", summary: "preflight、后端矩阵、portal 同时开考，required-check 汇总放行" },
+    ],
+  },
+  {
+    id: "l2",
+    name: "2 号线 · 上线线",
+    theme: "合并后的自动部署（CD）",
+    color: "#d95b32",
+    softColor: "#e27e5c",
+    status: "open",
+    stations: [
+      { id: "runner-picks-up", name: "mini 领任务", summary: "常驻家里的 Mac mini runner：怎么领活、凭什么领" },
+      { id: "native-build", name: "本机打包", summary: "arm64 原生构建——芯片格式事故后的根治方案" },
+      { id: "deploy-loop", name: "部署闭环", summary: "deploy.sh：镜像就位、依赖顺序拉起、记住上一个好版本" },
+      { id: "health-check", name: "健康检查", summary: "上线不算完，得验货：healthcheck 与 127.0.0.1 的讲究" },
+      { id: "ship-and-rollback", name: "上线与回滚", summary: "验货失败自动退回；手动回滚两分钟一条命令" },
+    ],
+  },
+  {
+    id: "l3",
+    name: "3 号线 · 守夜线",
+    theme: "每日自动巡检",
+    color: "#7a5fb8",
+    softColor: "#957fc8",
+    status: "open",
+    stations: [
+      { id: "daily-0700", name: "每天 07:00", summary: "定时器怎么定：cron、UTC 与北京时间的换算" },
+      { id: "roll-call-and-key", name: "查岗与钥匙", summary: "查 runner 在不在岗，以及那把叫 RUNNER_ADMIN_TOKEN 的钥匙" },
+      { id: "four-checks", name: "四项体检", summary: "docker、磁盘、容器健康、runner 版本——金丝雀四连检" },
+      { id: "notification-philosophy", name: "通知哲学", summary: "为什么拆掉了独立通知通道：单人环境的运维克制" },
+    ],
+  },
+  {
+    id: "l4",
+    name: "4 号线 · 架构线",
+    theme: "六边形架构 / DDD / 微服务拓扑",
+    color: "#1e8e7e",
+    softColor: "#4aa598",
+    status: "planned",
+    stations: [
+      { id: "hexagonal", name: "六边形架构", summary: "规划中" },
+      { id: "ddd-bounded-context", name: "DDD 与限界上下文", summary: "规划中" },
+      { id: "microservice-topology", name: "微服务拓扑", summary: "规划中" },
+    ],
+  },
+  {
+    id: "l5",
+    name: "5 号线 · 数据线",
+    theme: "采集管道 / 存储",
+    color: "#b0498c",
+    softColor: "#c06ea3",
+    status: "planned",
+    stations: [
+      { id: "ingest-pipeline", name: "采集管道", summary: "规划中" },
+      { id: "storage-and-index", name: "存储与索引", summary: "规划中" },
+    ],
+  },
+];</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>（5 个用例全过）。<code>pnpm typecheck</code> 通过。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src/content
+git commit -m "feat(learn): 内容模型与三线十三站拓扑 + 完整性测试（任务 3/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：进度库 progress.ts（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/lib/progress.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-learn/src/lib/progress.test.ts</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：先写失败的测试（storage 可注入，node 环境无需 jsdom）</strong>
+            <pre><code class="lang-ts">// patra-learn/src/lib/progress.test.ts
+import { describe, expect, it } from "vitest";
+import { readProgress, toggleVisited } from "./progress";
+
+function fakeStorage(init: Record&lt;string, string&gt; = {}): Storage {
+  const map = new Map(Object.entries(init));
+  return {
+    getItem: (k) =&gt; map.get(k) ?? null,
+    setItem: (k, v) =&gt; void map.set(k, v),
+    removeItem: (k) =&gt; void map.delete(k),
+    clear: () =&gt; map.clear(),
+    key: () =&gt; null,
+    get length() { return map.size; },
+  } as Storage;
+}
+
+const throwingStorage = {
+  getItem() { throw new Error("blocked"); },
+  setItem() { throw new Error("blocked"); },
+} as unknown as Storage;
+
+describe("progress", () =&gt; {
+  it("空 storage 读出零进度", () =&gt; {
+    expect(readProgress(fakeStorage())).toEqual([]);
+  });
+
+  it("打卡后可读回；再打一次取消（幂等切换）", () =&gt; {
+    const s = fakeStorage();
+    expect(toggleVisited("l1/write-code", s)).toEqual(["l1/write-code"]);
+    expect(readProgress(s)).toEqual(["l1/write-code"]);
+    expect(toggleVisited("l1/write-code", s)).toEqual([]);
+    expect(readProgress(s)).toEqual([]);
+  });
+
+  it("坏 JSON 按零进度降级", () =&gt; {
+    const s = fakeStorage({ "patra-learn.progress.v1": "not-json{{" });
+    expect(readProgress(s)).toEqual([]);
+  });
+
+  it("storage 抛异常时读=零进度、写=静默不炸", () =&gt; {
+    expect(readProgress(throwingStorage)).toEqual([]);
+    expect(() =&gt; toggleVisited("l1/write-code", throwingStorage)).not.toThrow();
+  });
+
+  it("无 storage（SSR）时读=零进度", () =&gt; {
+    expect(readProgress(undefined)).toEqual([]);
+  });
+});</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>（progress.ts 不存在）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：实现 progress.ts</strong>
+            <pre><code class="lang-ts">// patra-learn/src/lib/progress.ts
+import type { StationRef } from "@/content/types";
+
+const KEY = "patra-learn.progress.v1";
+
+function defaultStorage(): Storage | undefined {
+  return typeof window === "undefined" ? undefined : window.localStorage;
+}
+
+/** 读已打卡站列表。storage 不可用 / 内容损坏一律降级为零进度。 */
+export function readProgress(storage: Storage | undefined = defaultStorage()): StationRef[] {
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is StationRef =&gt; typeof x === "string");
+  } catch {
+    return [];
+  }
+}
+
+/** 切换某站打卡状态，返回切换后的完整列表。写失败静默（下次读仍是旧值，可接受）。 */
+export function toggleVisited(
+  ref: StationRef,
+  storage: Storage | undefined = defaultStorage(),
+): StationRef[] {
+  const current = readProgress(storage);
+  const next = current.includes(ref) ? current.filter((r) =&gt; r !== ref) : [...current, ref];
+  try {
+    storage?.setItem(KEY, JSON.stringify(next));
+  } catch {
+    // localStorage 被禁用等场景：进度本轮丢失，页面继续可用
+  }
+  return next;
+}</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src/lib
+git commit -m "feat(learn): localStorage 进度库（打卡/降级）+ 单测（任务 4/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：内容查询助手与基础组件（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/lib/content.ts</code>、<code>src/components/line-chip.tsx</code>、<code>src/components/article-section.tsx</code>、<code>src/components/term.tsx</code>、<code>src/components/code-block.tsx</code>、<code>src/components/check-in-button.tsx</code></dd>
+            <dt>测试</dt><dd><code>patra-learn/src/lib/content.test.ts</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：先写失败的 content 助手测试</strong>
+            <pre><code class="lang-ts">// patra-learn/src/lib/content.test.ts
+import { describe, expect, it } from "vitest";
+import { adjacentStations, firstUnvisited, getStation, openStationRefs } from "./content";
+
+describe("content 助手", () =&gt; {
+  it("openStationRefs 返回 13 个按线路顺序排列的 ref", () =&gt; {
+    const refs = openStationRefs();
+    expect(refs).toHaveLength(13);
+    expect(refs[0]).toBe("l1/write-code");
+    expect(refs[12]).toBe("l3/notification-philosophy");
+  });
+
+  it("getStation 解析 ref，未知 ref 返回 undefined", () =&gt; {
+    const hit = getStation("l2/native-build");
+    expect(hit?.station.name).toBe("本机打包");
+    expect(hit?.line.id).toBe("l2");
+    expect(getStation("l2/nope")).toBeUndefined();
+    expect(getStation("l4/hexagonal")).toBeUndefined(); // planned 线不可解析为课程
+  });
+
+  it("adjacentStations 只在本线内前后移动", () =&gt; {
+    expect(adjacentStations("l1/write-code")).toEqual({ prev: undefined, next: "l1/open-pr" });
+    expect(adjacentStations("l1/parallel-exams").next).toBeUndefined();
+    expect(adjacentStations("l2/deploy-loop")).toEqual({
+      prev: "l2/native-build",
+      next: "l2/health-check",
+    });
+  });
+
+  it("firstUnvisited 跨线找第一个未打卡站；全打卡返回 undefined", () =&gt; {
+    expect(firstUnvisited([])).toBe("l1/write-code");
+    expect(firstUnvisited(["l1/write-code"])).toBe("l1/open-pr");
+    expect(firstUnvisited(openStationRefs())).toBeUndefined();
+  });
+});</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：实现 content.ts</strong>
+            <pre><code class="lang-ts">// patra-learn/src/lib/content.ts
+import { LINES } from "@/content/lines";
+import type { Line, Station, StationRef } from "@/content/types";
+
+export const OPEN_LINES: Line[] = LINES.filter((l) =&gt; l.status === "open");
+
+/** 全部开通站 ref，按 l1→l2→l3、站序排列（「继续通勤」的遍历顺序）。 */
+export function openStationRefs(): StationRef[] {
+  return OPEN_LINES.flatMap((l) =&gt; l.stations.map((s) =&gt; `${l.id}/${s.id}` as StationRef));
+}
+
+/** 解析 ref → 线 + 站 + 站内下标。planned 线与未知站返回 undefined。 */
+export function getStation(
+  ref: string,
+): { line: Line; station: Station; index: number } | undefined {
+  const [lineId, stationId] = ref.split("/");
+  const line = OPEN_LINES.find((l) =&gt; l.id === lineId);
+  if (!line) return undefined;
+  const index = line.stations.findIndex((s) =&gt; s.id === stationId);
+  if (index === -1) return undefined;
+  return { line, station: line.stations[index], index };
+}
+
+/** 本线内的上一站/下一站（跨线换乘不属于课程导航）。 */
+export function adjacentStations(ref: StationRef): { prev?: StationRef; next?: StationRef } {
+  const hit = getStation(ref);
+  if (!hit) return {};
+  const { line, index } = hit;
+  const toRef = (s: Station | undefined) =&gt;
+    s ? (`${line.id}/${s.id}` as StationRef) : undefined;
+  return { prev: toRef(line.stations[index - 1]), next: toRef(line.stations[index + 1]) };
+}
+
+/** 第一个未打卡的开通站（全部打卡完返回 undefined → 首页显示完成态）。 */
+export function firstUnvisited(visited: StationRef[]): StationRef | undefined {
+  return openStationRefs().find((ref) =&gt; !visited.includes(ref));
+}</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：四个展示组件 + 打卡按钮</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/components/line-chip.tsx
+import type { Line } from "@/content/types";
+
+/* 线路徽章：线路色实底、白字、mono 编号感（画布 Components 规范）。 */
+export function LineChip({ line, label }: { line: Line; label?: string }) {
+  return (
+    &lt;span
+      className="inline-block rounded-lg px-2.5 py-0.5 font-mono text-xs font-semibold text-surface"
+      style={{ backgroundColor: line.color }}
+    &gt;
+      {label ?? line.name}
+    &lt;/span&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/components/article-section.tsx
+/* 课程正文小节：站牌黑小标题 + 正文容器。 */
+export function ArticleSection({
+  title,
+  children,
+}: { title: string; children: React.ReactNode }) {
+  return (
+    &lt;section className="flex flex-col gap-3"&gt;
+      &lt;h2 className="text-xl font-black tracking-wide"&gt;{title}&lt;/h2&gt;
+      &lt;div className="flex flex-col gap-3 leading-7 text-slate"&gt;{children}&lt;/div&gt;
+    &lt;/section&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/components/term.tsx
+import Link from "next/link";
+
+/** 术语转 URL 锚点：小写、空格→连字符（glossary 页卡片 id 用同一函数，保证互链）。 */
+export function termSlug(term: string): string {
+  return term.toLowerCase().replace(/\s+/g, "-");
+}
+
+/* 正文术语：下划虚线，点击跳名词图鉴对应词条。 */
+export function Term({ children }: { children: string }) {
+  return (
+    &lt;Link
+      href={`/glossary#${termSlug(children)}`}
+      className="underline decoration-fog decoration-dashed underline-offset-4 hover:text-ink"
+    &gt;
+      {children}
+    &lt;/Link&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/components/code-block.tsx
+"use client";
+
+import { useState } from "react";
+
+/* 命令块：mist 底 + mono 字 + 复制按钮（操作小抄与课程页共用）。 */
+export function CodeBlock({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    &lt;div className="flex flex-col gap-2 rounded-xl bg-mist p-4"&gt;
+      &lt;pre className="overflow-x-auto font-mono text-xs leading-6 text-ink"&gt;{command}&lt;/pre&gt;
+      &lt;button
+        type="button"
+        className="self-end text-xs font-bold text-slate hover:text-ink"
+        onClick={() =&gt; {
+          navigator.clipboard.writeText(command).then(
+            () =&gt; setCopied(true),
+            () =&gt; setCopied(false),
+          );
+        }}
+      &gt;
+        {copied ? "已复制 ✓" : "复制命令"}
+      &lt;/button&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/components/check-in-button.tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import type { StationRef } from "@/content/types";
+import { readProgress, toggleVisited } from "@/lib/progress";
+
+/* 课程页文末打卡按钮。挂载后才读 localStorage（避免 hydration mismatch）。 */
+export function CheckInButton({ stationRef }: { stationRef: StationRef }) {
+  const [visited, setVisited] = useState&lt;boolean | null&gt;(null); // null = 未挂载
+
+  useEffect(() =&gt; {
+    setVisited(readProgress().includes(stationRef));
+  }, [stationRef]);
+
+  return (
+    &lt;button
+      type="button"
+      data-testid="check-in"
+      disabled={visited === null}
+      className={`self-start rounded-xl border px-5 py-2.5 text-sm font-bold transition-colors ${
+        visited
+          ? "border-ok bg-ok text-surface"
+          : "border-line bg-surface text-slate hover:text-ink"
+      }`}
+      onClick={() =&gt; setVisited(toggleVisited(stationRef).includes(stationRef))}
+    &gt;
+      {visited ? "✓ 已学完这一站（点击取消）" : "我学完这一站了"}
+    &lt;/button&gt;
+  );
+}</code></pre>
+            <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test</code>　预期：全绿。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src
+git commit -m "feat(learn): 内容查询助手 + 基础组件（徽章/术语/命令块/打卡）（任务 5/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：课程页路由与 13 篇文章骨架（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/content/articles/index.ts</code>、<code>src/content/articles/{l1,l2,l3}/*.tsx</code>（13 个）、<code>src/components/article-layout.tsx</code>、<code>src/app/lines/[line]/[station]/page.tsx</code></dd>
+            <dt>修改</dt><dd><code>patra-learn/src/content/integrity.test.ts</code>（追加文章存在性用例）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：integrity.test.ts 追加文章注册表用例</strong>
+            <pre><code class="lang-ts">// 追加到 patra-learn/src/content/integrity.test.ts（新增 import + describe）
+import { ARTICLES } from "./articles";
+
+describe("文章注册表完整性", () =&gt; {
+  it("每个开通站都有文章组件，注册表无多余键", () =&gt; {
+    expect(Object.keys(ARTICLES).sort()).toEqual([...openStations].sort());
+    for (const ref of openStations) {
+      expect(typeof ARTICLES[ref as keyof typeof ARTICLES]).toBe("function");
+    }
+  });
+});</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>（articles/index.ts 不存在）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：13 个文章骨架 + 注册表</strong>
+            <p>每站建 <code>src/content/articles/&lt;lineId&gt;/&lt;stationId&gt;.tsx</code>（kebab 文件名 = 站 id）。骨架统一为（以 l1/write-code 为例，其余 12 个同构，标题/文字用各站 name/summary）：</p>
+            <pre><code class="lang-tsx">// patra-learn/src/content/articles/l1/write-code.tsx —— 骨架；正文在任务 8 填充
+import { ArticleSection } from "@/components/article-section";
+
+export default function WriteCodeArticle() {
+  return (
+    &lt;ArticleSection title="这一站讲什么"&gt;
+      &lt;p&gt;一切从分支开始：本地开发、提交规范与推送的最小闭环。&lt;/p&gt;
+    &lt;/ArticleSection&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-ts">// patra-learn/src/content/articles/index.ts —— 静态注册表（SSG 需要全部静态 import）
+import type { ComponentType } from "react";
+import type { StationRef } from "../types";
+import WriteCode from "./l1/write-code";
+import OpenPr from "./l1/open-pr";
+import ChangedOnly from "./l1/changed-only";
+import ParallelExams from "./l1/parallel-exams";
+import RunnerPicksUp from "./l2/runner-picks-up";
+import NativeBuild from "./l2/native-build";
+import DeployLoop from "./l2/deploy-loop";
+import HealthCheck from "./l2/health-check";
+import ShipAndRollback from "./l2/ship-and-rollback";
+import Daily0700 from "./l3/daily-0700";
+import RollCallAndKey from "./l3/roll-call-and-key";
+import FourChecks from "./l3/four-checks";
+import NotificationPhilosophy from "./l3/notification-philosophy";
+
+export const ARTICLES: Record&lt;StationRef, ComponentType&gt; = {
+  "l1/write-code": WriteCode,
+  "l1/open-pr": OpenPr,
+  "l1/changed-only": ChangedOnly,
+  "l1/parallel-exams": ParallelExams,
+  "l2/runner-picks-up": RunnerPicksUp,
+  "l2/native-build": NativeBuild,
+  "l2/deploy-loop": DeployLoop,
+  "l2/health-check": HealthCheck,
+  "l2/ship-and-rollback": ShipAndRollback,
+  "l3/daily-0700": Daily0700,
+  "l3/roll-call-and-key": RollCallAndKey,
+  "l3/four-checks": FourChecks,
+  "l3/notification-philosophy": NotificationPhilosophy,
+};</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：ArticleLayout（站牌头 + 本线站条 + 打卡 + 前后站导航）</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/components/article-layout.tsx
+import Link from "next/link";
+import { CheckInButton } from "@/components/check-in-button";
+import { LineChip } from "@/components/line-chip";
+import type { Line, Station, StationRef } from "@/content/types";
+import { adjacentStations, getStation } from "@/lib/content";
+
+function NavLink({ toRef, dir }: { toRef?: StationRef; dir: "prev" | "next" }) {
+  if (!toRef) return &lt;span /&gt;;
+  const hit = getStation(toRef);
+  if (!hit) return &lt;span /&gt;;
+  return (
+    &lt;Link
+      href={`/lines/${toRef}`}
+      className="text-sm font-bold text-slate hover:text-ink"
+    &gt;
+      {dir === "prev" ? `← 上一站：${hit.station.name}` : `下一站：${hit.station.name} →`}
+    &lt;/Link&gt;
+  );
+}
+
+export function ArticleLayout({
+  line,
+  station,
+  stationRef,
+  children,
+}: {
+  line: Line;
+  station: Station;
+  stationRef: StationRef;
+  children: React.ReactNode;
+}) {
+  const { prev, next } = adjacentStations(stationRef);
+  return (
+    &lt;main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-10"&gt;
+      &lt;header className="flex flex-col gap-3"&gt;
+        &lt;LineChip line={line} /&gt;
+        &lt;h1 className="text-4xl font-black tracking-wide"&gt;{station.name}&lt;/h1&gt;
+        &lt;p className="text-sm text-fog"&gt;{station.summary}&lt;/p&gt;
+        {/* 本线站条：当前站高亮为线路色 */}
+        &lt;nav className="flex flex-wrap items-center gap-2 border-y border-line py-3 text-xs"&gt;
+          {line.stations.map((s) =&gt; (
+            &lt;Link
+              key={s.id}
+              href={`/lines/${line.id}/${s.id}`}
+              className={s.id === station.id ? "font-black" : "text-fog hover:text-ink"}
+              style={s.id === station.id ? { color: line.color } : undefined}
+            &gt;
+              {s.name}
+            &lt;/Link&gt;
+          ))}
+        &lt;/nav&gt;
+      &lt;/header&gt;
+      &lt;article className="flex flex-col gap-8"&gt;{children}&lt;/article&gt;
+      &lt;footer className="flex flex-col gap-6 border-t border-line pt-6"&gt;
+        &lt;CheckInButton stationRef={stationRef} /&gt;
+        &lt;div className="flex items-center justify-between"&gt;
+          &lt;NavLink toRef={prev} dir="prev" /&gt;
+          &lt;NavLink toRef={next} dir="next" /&gt;
+        &lt;/div&gt;
+      &lt;/footer&gt;
+    &lt;/main&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：课程页路由（Next 15：params 是 Promise）</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/app/lines/[line]/[station]/page.tsx
+import { notFound } from "next/navigation";
+import { ArticleLayout } from "@/components/article-layout";
+import { ARTICLES } from "@/content/articles";
+import type { StationRef } from "@/content/types";
+import { getStation, openStationRefs } from "@/lib/content";
+
+export function generateStaticParams() {
+  return openStationRefs().map((ref) =&gt; {
+    const [line, station] = ref.split("/");
+    return { line, station };
+  });
+}
+
+export const dynamicParams = false;
+
+export default async function StationPage({
+  params,
+}: { params: Promise&lt;{ line: string; station: string }&gt; }) {
+  const { line: lineId, station: stationId } = await params;
+  const ref = `${lineId}/${stationId}` as StationRef;
+  const hit = getStation(ref);
+  const Article = ARTICLES[ref];
+  if (!hit || !Article) notFound();
+  return (
+    &lt;ArticleLayout line={hit.line} station={hit.station} stationRef={ref}&gt;
+      &lt;Article /&gt;
+    &lt;/ArticleLayout&gt;
+  );
+}</code></pre>
+            <p>运行：<code>pnpm build</code>　预期：构建输出里 <code>/lines/[line]/[station]</code> 生成 13 个静态页（●  SSG 标记）。<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test</code> 全绿。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src
+git commit -m "feat(learn): 课程页路由 + ArticleLayout + 13 篇文章骨架（任务 6/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-7" data-status="done">
+        <header>
+          <h2>任务 7：首页与 MetroMap 网络图</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/components/metro-map.tsx</code>、<code>src/components/continue-card.tsx</code></dd>
+            <dt>修改</dt><dd><code>patra-learn/src/app/page.tsx</code>（全量替换）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：MetroMap（client；SVG 数据驱动；视觉对照画布 Main.dc.html）</strong>
+            <p>布局规则：每条线一行水平线，行距 96px；开通线实色 6px 线宽，规划线 <code>#e3e5df</code> 虚线（<code>strokeDasharray="10 8"</code>）；站点 = 半径 9 圆，未学空心（白底线路色描边）、已学实心线路色、「当前站」（= firstUnvisited）外加同色大圆环；换乘节点在 l1 行末与 l2 行首之间画竖直连接线 + 白底黑描边圆 + 「合并进 main · 换乘站」标签。站名标注在圆点下方 12.5px 文字。开通站可点击跳课程页，规划站不可点。</p>
+            <pre><code class="lang-tsx">// patra-learn/src/components/metro-map.tsx
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { LINES, TRANSFER_NODE } from "@/content/lines";
+import type { StationRef } from "@/content/types";
+import { firstUnvisited } from "@/lib/content";
+import { readProgress } from "@/lib/progress";
+
+const ROW_H = 96;
+const X0 = 150;      // 首站 x
+const STEP = 148;    // 站距
+const LABEL_X = 24;  // 线名标签 x
+
+export function MetroMap() {
+  const [visited, setVisited] = useState&lt;StationRef[]&gt;([]);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() =&gt; {
+    setVisited(readProgress());
+    setMounted(true);
+  }, []);
+  const current = mounted ? firstUnvisited(visited) : undefined;
+
+  const width = X0 + STEP * 5 + 60;
+  const height = ROW_H * LINES.length + 40;
+
+  return (
+    &lt;div className="overflow-x-auto"&gt;
+      &lt;svg
+        viewBox={`0 0 ${width} ${height}`}
+        width={width}
+        height={height}
+        role="img"
+        aria-label="学习网络图：三条开通线与两条规划线"
+      &gt;
+        {LINES.map((line, row) =&gt; {
+          const y = 48 + row * ROW_H;
+          const open = line.status === "open";
+          const endX = X0 + STEP * (line.stations.length - 1);
+          return (
+            &lt;g key={line.id}&gt;
+              &lt;text x={LABEL_X} y={y - 22} fontSize="12.5" fontWeight="900" fill={open ? line.color : "#8b929b"}&gt;
+                {line.name}{open ? "" : " · 规划中"}
+              &lt;/text&gt;
+              &lt;line
+                x1={X0} y1={y} x2={endX} y2={y}
+                stroke={open ? line.color : "#e3e5df"}
+                strokeWidth="6" strokeLinecap="round"
+                strokeDasharray={open ? undefined : "10 8"}
+              /&gt;
+              {line.stations.map((s, i) =&gt; {
+                const ref = `${line.id}/${s.id}` as StationRef;
+                const x = X0 + STEP * i;
+                const isVisited = open &amp;&amp; visited.includes(ref);
+                const isCurrent = open &amp;&amp; current === ref;
+                const dot = (
+                  &lt;g&gt;
+                    {isCurrent &amp;&amp; (
+                      &lt;circle cx={x} cy={y} r="15" fill="none" stroke={line.color} strokeWidth="2.5" /&gt;
+                    )}
+                    &lt;circle
+                      cx={x} cy={y} r="9"
+                      fill={open ? (isVisited ? line.color : "#ffffff") : "#f1f2ee"}
+                      stroke={open ? line.color : "#8b929b"}
+                      strokeWidth="3"
+                      data-testid={open ? "station-node" : "planned-node"}
+                      data-visited={isVisited || undefined}
+                    /&gt;
+                    &lt;text x={x} y={y + 30} fontSize="12.5" textAnchor="middle" fill={open ? "#565d66" : "#8b929b"}&gt;
+                      {s.name}
+                    &lt;/text&gt;
+                  &lt;/g&gt;
+                );
+                return open ? (
+                  &lt;Link key={s.id} href={`/lines/${ref}`}&gt;{dot}&lt;/Link&gt;
+                ) : (
+                  &lt;g key={s.id}&gt;{dot}&lt;/g&gt;
+                );
+              })}
+            &lt;/g&gt;
+          );
+        })}
+        {/* 换乘节点：l1 末站(4) → l2 首站(1) 之间的连接 */}
+        {(() =&gt; {
+          const x1 = X0 + STEP * 3;          // l1 末站 x
+          const y1 = 48;                      // l1 行 y
+          const y2 = 48 + ROW_H;              // l2 行 y
+          const midY = (y1 + y2) / 2;
+          return (
+            &lt;g&gt;
+              &lt;line x1={x1} y1={y1} x2={X0} y2={y2} stroke="#22262c" strokeWidth="2.5" strokeDasharray="4 5" /&gt;
+              &lt;circle cx={(x1 + X0) / 2} cy={midY} r="8" fill="#ffffff" stroke="#22262c" strokeWidth="2.5" /&gt;
+              &lt;text x={(x1 + X0) / 2 + 14} y={midY + 4} fontSize="11.5" fill="#565d66"&gt;
+                {TRANSFER_NODE.name} · 换乘站
+              &lt;/text&gt;
+            &lt;/g&gt;
+          );
+        })()}
+      &lt;/svg&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：进度徽章 + 继续通勤卡（client）</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/components/continue-card.tsx
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import type { StationRef } from "@/content/types";
+import { firstUnvisited, getStation, openStationRefs } from "@/lib/content";
+import { readProgress } from "@/lib/progress";
+
+export function ContinueCard() {
+  const [visited, setVisited] = useState&lt;StationRef[] | null&gt;(null);
+  useEffect(() =&gt; setVisited(readProgress()), []);
+
+  const total = openStationRefs().length;
+  const doneCount = visited?.filter((r) =&gt; openStationRefs().includes(r)).length ?? 0;
+  const nextRef = visited === null ? undefined : firstUnvisited(visited);
+  const next = nextRef ? getStation(nextRef) : undefined;
+
+  return (
+    &lt;div className="flex items-center justify-between rounded-2xl border border-line bg-surface p-6"&gt;
+      &lt;div className="flex flex-col gap-1"&gt;
+        &lt;span className="rounded-full bg-mist px-3 py-1 text-xs font-bold text-slate" data-testid="progress-badge"&gt;
+          已到 {doneCount} / {total} 站
+        &lt;/span&gt;
+        &lt;span className="pt-2 text-sm text-fog"&gt;
+          {next
+            ? `接下来学：${next.line.name.slice(0, 4)} · ${next.station.name} —— ${next.station.summary}`
+            : visited === null
+              ? "正在读取你的通勤记录…"
+              : "全线通车！三条线都学完了 🎉"}
+        &lt;/span&gt;
+      &lt;/div&gt;
+      {next &amp;&amp; nextRef &amp;&amp; (
+        &lt;Link
+          href={`/lines/${nextRef}`}
+          className="rounded-xl px-5 py-2.5 text-sm font-black text-surface"
+          style={{ backgroundColor: next.line.color }}
+        &gt;
+          继续通勤 →
+        &lt;/Link&gt;
+      )}
+    &lt;/div&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：首页组装（server 组件）</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/app/page.tsx
+import Link from "next/link";
+import { ContinueCard } from "@/components/continue-card";
+import { MetroMap } from "@/components/metro-map";
+
+const RESOURCES = [
+  { eyebrow: "随手查", title: "名词图鉴", desc: "10 个角色，每个配一句 Java 类比", href: "/glossary" },
+  { eyebrow: "听故事", title: "事故档案馆", desc: "6 次真实翻车，每条规则的来历", href: "/archive" },
+  { eyebrow: "照着做", title: "操作小抄", desc: "回滚、巡检、升级，抄了就能用", href: "/cheatsheet" },
+];
+
+export default function HomePage() {
+  return (
+    &lt;main className="mx-auto flex w-full max-w-5xl flex-col gap-10 px-6 py-10"&gt;
+      &lt;header className="flex flex-col gap-2"&gt;
+        &lt;h1 className="text-3xl font-black tracking-wide"&gt;把你的系统，一条线一条线学明白&lt;/h1&gt;
+        &lt;p className="text-sm text-fog"&gt;三条线已通车，点任意站进入课程；打卡记录只存在你自己的浏览器里。&lt;/p&gt;
+      &lt;/header&gt;
+      &lt;ContinueCard /&gt;
+      &lt;section className="rounded-2xl border border-line bg-surface p-6"&gt;
+        &lt;MetroMap /&gt;
+      &lt;/section&gt;
+      &lt;section className="grid grid-cols-1 gap-4 sm:grid-cols-3"&gt;
+        {RESOURCES.map((r) =&gt; (
+          &lt;Link
+            key={r.href}
+            href={r.href}
+            className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-5 hover:border-fog"
+          &gt;
+            &lt;span className="text-xs font-bold text-fog"&gt;{r.eyebrow}&lt;/span&gt;
+            &lt;span className="text-lg font-black"&gt;{r.title}&lt;/span&gt;
+            &lt;span className="text-sm text-slate"&gt;{r.desc}&lt;/span&gt;
+          &lt;/Link&gt;
+        ))}
+      &lt;/section&gt;
+    &lt;/main&gt;
+  );
+}</code></pre>
+            <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm build</code> 全绿；<code>pnpm dev</code> 后浏览器（或 <code>curl -s http://127.0.0.1:4001 | grep -c 'station-node'</code>）确认首页渲染 13 个开通站节点 + 5 个规划站灰点 + 换乘节点。视觉与画布 Main.dc.html 对照（允许布局简化，但三态站点/线路色/虚线规划线必须一致）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src
+git commit -m "feat(learn): 首页 MetroMap 网络图 + 进度徽章 + 继续通勤卡（任务 7/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-8" data-status="done">
+        <header>
+          <h2>任务 8：1 号线 4 篇文章内容</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-learn/src/content/articles/l1/write-code.tsx</code>、<code>open-pr.tsx</code>、<code>changed-only.tsx</code>、<code>parallel-exams.tsx</code>（骨架→全文）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：读内容源</strong>
+            <p>读手册 <code>…scratchpad/patra-cicd-metro.html</code> 的「先认识十个角色」「合并之前：门禁考试（CI）」「合并进 main」三节 + 仓库真实文件 <code>.github/workflows/ci.yml</code>、<code>patra-infra/cd/detect-changes.sh</code> 头部注释。文章事实必须与仓库现状一致（手册若与代码冲突，以代码为准并在 plan 右栏记 change note）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：逐站撰写（质量线：每篇 ≥3 个 ArticleSection、≥1 个 SVG 图解或结构化流程块、术语用 &lt;Term&gt; 包裹且词条存在于任务 11 的 glossary 清单）</strong>
+            <p>各站内容简报（正文以此为骨、手册为肉）：</p>
+            <table>
+              <thead><tr><th>站</th><th>必须覆盖的要点</th><th>图解</th></tr></thead>
+              <tbody>
+                <tr><td>写代码</td><td>为什么绝不直接改 main（分支保护是闸机）；feature 分支 → commit（commitlint 中文规范、pre-commit 钩子在本地就拦格式/密钥）→ push；「本地钩子是第一道考场」</td><td>本地→远端的三步流程 SVG（分支→提交→推送）</td></tr>
+                <tr><td>开 PR</td><td>PR = 考场报名表；分支保护要求：required-check 全绿 + review 对话全部 resolve 才能合并；squash merge 把草稿装订成 main 上一条干净提交（回滚按提交号点名的前提）；CodeRabbit 评审流程</td><td>PR 生命周期横条：开 PR→检查跑→评审→resolve→squash 合并</td></tr>
+                <tr><td>只考改过的</td><td>detect-changes.sh 是「只考改过的」的裁判：pr/push/schedule 三种模式；模块图（module-graph.json）算受影响单元；docs-only 全跳过但 required-check 仍绿（allowed-skips）；workflow 自身变更 = 全量考</td><td>变更文件→分类器→backend_units/portal_changed 输出的漏斗图</td></tr>
+                <tr><td>并行考试</td><td>preflight（镜像版本一致性等便宜检查）、backend 单元矩阵、portal 检查并行开考；required-check 是唯一 required 的汇总闸——名字不能改；nightly 全量 + e2e</td><td>并行泳道汇入 required-check 的 SVG</td></tr>
+              </tbody>
+            </table>
+            <p>SVG 图解规范：手写内联 <code>&lt;svg viewBox="…"&gt;</code>，文字 11.5-12.5px、颜色用该线 <code>#2e66c9</code> + 中性色，包在 <code>&lt;figure&gt;</code> + <code>&lt;figcaption class="text-xs text-fog"&gt;</code> 里；宽内容外层 <code>overflow-x-auto</code>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：验证</strong>
+            <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test &amp;&amp; pnpm build</code> 全绿；<code>pnpm dev</code> 起服后 4 个 URL（<code>/lines/l1/write-code</code> 等）逐一 curl 200 且正文非骨架句。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src/content/articles/l1
+git commit -m "feat(learn): 1 号线质检线 4 站课程正文（任务 8/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-9" data-status="done">
+        <header>
+          <h2>任务 9：2 号线 5 篇文章内容</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-learn/src/content/articles/l2/</code> 下 5 个文件（骨架→全文）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：读内容源</strong>
+            <p>手册「合并之后：自动上线（CD）」「部署闭环：换新、验货、出事自己退」「那台 Mac mini 上都有什么」「连起来：你点下合并之后的十分钟」四节 + 仓库真实文件 <code>.github/workflows/cd.yml</code>、<code>portal-cd.yml</code>、<code>patra-infra/cd/deploy.sh</code>、<code>services.json</code>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：逐站撰写（质量线同任务 8）</strong>
+            <table>
+              <thead><tr><th>站</th><th>必须覆盖的要点</th><th>图解</th></tr></thead>
+              <tbody>
+                <tr><td>mini 领任务</td><td>self-hosted runner 是常驻演员：labels [self-hosted, macmini] 路由；为何安全（只监听 push:main 与 dispatch，永不跑 fork PR 代码）；runner 的 .env（代理、JAVA_HOME）与 --disableupdate</td><td>GitHub↔mini 长轮询领任务示意</td></tr>
+                <tr><td>本机打包</td><td>芯片格式事故（amd64 镜像在 arm64 mini 上靠 Rosetta 跑了三个月）→ 架构决策：构建搬回 mini 原生 arm64；GHCR 降级为归档/回滚备源、best-effort 推送不阻塞；Java 服务 gradlew bootJar → docker build，portal/learn 全在 Dockerfile 内构建</td><td>旧链路（ubuntu 构建→GHCR→mini 拉）vs 新链路（mini 本机构建）对比图</td></tr>
+                <tr><td>部署闭环</td><td>deploy.sh 流程：镜像就位（本地优先→GHCR 退避 30/60/120s）→ arm64 断言 → 依赖顺序 up（ORDER）→ 记 last-good；services.json 是 SSOT（加服务=加条目不改逻辑）；入参校验（未知服务 exit 2——档案 #6）</td><td>deploy.sh 步骤流水 SVG</td></tr>
+                <tr><td>健康检查</td><td>compose healthcheck（interval/retries/start_period）；127.0.0.1 vs localhost 的 IPv6 坑（档案 #4）；verify_running_tag 验「跑的确实是这个版本」；bash 3.2 全角字符坑顺带一提（档案 #5 详情在 3 号线）</td><td>「上线≠成功，验货才算」时序图</td></tr>
+                <tr><td>上线与回滚</td><td>验货失败自动回滚到 last-good；手动回滚 = workflow_dispatch 填服务名+旧 sha，本地缓存命中约 2 分钟；回滚演练双向通过的事实；「回滚是常规操作不是事故」心态</td><td>失败→自动退回 last-good 的决策树</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：验证</strong>
+            <p>同任务 8 步骤 3（5 个 URL）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src/content/articles/l2
+git commit -m "feat(learn): 2 号线上线线 5 站课程正文（任务 9/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-10" data-status="done">
+        <header>
+          <h2>任务 10：3 号线 4 篇文章内容</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-learn/src/content/articles/l3/</code> 下 4 个文件（骨架→全文）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：读内容源</strong>
+            <p>手册「平时：每天一次自动巡检」「安全设计：三道墙」两节 + 仓库真实文件 <code>.github/workflows/runner-watchdog.yml</code>、<code>patra-infra/scripts/install-github-runner.sh</code> 头部 runbook 注释。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：逐站撰写（质量线同任务 8）</strong>
+            <table>
+              <thead><tr><th>站</th><th>必须覆盖的要点</th><th>图解</th></tr></thead>
+              <tbody>
+                <tr><td>每天 07:00</td><td>schedule cron <code>0 23 * * *</code> 是 UTC，= 北京 07:00；watchdog 两个 job：check-runner（云端查岗）+ canary（mini 本机体检）；为什么巡检也要 workflow_dispatch（随时手动跑）</td><td>UTC↔北京时间换算 + 两 job 结构图</td></tr>
+                <tr><td>查岗与钥匙</td><td>check-runner 用 GitHub API 查 runner online；钥匙 = RUNNER_ADMIN_TOKEN（fine-grained PAT，只有 Administration:Read 一个权限——最小权限原则）；30 天离线自动除名红线（档案 #2 演员失踪）</td><td>查岗调用链：ubuntu job→API→runner 状态</td></tr>
+                <tr><td>四项体检</td><td>canary 在 mini 上查：docker 活着、磁盘 ≥20G、无 unhealthy 容器、runner 版本 vs 最新（--disableupdate 后必须人工升级，超龄告警）；体检脚本里 bash 3.2 全角字符坑的实战（档案 #5）</td><td>四项体检清单卡</td></tr>
+                <tr><td>通知哲学</td><td>曾接过独立通知通道（ntfy），后来拆除：GitHub 原生失败邮件/App 推送对单人 dev 环境足够；原则「不给单人 dev 环境套生产级运维模板」；失败时在哪看（Actions 页 + GitHub 通知）</td><td>无图解可用「决策前后对比」结构块代替</td></tr>
+              </tbody>
+            </table>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：验证</strong>
+            <p>同任务 8 步骤 3（4 个 URL）。13 篇全文就位后额外跑一次 <code>pnpm build</code> 确认 13 个 SSG 页全部生成。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src/content/articles/l3
+git commit -m "feat(learn): 3 号线守夜线 4 站课程正文（任务 10/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-11" data-status="done">
+        <header>
+          <h2>任务 11：名词图鉴页（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/content/glossary.ts</code>、<code>src/components/glossary-wall.tsx</code>、<code>src/app/glossary/page.tsx</code></dd>
+            <dt>修改</dt><dd><code>patra-learn/src/content/integrity.test.ts</code>（追加词条引用校验）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：先写失败的引用校验测试</strong>
+            <pre><code class="lang-ts">// 追加到 integrity.test.ts
+import { GLOSSARY } from "./glossary";
+
+describe("词条完整性", () =&gt; {
+  it("共 10 条、term 无重复", () =&gt; {
+    expect(GLOSSARY).toHaveLength(10);
+    expect(new Set(GLOSSARY.map((g) =&gt; g.term)).size).toBe(10);
+  });
+  it("appearsAt 引用的站都真实存在", () =&gt; {
+    for (const g of GLOSSARY) {
+      if (g.appearsAt === "all") continue;
+      for (const ref of g.appearsAt) expect(openStations).toContain(ref);
+    }
+  });
+});</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：glossary.ts 全量数据（文案源自画布 Glossary 画板，站引用按最终拓扑归并——画布「总闸灯/合并进 main」章节引用统一归到 l1/open-pr）</strong>
+            <pre><code class="lang-ts">// patra-learn/src/content/glossary.ts
+import type { GlossaryEntry } from "./types";
+
+export const GLOSSARY: GlossaryEntry[] = [
+  { term: "GitHub Actions", analogy: "≈ 免费的自动化工厂", explain: "仓库一有动静就按剧本自动开工的系统，整套 CI/CD 都跑在它上面。", appearsAt: "all" },
+  { term: "workflow", analogy: "≈ 触发器 + 构建脚本", explain: "仓库里的剧本文件：什么事件、哪台机器、跑什么命令。", appearsAt: "all" },
+  { term: "runner", analogy: "≈ 替你敲 gradlew 的机器", explain: "真正执行剧本的电脑：GitHub 租的一次性云机器，或你家常驻的 Mac mini。", appearsAt: ["l2/runner-picks-up"] },
+  { term: "Docker 镜像", analogy: "≈ fat jar + JRE + 迷你系统", explain: "连运行环境一起打包的「整机快照」，任何装了 Docker 的机器都能原样跑。", appearsAt: ["l2/native-build"] },
+  { term: "GHCR", analogy: "≈ 镜像界的 Maven Central", explain: "存镜像的仓库，版本号用 commit sha。在新架构里只当备份网盘。", appearsAt: ["l2/native-build"] },
+  { term: "docker compose", analogy: "≈ 整套服务的 application.yml", explain: "一份 yml 声明每个服务的镜像、端口、健康标准；一条 up 全拉起。", appearsAt: ["l2/deploy-loop"] },
+  { term: "secrets", analogy: "≈ 密码保险柜", explain: "公开仓库里密码进保险柜不进代码；运行时临时注入，日志自动打码。", appearsAt: ["l3/roll-call-and-key"] },
+  { term: "分支保护", analogy: "≈ main 的门禁闸机", explain: "必须走 PR、检查全绿、对话处理完，否则合并按钮是灰的。", appearsAt: ["l1/open-pr"] },
+  { term: "squash merge", analogy: "≈ 草稿装订成一页交卷", explain: "PR 里的零碎提交合并时压成 main 上干净的一条，回滚按提交号点名。", appearsAt: ["l1/open-pr"] },
+  { term: "workflow_dispatch", analogy: "≈ 手动拉闸的按钮", explain: "剧本上留的手动按钮，可填参数。回滚就是点它：服务名 + 旧版本号。", appearsAt: ["l2/ship-and-rollback"] },
+];</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：卡片墙（client 过滤搜索）+ 页面</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/components/glossary-wall.tsx
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { termSlug } from "@/components/term";
+import { GLOSSARY } from "@/content/glossary";
+import { getStation } from "@/lib/content";
+
+export function GlossaryWall() {
+  const [q, setQ] = useState("");
+  const hits = GLOSSARY.filter(
+    (g) =&gt;
+      g.term.toLowerCase().includes(q.toLowerCase()) ||
+      g.analogy.includes(q) ||
+      g.explain.includes(q),
+  );
+  return (
+    &lt;div className="flex flex-col gap-6"&gt;
+      &lt;input
+        type="search"
+        value={q}
+        onChange={(e) =&gt; setQ(e.target.value)}
+        placeholder="搜索词条…"
+        data-testid="glossary-search"
+        className="w-64 rounded-xl border border-line bg-surface px-4 py-2 text-sm outline-none focus:border-fog"
+      /&gt;
+      &lt;div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5"&gt;
+        {hits.map((g) =&gt; (
+          &lt;div
+            key={g.term}
+            id={termSlug(g.term)}
+            data-testid="glossary-card"
+            className="flex flex-col gap-1.5 rounded-2xl border border-line bg-surface p-4"
+          &gt;
+            &lt;span className="text-base font-bold"&gt;{g.term}&lt;/span&gt;
+            &lt;span className="text-xs font-bold" style={{ color: "#2e66c9" }}&gt;{g.analogy}&lt;/span&gt;
+            &lt;span className="grow text-xs leading-6 text-slate"&gt;{g.explain}&lt;/span&gt;
+            {g.appearsAt === "all" ? (
+              &lt;span className="text-[11px] text-fog"&gt;出现于：全部线路&lt;/span&gt;
+            ) : (
+              g.appearsAt.map((ref) =&gt; {
+                const hit = getStation(ref);
+                if (!hit) return null;
+                return (
+                  &lt;Link
+                    key={ref}
+                    href={`/lines/${ref}`}
+                    className="text-[11px] font-bold hover:underline"
+                    style={{ color: hit.line.color }}
+                  &gt;
+                    出现于：{hit.line.name.slice(0, 4)} · {hit.station.name}
+                  &lt;/Link&gt;
+                );
+              })
+            )}
+          &lt;/div&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/app/glossary/page.tsx
+import type { Metadata } from "next";
+import { GlossaryWall } from "@/components/glossary-wall";
+
+export const metadata: Metadata = { title: "名词图鉴 · Patra 学习站" };
+
+export default function GlossaryPage() {
+  return (
+    &lt;main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10"&gt;
+      &lt;header className="flex items-baseline gap-4"&gt;
+        &lt;h1 className="text-3xl font-black tracking-wide"&gt;名词图鉴&lt;/h1&gt;
+        &lt;span className="text-sm text-fog"&gt;每个词配一句 Java 世界的类比 · 文章里点到名词都会跳到这里&lt;/span&gt;
+      &lt;/header&gt;
+      &lt;GlossaryWall /&gt;
+    &lt;/main&gt;
+  );
+}</code></pre>
+            <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test &amp;&amp; pnpm build</code> 全绿。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src
+git commit -m "feat(learn): 名词图鉴页——10 词条 + 过滤搜索 + 站点回链（任务 11/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-12" data-status="done">
+        <header>
+          <h2>任务 12：事故档案馆与操作小抄页（TDD）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/src/content/incidents.ts</code>、<code>src/content/cheatsheet.ts</code>、<code>src/app/archive/page.tsx</code>、<code>src/app/cheatsheet/page.tsx</code></dd>
+            <dt>修改</dt><dd><code>patra-learn/src/content/integrity.test.ts</code>（追加两组校验）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：先写失败的校验</strong>
+            <pre><code class="lang-ts">// 追加到 integrity.test.ts
+import { INCIDENTS } from "./incidents";
+import { OPS_CARDS } from "./cheatsheet";
+
+describe("档案与小抄完整性", () =&gt; {
+  it("6 份档案、编号 1-6 无重复、relatedStation 有效", () =&gt; {
+    expect(INCIDENTS.map((i) =&gt; i.no).sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    for (const i of INCIDENTS) expect(openStations).toContain(i.relatedStation);
+  });
+  it("3 张操作卡、lineId 是开通线", () =&gt; {
+    expect(OPS_CARDS).toHaveLength(3);
+    for (const c of OPS_CARDS) expect(["l1", "l2", "l3"]).toContain(c.lineId);
+  });
+});</code></pre>
+            <p>运行：<code>pnpm test</code>　预期：<span class="pill high">红</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：incidents.ts 全量数据（文案源自画布 Archive 画板）</strong>
+            <pre><code class="lang-ts">// patra-learn/src/content/incidents.ts
+import type { Incident } from "./types";
+
+export const INCIDENTS: Incident[] = [
+  { no: 1, tag: "芯片格式装错", title: "坏了三个月，没有一个人知道",
+    story: "云端 Intel 机器打的镜像忘了做格式转换，mini 根本装不上。没人盯、没验证，一错就是三个月。",
+    lesson: "本机原生打包 + 部署前格式断言 + 守夜线", relatedStation: "l2/native-build" },
+  { no: 2, tag: "演员失踪", title: "runner 离线两个月，被 GitHub 除名",
+    story: "项目搁置期 runner 掉线无人察觉；GitHub 规定离线 30 天自动注销，回来时「演员」连编制都没了。",
+    lesson: "每日查岗 + 安装脚本即运维手册", relatedStation: "l3/roll-call-and-key" },
+  { no: 3, tag: "20 分钟魔咒", title: "超时了，但显示的是「已取消」",
+    story: "翻墙拉几百 MB 镜像遇上抖动，20 分钟限时一到任务被杀——GitHub 却把超时显示成 cancelled，排查时一度以为是误触。",
+    lesson: "不再从外网拉镜像，问题连根拔掉", relatedStation: "l2/native-build" },
+  { no: 4, tag: "localhost 的背叛", title: "服务明明健康，检查说它病了",
+    story: "健康检查写 localhost 被解析成 IPv6 的 ::1，而服务只听 IPv4——健康的服务被判「不健康」，折腾半天。",
+    lesson: "健康检查一律写死 127.0.0.1", relatedStation: "l2/health-check" },
+  { no: 5, tag: "全角逗号刺客", title: "一个中文标点炸了整个脚本",
+    story: "macOS 自带的 bash 3.2 不认多字节边界：变量紧跟全角逗号，逗号的字节被并进变量名，直接报「变量不存在」。一天踩两次。",
+    lesson: "中文文案里变量一律 ${VAR} 加大括号", relatedStation: "l3/four-checks" },
+  { no: 6, tag: "打错字的假成功", title: "服务名拼错，流水线却报「部署成功」",
+    story: "手动回滚时服务名打错，脚本静默跳过「不认识的服务」然后报成功——什么都没部署，却一片绿灯。AI 评审员抓出来的。",
+    lesson: "入参校验，名字不认识直接拒绝执行", relatedStation: "l2/ship-and-rollback" },
+];</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：cheatsheet.ts 全量数据（文案源自画布 CheatSheet 画板；命令与仓库现状核对）</strong>
+            <pre><code class="lang-ts">// patra-learn/src/content/cheatsheet.ts
+import type { OpsCard } from "./types";
+
+export const OPS_CARDS: OpsCard[] = [
+  { action: "回滚", lineId: "l2",
+    scenario: "上线后才发现新版有问题。约 2 分钟完成，命中本机缓存不走外网。",
+    command: "gh workflow run cd.yml \\\n  -f service=catalog \\\n  -f image_tag=<旧sha>",
+    note: "旧 sha 去 main 提交历史里抄；portal/learn 回滚用各自的 portal-cd.yml / learn-cd.yml" },
+  { action: "巡检", lineId: "l3",
+    scenario: "不想等明早 7 点，现在就想确认 runner 和容器都健康。",
+    command: "gh workflow run \\\n  runner-watchdog.yml",
+    note: "结果在 GitHub Actions 页看" },
+  { action: "升级", lineId: "l1",
+    scenario: "守夜线告警「版本过期」，或 runner 彻底失联需要重装。在 mini 上执行。",
+    command: "bash patra-infra/scripts/\\\n  install-github-runner.sh \\\n  <TOKEN>",
+    note: "TOKEN 在仓库设置 Runners 页取" },
+];
+
+/** 红线提示（页面底部两条，画布原文）。 */
+export const RED_LINES = [
+  "有任务正在执行时，严禁在 mini 上重启 runner——会当场杀死执行中的部署（显示为 cancelled）。先确认 Actions 页没有进行中的任务。",
+  "仓库 secrets 里的 RUNNER_ADMIN_TOKEN 是守夜线的查岗钥匙，不要删；到期前重新生成并更新。",
+];</code></pre>
+            <p>注意 <code>command</code> 里 <code>&lt;旧sha&gt;</code>/<code>&lt;TOKEN&gt;</code> 是给读者的占位符（原样展示），TSX 中它们在字符串里、无 JSX 转义问题。运行：<code>pnpm test</code>　预期：<span class="pill low">绿</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：两个页面</strong>
+            <pre><code class="lang-tsx">// patra-learn/src/app/archive/page.tsx
+import type { Metadata } from "next";
+import Link from "next/link";
+import { INCIDENTS } from "@/content/incidents";
+import { getStation } from "@/lib/content";
+
+export const metadata: Metadata = { title: "事故档案馆 · Patra 学习站" };
+
+export default function ArchivePage() {
+  return (
+    &lt;main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10"&gt;
+      &lt;header className="flex items-baseline gap-4"&gt;
+        &lt;h1 className="text-3xl font-black tracking-wide"&gt;事故档案馆&lt;/h1&gt;
+        &lt;span className="text-sm text-fog"&gt;每条规则背后都有一次翻车 · 看完就懂设计「为什么长这样」&lt;/span&gt;
+      &lt;/header&gt;
+      &lt;div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"&gt;
+        {INCIDENTS.map((i) =&gt; {
+          const hit = getStation(i.relatedStation);
+          return (
+            &lt;div key={i.no} data-testid="incident-card" className="flex flex-col gap-2 rounded-2xl border border-line bg-surface p-5"&gt;
+              &lt;span className="self-start rounded-md bg-danger/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-danger"&gt;
+                档案 #{i.no} · {i.tag}
+              &lt;/span&gt;
+              &lt;span className="text-base font-bold"&gt;{i.title}&lt;/span&gt;
+              &lt;span className="grow text-xs leading-6 text-slate"&gt;{i.story}&lt;/span&gt;
+              &lt;span className="text-xs font-bold text-ok"&gt;→ 于是有了：{i.lesson}&lt;/span&gt;
+              {hit &amp;&amp; (
+                &lt;Link href={`/lines/${i.relatedStation}`} className="text-[11px] font-bold hover:underline" style={{ color: hit.line.color }}&gt;
+                  相关站：{hit.line.name.slice(0, 4)} · {hit.station.name}
+                &lt;/Link&gt;
+              )}
+            &lt;/div&gt;
+          );
+        })}
+      &lt;/div&gt;
+    &lt;/main&gt;
+  );
+}</code></pre>
+            <pre><code class="lang-tsx">// patra-learn/src/app/cheatsheet/page.tsx
+import type { Metadata } from "next";
+import { CodeBlock } from "@/components/code-block";
+import { OPS_CARDS, RED_LINES } from "@/content/cheatsheet";
+import { LINES } from "@/content/lines";
+
+export const metadata: Metadata = { title: "操作小抄 · Patra 学习站" };
+
+export default function CheatsheetPage() {
+  return (
+    &lt;main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10"&gt;
+      &lt;header className="flex items-baseline gap-4"&gt;
+        &lt;h1 className="text-3xl font-black tracking-wide"&gt;操作小抄&lt;/h1&gt;
+        &lt;span className="text-sm text-fog"&gt;照着做就能用 · 每条命令旁边都有「什么时候用它」&lt;/span&gt;
+      &lt;/header&gt;
+      &lt;div className="grid grid-cols-1 gap-4 sm:grid-cols-3"&gt;
+        {OPS_CARDS.map((c) =&gt; {
+          const line = LINES.find((l) =&gt; l.id === c.lineId);
+          return (
+            &lt;div key={c.action} className="flex flex-col gap-2.5 rounded-2xl border border-line bg-surface p-5"&gt;
+              &lt;span className="self-start rounded-lg px-2.5 py-0.5 font-mono text-[11.5px] font-semibold text-surface" style={{ backgroundColor: line?.color }}&gt;
+                {c.action}
+              &lt;/span&gt;
+              &lt;span className="text-xs leading-6 text-slate"&gt;什么时候用：{c.scenario}&lt;/span&gt;
+              &lt;CodeBlock command={c.command} /&gt;
+              &lt;span className="text-[11px] text-fog"&gt;{c.note}&lt;/span&gt;
+            &lt;/div&gt;
+          );
+        })}
+      &lt;/div&gt;
+      &lt;div className="flex flex-col gap-3"&gt;
+        {RED_LINES.map((text, i) =&gt; (
+          &lt;div key={text} className="rounded-xl border border-line border-l-4 border-l-danger bg-surface px-4 py-3 text-sm text-slate"&gt;
+            &lt;strong className="text-ink"&gt;红线{i === 0 ? "一" : "二"}：&lt;/strong&gt;{text}
+          &lt;/div&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/main&gt;
+  );
+}</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 5：验证（含 Task 2 遗留的语义色 token 复验）</strong>
+            <p>运行：<code>pnpm typecheck &amp;&amp; pnpm lint &amp;&amp; pnpm test &amp;&amp; pnpm build</code> 全绿；然后 <code>grep -l 'cc4747' .next/static/css/*.css &amp;&amp; grep -l '2c9457' .next/static/css/*.css</code>——两个语义色 hex 必须出现在产物（text-ok / text-danger / bg-danger 已被本任务消费）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 6：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/src
+git commit -m "feat(learn): 事故档案馆 6 档案 + 操作小抄 3 卡与红线（任务 12/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-13" data-status="done">
+        <header>
+          <h2>任务 13：Playwright 冒烟</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/playwright.config.ts</code>、<code>patra-learn/tests/smoke.spec.ts</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：配置 + 3 条冒烟用例</strong>
+            <pre><code class="lang-ts">// patra-learn/playwright.config.ts
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "tests",
+  use: { baseURL: "http://127.0.0.1:4001" },
+  webServer: {
+    command: "pnpm dev",
+    url: "http://127.0.0.1:4001/api/health",
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
+  },
+});</code></pre>
+            <pre><code class="lang-ts">// patra-learn/tests/smoke.spec.ts
+import { expect, test } from "@playwright/test";
+
+test("首页渲染 13 个开通站节点", async ({ page }) =&gt; {
+  await page.goto("/");
+  await expect(page.getByTestId("station-node")).toHaveCount(13);
+  await expect(page.getByTestId("progress-badge")).toContainText("0 / 13");
+});
+
+test("打卡后首页点亮且刷新保持", async ({ page }) =&gt; {
+  await page.goto("/lines/l1/write-code");
+  await page.getByTestId("check-in").click();
+  await expect(page.getByTestId("check-in")).toContainText("已学完");
+  await page.goto("/");
+  await expect(page.getByTestId("progress-badge")).toContainText("1 / 13");
+  await expect(page.locator('[data-testid="station-node"][data-visited]')).toHaveCount(1);
+  await page.reload();
+  await expect(page.locator('[data-testid="station-node"][data-visited]')).toHaveCount(1);
+});
+
+test("图鉴搜索过滤生效", async ({ page }) =&gt; {
+  await page.goto("/glossary");
+  await expect(page.getByTestId("glossary-card")).toHaveCount(10);
+  await page.getByTestId("glossary-search").fill("runner");
+  await expect(page.getByTestId("glossary-card")).toHaveCount(1);
+});</code></pre>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行验证</strong>
+            <p>运行：<code>cd patra-learn &amp;&amp; pnpm exec playwright install chromium 2&gt;/dev/null; pnpm test:e2e</code>　预期：3 passed。若 SVG 内 <code>&lt;Link&gt;</code> 包 <code>&lt;g&gt;</code> 导致点击/测数失败，把 data-testid 提到外层 <code>&lt;a&gt;</code> 上修正实现而非放松断言。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn
+git commit -m "test(learn): Playwright 冒烟——网络图/打卡持久化/图鉴搜索（任务 13/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-14" data-status="done">
+        <header>
+          <h2>任务 14：Dockerfile 与本地容器验证</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/Dockerfile</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：Dockerfile（portal 同款，端口/名称替换）</strong>
+            <pre><code class="lang-dockerfile"># patra-learn 运行镜像（Next.js 15 standalone Node server）
+# 三阶段：deps（装依赖，缓存层）→ builder（next build，standalone trace）→ runner（精简运行镜像）。
+# 用法：docker build -f patra-learn/Dockerfile patra-learn
+
+FROM node:24-alpine AS deps
+WORKDIR /app
+RUN npm install -g pnpm@10
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+FROM node:24-alpine AS builder
+WORKDIR /app
+RUN npm install -g pnpm@10
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm build
+
+FROM node:24-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=4001 \
+    HOSTNAME=0.0.0.0
+RUN addgroup -g 10001 -S nodejs \
+    &amp;&amp; adduser -u 10001 -S nextjs -G nodejs
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+USER nextjs
+EXPOSE 4001
+CMD ["node", "server.js"]</code></pre>
+            <p>与 portal 的差异仅：端口 4001、无 <code>public/</code> COPY（learn 无 public 目录；若实现过程中加了 public 资源则补同款 COPY 行）。next/font 产物在 <code>.next/static</code> 内，无需额外处理。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：本地构建并运行验证</strong>
+            <pre><code class="lang-bash">docker build -f patra-learn/Dockerfile -t patra-learn:local patra-learn
+docker run -d --rm --name learn-smoke -p 14001:4001 patra-learn:local
+sleep 3
+curl -sf http://127.0.0.1:14001/api/health   # 预期 {"status":"ok",…}
+curl -s http://127.0.0.1:14001/ | grep -q "Patra 学习站" &amp;&amp; echo PAGE-OK
+docker stop learn-smoke</code></pre>
+            <p>预期：health 200 + PAGE-OK。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/Dockerfile
+git commit -m "build(learn): standalone 三阶段 Dockerfile（4001）+ 本地容器验证（任务 14/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-15" data-status="done">
+        <header>
+          <h2>任务 15：CI/CD 接入</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-infra/docker/.env.learn</code>、<code>.github/workflows/learn-cd.yml</code></dd>
+            <dt>修改</dt><dd><code>patra-infra/docker/docker-compose.apps.yaml</code>、<code>patra-infra/cd/services.json</code>、<code>patra-infra/cd/deploy.sh:107</code>、<code>patra-infra/cd/detect-changes.sh</code>、<code>patra-infra/cd/detect-changes.test.sh</code>、<code>.github/workflows/ci.yml</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：detect-changes 先写失败测试（TDD）</strong>
+            <p>打开 <code>patra-infra/cd/detect-changes.test.sh</code>，仿照现有 portal 用例追加三个场景（沿用该文件现成的断言函数与 classify 喂 stdin 的模式）：</p>
+            <ul>
+              <li><code>patra-learn/src/app/page.tsx</code> → 输出含 <code>"learn_changed":true</code>，且 <code>backend_units</code> 为空、<code>portal_changed:false</code>；</li>
+              <li><code>docs/foo.md</code>（docs-only）→ <code>"learn_changed":false</code>；</li>
+              <li><code>.github/workflows/ci.yml</code>（workflow 变更全量）→ <code>"learn_changed":true</code>（与 portal 同为 true）。</li>
+            </ul>
+            <p>同时把现有断言中比较整个 JSON 的用例按需补上 <code>learn_changed</code> 字段。运行：<code>bash patra-infra/cd/detect-changes.test.sh</code>　预期：<span class="pill high">红</span>。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：改 detect-changes.sh——learn 与 portal 完全同构</strong>
+            <p>机械修改（bash 3.2 兼容、变量一律 <code>${VAR}</code>）：</p>
+            <ul>
+              <li><code>emit()</code> JSON 增加 <code>learn_changed</code> 字段，取全局变量 <code>LEARN_CHANGED</code>（默认 false）：函数体开头加 <code>local learn="${LEARN_CHANGED:-false}"</code>，jq 参数加 <code>--argjson le "$learn"</code>、对象加 <code>learn_changed:$le</code>；</li>
+              <li><code>classify()</code>：portal 的每一处判定旁镜像一份 learn——workflow 变更分支在 <code>portal=true</code> 处同时置 <code>LEARN_CHANGED=true</code>；新增 <code>case "$f" in patra-learn/*) LEARN_CHANGED=true; docs_all=false; continue;; esac</code>；</li>
+              <li>凡 <code>emit_full</code>/schedule/dispatch 路径中 portal 被置 true 的位置，同步置 <code>LEARN_CHANGED=true</code>（nightly 全量也考 learn）。</li>
+            </ul>
+            <p>运行：<code>bash patra-infra/cd/detect-changes.test.sh</code>　预期：<span class="pill low">绿</span>（全部用例，含原有 portal 用例）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：ci.yml 增加 learn job</strong>
+            <p>三处修改：① detect-changes job 的 <code>outputs</code> 增加 <code>learn_changed: ${{ steps.detect.outputs.learn_changed }}</code>，detect step 的写 GITHUB_OUTPUT 处增加 <code>echo "learn_changed=$(echo "$R" | jq -r '.learn_changed')" &gt;&gt; "$GITHUB_OUTPUT"</code>；② 复制整个 <code>portal:</code> job 块为 <code>learn:</code> job，做替换：job 名/name → learn，<code>if</code> 条件用 <code>needs.detect-changes.outputs.learn_changed == 'true'</code>，working-directory / node-version-file / cache-dependency-path / Next.js cache path+key 里的 <code>patra-portal</code> 全部 → <code>patra-learn</code>，e2e/playwright 相关步骤删除（learn 的 e2e 只在本地跑——记为计划内决定）；③ <code>required-check</code> job 的 <code>needs</code> 数组加 <code>learn</code>，<code>allowed-skips</code> 加 <code>learn</code>。</p>
+            <p>验证：<code>actionlint .github/workflows/ci.yml</code>（mini/本机有 actionlint；没有则 <code>brew install actionlint</code>）无报错。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：compose 服务块 + .env.learn</strong>
+            <pre><code class="lang-yaml"># 追加到 patra-infra/docker/docker-compose.apps.yaml 的 services: 下（portal 块之后）
+  learn:
+    image: ghcr.io/linqibin0826/patra-learn:${LEARN_IMAGE_TAG:-latest}
+    container_name: patra-learn
+    restart: unless-stopped
+    ports: [ "4001:4001" ]
+    # learn 是纯静态学习站（无后端依赖），不读 .env.common
+    env_file:
+      - .env.learn
+    healthcheck:
+      # 用 127.0.0.1 而非 localhost：容器内 localhost 先解析 ::1（IPv6），
+      # 而 Next.js standalone 只监听 IPv4（同 portal 的坑，档案 #4）
+      test: [ "CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4001/api/health" ]
+      &lt;&lt;: *app-healthcheck</code></pre>
+            <pre><code class="lang-text"># patra-infra/docker/.env.learn
+# patra-learn 容器 - 运行时坐标（非敏感，随仓库提交）。纯静态站，无外部服务依赖。
+PORT=4001
+NODE_ENV=production</code></pre>
+            <p>验证：<code>docker compose -f patra-infra/docker/docker-compose.apps.yaml config --quiet</code> 通过。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 5：services.json 条目 + deploy.sh ORDER</strong>
+            <pre><code class="lang-json">// 追加到 patra-infra/cd/services.json 的 services 数组末尾（portal 之后）
+{
+  "name": "learn",
+  "gradleTask": null,
+  "context": "patra-learn",
+  "srcPrefix": "patra-learn/",
+  "port": 4001,
+  "image": "ghcr.io/linqibin0826/patra-learn",
+  "healthPath": "/api/health"
+}</code></pre>
+            <p>并把 <code>services.json</code> 顶部 <code>_comment</code> 中「portal 条目为 deploy-only」一句扩为「portal / learn 条目为 deploy-only」。<code>deploy.sh:107</code> 改为：</p>
+            <pre><code class="lang-bash">ORDER='object-storage registry gateway catalog ingest portal learn'</code></pre>
+            <p>验证：<code>bash patra-infra/cd/deploy.test.sh</code> 仍 PASS=5（deploy.test.sh 用自己的 fixture services 文件，不受影响——若有用例引用真实 services.json 则按其断言补 learn）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 6：learn-cd.yml（portal-cd.yml 全文复制 + 替换）</strong>
+            <p><code>cp .github/workflows/portal-cd.yml .github/workflows/learn-cd.yml</code> 后做且仅做以下替换（其余行原样保留，包括 DOCKER_CONFIG 钥匙串绕过、GHCR best-effort 注释）：</p>
+            <table>
+              <thead><tr><th>位置</th><th>portal-cd.yml</th><th>learn-cd.yml</th></tr></thead>
+              <tbody>
+                <tr><td>name</td><td><code>Portal CD</code></td><td><code>Learn CD</code></td></tr>
+                <tr><td>头注释</td><td>「前端 portal 持续部署…」</td><td>「学习站 learn 持续部署…」（同结构改写）</td></tr>
+                <tr><td>paths</td><td><code>patra-portal/**</code> / <code>.env.portal</code> / <code>portal-cd.yml</code></td><td><code>patra-learn/**</code> / <code>patra-infra/docker/.env.learn</code> / <code>.github/workflows/learn-cd.yml</code>（compose 行保留）</td></tr>
+                <tr><td>concurrency</td><td><code>portal-cd-${{ github.ref }}</code></td><td><code>learn-cd-${{ github.ref }}</code></td></tr>
+                <tr><td>env.IMAGE</td><td><code>ghcr.io/linqibin0826/patra-portal</code></td><td><code>ghcr.io/linqibin0826/patra-learn</code></td></tr>
+                <tr><td>build 步骤</td><td><code>-f patra-portal/Dockerfile … patra-portal</code></td><td><code>-f patra-learn/Dockerfile … patra-learn</code></td></tr>
+                <tr><td>deploy 步骤</td><td><code>deploy.sh "$TAG" '["portal"]'</code></td><td><code>deploy.sh "$TAG" '["learn"]'</code></td></tr>
+                <tr><td>归档步骤警告文案</td><td><code>portal 归档推送失败</code></td><td><code>learn 归档推送失败</code></td></tr>
+              </tbody>
+            </table>
+            <p>验证：<code>actionlint .github/workflows/learn-cd.yml</code> 无报错；<code>grep -c portal .github/workflows/learn-cd.yml</code> 输出 0（防漏改）。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 7：Commit</strong>
+            <pre><code class="lang-bash">git add patra-infra .github/workflows
+git commit -m "ci(learn): CI learn job + learn-cd 工作流 + compose/services/deploy 接线（任务 15/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-16" data-status="done">
+        <header>
+          <h2>任务 16：文档收尾</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-learn/CLAUDE.md</code>、<code>patra-learn/README.md</code></dd>
+            <dt>修改</dt><dd><code>patra-infra/CLAUDE.md</code>、根 <code>CLAUDE.md</code>（Workspace Layout 表加一行）</dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：patra-learn/CLAUDE.md（子项目约定，全中文）</strong>
+            <p>内容必须覆盖：①定位一句话（内部学习站，仅 tailscale 内网）；②内容即代码的扩展流程——加一站 = lines.ts 加 Station + articles/&lt;line&gt;/&lt;id&gt;.tsx 建文章 + index.ts 注册（integrity 测试会红到你补齐）；加词条/档案/小抄同理改对应 content/*.ts；开新线 = LINES 加条目（status: planned → open）；③设计系统来源 = Claude Design 画布 e2bb7c08（Tokens 页），线路色在数据、中性/语义色在 @theme 的分工；④测试约定（integrity 是防线、e2e 本地跑不进 CI）；⑤端口 4001、部署走 learn-cd.yml。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 2：patra-learn/README.md（架构概览：目录结构、内容模型图、命令表 dev/build/test/test:e2e/lint）；根 CLAUDE.md 的 Workspace Layout 表追加一行 <code>patra-learn | 学习站（内部 onboarding/回顾） | Next.js 15 …</code>；patra-infra/CLAUDE.md 服务清单处补 learn（4001 / /api/health / learn-cd.yml / deploy-only）。</strong>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 3：全量回归</strong>
+            <p>运行：<code>cd patra-learn &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test &amp;&amp; pnpm build &amp;&amp; pnpm test:e2e</code> 全绿；<code>bash patra-infra/cd/deploy.test.sh &amp;&amp; bash patra-infra/cd/detect-changes.test.sh</code> 全绿。</p>
+          </li>
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-learn/CLAUDE.md patra-learn/README.md patra-infra/CLAUDE.md CLAUDE.md
+git commit -m "docs(learn): 子项目 CLAUDE/README + 工作区与 infra 文档同步（任务 16/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec §3 架构→Task 1/6；§4 DS→Task 2（+Task 12 步骤 5 语义色复验）；§5 内容模型/拓扑→Task 3，互链测试→Task 3/6/11/12；§6 六类页面→Task 6/7/11/12（信息架构=路由本身，无独立页）；§7 进度→Task 4/5/7/13；§8 部署→Task 14/15；§9 测试→Task 3-6/13/15；spec 改造清单 9 项全部有任务落点（#8 文档→Task 16）。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无「TODO/待定/后续补充」。两处刻意的读者可见占位（小抄命令里的 <code>&lt;旧sha&gt;</code>/<code>&lt;TOKEN&gt;</code>）是产品文案本身。「《抄 portal》」是明确的取值指令（从 portal package.json 抄同名版本）。Task 8-10 的文章正文不内联在 plan 中——由内容简报表（必须覆盖要点+图解要求+质量线）+ 手册/仓库双内容源约束，属于内容创作任务的正确粒度。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>StationRef 模板串、LINES/TRANSFER_NODE/GLOSSARY/INCIDENTS/OPS_CARDS/RED_LINES/ARTICLES 导出名跨任务一致；progress 的 readProgress/toggleVisited 签名在 Task 4 定义、Task 5/7 消费一致；content.ts 四个函数在 Task 5 定义、Task 6/7/11/12 消费一致；data-testid（station-node/progress-badge/check-in/glossary-search/glossary-card/incident-card）在 Task 7/11/12 定义、Task 13 消费一致；服务短名 learn / 容器 patra-learn / 镜像 patra-learn / 端口 4001 全计划一致。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>16 个 article（task-1…task-16）唯一 id、初始 data-status="pending"；每个 step 均带 data-status="pending"；toc-tasks 16 条 li 与 article 一一对应且初始 data-task-status="pending"；head 双 link（spec-theme.css + plan-extras.css）、无内嵌 style；meta dl 含目标/架构/技术栈/关联 spec 四项。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+      <li class="note" data-type="change" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>新增计划外文件 src/types/globals.d.ts（declare module "*.css"）——TypeScript 6 下 import "./globals.css" 报 TS2882，portal 有同款文件，照抄其模式。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>.gitignore 原样保留 portal 版本（不忽略 next-env.d.ts，该文件随 commit 入库，与 portal 模板一致）；plan 里的 fallback gitignore 未启用（复制成功）。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>biome lint 有 2 条 info（schema 2.4.15 vs CLI 2.5.10；recommended 字段 deprecated），退出码 0，与 portal 完全一致，未执行 biome migrate 以保持与模板同构。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-27T23:50">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-27T23:50">08-27 23:50</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>环境怪事：这台 MacBook 上 QQ 客户端占用 127.0.0.1:4001（IPv4），next dev 监听 IPv6 通配，curl 127.0.0.1:4001 会打到 QQ；本机验证需用 [::1]:4001。Mac mini 上是否有同样冲突未验证——Task 15 部署验证时留意，若 mini 也冲突则届时换端口。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T00:25">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T00:25">08-28 00:25</time>
+          <a href="#task-2">&sect; Task 2</a>
+        </header>
+        <p>Biome formatter 拒绝 plan 给定代码的两处排版（globals.css 注释列对齐、top-bar.tsx 中文 Link 单行 JSX），已按仓库格式化规则重排——纯空白/换行变更，语义与 class 不变。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T00:25">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T00:25">08-28 00:25</time>
+          <a href="#task-2">&sect; Task 2</a>
+        </header>
+        <p>验收里 grep ffffff 因 CSS minifier 缩写为 #fff 不适用，改以「产物含 bg-surface utility + --color-surface:#fff 定义」双重 grep 证明 surface 非死类。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T00:25">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T00:25">08-28 00:25</time>
+          <a href="#task-2">&sect; Task 2</a>
+        </header>
+        <p>lint 仍有 biome schema 版本 info 提示（Task 1 已记录的同一事项），info 级非 error，保持与 portal 同构不动 biome.json。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T00:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T00:50">08-28 00:50</time>
+          <a href="#task-3">&sect; Task 3</a>
+        </header>
+        <p>biome check --write 重排 lines.ts / integrity.test.ts 的对象换行（超行宽 station 对象展开为多行），语义不变（Task 2 先例的同类重排）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T01:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T01:20">08-28 01:20</time>
+          <a href="#task-4">&sect; Task 4</a>
+        </header>
+        <p>biome formatter 重排 progress.test.ts 的单行函数体为多行（progress.ts 与 plan 逐字一致），语义零变化（同类重排第 3 例——后续任务此类纯格式重排不再逐条记录）。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T01:45">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T01:45">08-28 01:45</time>
+          <a href="#task-5">&sect; Task 5</a>
+        </header>
+        <p>Task 4 质量审查建议的 2 个微用例（readProgress 过滤非字符串元素、非数组合法 JSON）并入 Task 5 顺手补——杀死变异测试发现的 2 个存活变异体。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T02:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T02:10">08-28 02:10</time>
+          <a href="#task-5">&sect; Task 5</a>
+        </header>
+        <p>getStation 在 noUncheckedIndexedAccess 下报 TS2322，按 plan 预授权最小修正：先取 station 局部变量判 undefined 再返回（运行时行为不变）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T02:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T02:35">08-28 02:35</time>
+          <a href="#task-5">&sect; Task 5</a>
+        </header>
+        <p>质量审查修复（commit 783e16603）：CodeBlock 加 navigator.clipboard?. 可选链守卫（tailscale http 非安全上下文防 TypeError）+ firstUnvisited 乱序断言用例；commit subject 因 commitlint subject-case 规则前加「补」字。测试 17 用例全绿，复验通过。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T03:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T03:05">08-28 03:05</time>
+          <a href="#task-6">&sect; Task 6</a>
+        </header>
+        <p>vitest.config.ts 追加 oxc: { jsx: { runtime: "automatic" } }：tsconfig 的 jsx:"preserve" 使 Vite 8 不转译测试里 import 的 .tsx（注册表），Vitest 解析失败；esbuild 选项在 Vite 8 已切 oxc 被忽略，故用 oxc 等价配置（最小修正）。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T03:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T03:30">08-28 03:30</time>
+          <a href="#task-8">&sect; Task 8</a>
+        </header>
+        <p>Task 6 质量审查发现 plan 缺口：课程页无 generateMetadata（13 页共享根 title）。并入 Task 8：给 page.tsx 补 generateMetadata——title 为「站名 · Patra 学习站」，description 用 station.summary。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T04:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T04:05">08-28 04:05</time>
+          <a href="#task-7">&sect; Task 7</a>
+        </header>
+        <p>MetroMap 站点链接按 plan 预警采用 SVG2 原生 a 元素（HTML a/Link 不能进 svg），客户端导航退化为整页跳转（可接受）；a 加 aria-label、内层 dot g 补 key（Biome useJsxKeyInIterable 要求）。curl 实测 station-node=13、planned-node=5、课程页 200。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T04:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T04:35">08-28 04:35</time>
+          <a href="#task-7">&sect; Task 7</a>
+        </header>
+        <p>质量审查修复（commit 2d67f95e9）：svg 根删 role="img"（含交互链接的 SVG 不应为 children-presentational 角色，aria-label 保留）；继续通勤卡线名 slice(0,4) 改 split(" · ")[0] 兜底。复验通过。换乘节点坐标硬编码（Important#2）接受为已知裂缝——13 站拓扑已冻结，改拓扑时需同步此处。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T05:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T05:20">08-28 05:20</time>
+          <a href="#task-8">&sect; Task 8</a>
+        </header>
+        <p>手册与代码取舍一处：手册说「覆盖率顺路汇总给 Codecov」未提条件，ci.yml 实际仅 coverage_mode=full（全量/nightly）才跑——文章按代码写为「仅全量时汇总」（plan 规则：以代码为准）。generateMetadata 并入项已落地。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T06:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T06:20">08-28 06:20</time>
+          <a href="#task-8">&sect; Task 8</a>
+        </header>
+        <p>两轮审查修复（562c22edd + e356b9e15）：闸机「三件事」标题矛盾、触发器绝对化表述、「公共库=全员重考」过度概括（按 module-graph 波及面重写）、凭据一刀切措辞、preflight 三处镜像表述、SVG 三处压线加白描边。均复验通过。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T06:20">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T06:20">08-28 06:20</time>
+          <a href="#task-8">&sect; Task 8</a>
+        </header>
+        <p>采纳质量审查建议：抽 InlineCode 组件（components/inline-code.tsx），4 篇内 14 处重复行内 code 类名已替换；任务 9/10 的 9 篇直接使用该组件。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T07:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T07:35">08-28 07:35</time>
+          <a href="#task-9">&sect; Task 9</a>
+        </header>
+        <p>手册与代码两处取舍（以代码为准）：①芯片事故按 portal-cd.yml 注释写为「amd64 靠 Rosetta 转译跑了三个月」（非手册的「Intel 格式装不上」）；②「健康检查一律 127.0.0.1」为手册绝对化说法——实际仅 portal 容器内与 deploy.sh 宿主侧写死 127.0.0.1，Java 服务容器内仍是 localhost（curl 有 IPv4 回退），文章按代码精确表述。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T08:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T08:50">08-28 08:50</time>
+          <a href="#task-9">&sect; Task 9</a>
+        </header>
+        <p>质量审查修复（e76a2c184）：补 bash 3.2 伏笔段（plan 要点曾被静默漏掉）、修「四个字」计数、全量修剪 JSX 中文断行渲染空格——审查点名 7 处，grep 实测同类 39 处（l1 基准 0），全部合并修剪；biome noTemplateCurlyInString 用转义模板字面量绕过。审查员明示修完无需复审。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T09:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T09:55">08-28 09:55</time>
+          <a href="#task-10">&sect; Task 10</a>
+        </header>
+        <p>规格审查修复（26258b3c5）：60 天停用需手动 Enable（原文虚构了 push 自动唤醒）、双文件注释表述收紧、bash 坑「同一天」软化。质量审查 6 条 Minor（两处 SVG 箭头落点、三处措辞、24 容器数硬编码三处）接受不阻塞，归入 Task 16 收尾顺手处理。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T10:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T10:45">08-28 10:45</time>
+          <a href="#task-11">&sect; Task 11</a>
+        </header>
+        <p>质量审查修复（0973ab5a6）：搜索框补 aria-label、空结果态提示、三字段过滤大小写统一（plan 原代码仅 term 不区分大小写）。复验通过。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T11:25">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T11:25">08-28 11:25</time>
+          <a href="#task-12">&sect; Task 12</a>
+        </header>
+        <p>incidents.ts 档案 #5 的 lesson 含读者可见的 ${VAR} 字面量，biome noTemplateCurlyInString 误报，按行加 biome-ignore 抑制（文案未动）。另：档案 #2/#4/#5 文案相比画布稿三处微调以对齐任务 9/10 审查后的课程口径（plan 已内置为定稿）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T12:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T12:10">08-28 12:10</time>
+          <a href="#task-12">&sect; Task 12</a>
+        </header>
+        <p>质量审查修复（4273eca7c）：升级命令改参数边界断行（plan/画布稿在路径中间断行，粘贴 shell 会解析成两个参数——真功能缺陷）、档案编号数值排序、红线序号数组化。复验通过（含实际分词验证）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T12:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T12:55">08-28 12:55</time>
+          <a href="#task-13">&sect; Task 13</a>
+        </header>
+        <p>e2e 端口采用方案 B（4010 独占口）：Playwright 内部探活栈连 IPv4 端（QQ 占 127.0.0.1:4001），[::1] 方案在探活层死路；webServer.command 用 pnpm exec next dev -p 4010 避免双 -p 歧义。生产端口 4001 不变。commit subject Playwright 因 commitlint subject-case 改小写。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T13:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T13:45">08-28 13:45</time>
+          <a href="#task-14">&sect; Task 14</a>
+        </header>
+        <p>①本机 docker build 需注入代理 build-args（HTTP(S)_PROXY=host.docker.internal:7890，BuildKit 预定义 ARG 不落镜像 env，Dockerfile 未改）——mini 构建若复现同样超时需同样处理（Task 15 部署验证时留意）；②补 .dockerignore（portal 同款复制，任务预检指令的产物）。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T13:45">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T13:45">08-28 13:45</time>
+          <a href="#task-14">&sect; Task 14</a>
+        </header>
+        <p>环境插曲：本机 OrbStack docker daemon 完全卡死（version/_ping 无响应，orb restart 也挂），强杀 OrbStack 进程重启后恢复，原有容器自动拉起。与本任务代码无关。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T14:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T14:40">08-28 14:40</time>
+          <a href="#task-15">&sect; Task 15</a>
+        </header>
+        <p>①ci.yml detect step 的 GITHUB_OUTPUT 重定向合并为 { …; } &gt;&gt; 组——SC2129 为改动前既有 actionlint 报错（stash 对比确认），不修无法达成「actionlint 无报错」验收门；②commit subject「CI」开头被 subject-case 拒，改「ci(learn): 增加 learn CI job…」；③.env.learn 注释用 .env.portal 同款 banner 风格。schedule 置 learn=true、dispatch 不置——与 portal 同构（通读确认 portal 置 true 仅 workflow 变更与 schedule 两处）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T15:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T15:20">08-28 15:20</time>
+          <a href="#task-15">&sect; Task 15</a>
+        </header>
+        <p>质量审查修复（58f92c0f7）：learn CI job 补 pnpm build 步骤（纯 SSG 站 CI 不验证构建=最大回归面裸奔，plan 缺口；.next/cache 缓存随之生效）+ detect-changes.sh 顶部 LEARN_CHANGED=false 初始化（消环境注入面）。复验通过。另记：learn 首次部署有 bootstrap 窗口（合入 main 后 learn-cd 首跑完成前，mini 整栈 up 会因无 learn 镜像报错）——Task 16 文档要写一句。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T16:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T16:00">08-28 16:00</time>
+          <a href="#task-16">&sect; Task 16</a>
+        </header>
+        <p>infra CLAUDE.md patra-apps 分栈表行补 learn 时顺手补了此前缺失的 portal，并把过时的「镜像来自 GHCR」改为「由 CD 自动部署」（原生构建改造后 GHCR 已是归档备源）。e2e 首跑 1 条 flake（build 清 dev 产物后 /glossary 冷编译超时），重跑 8.7s 全绿。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T16:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T16:40">08-28 16:40</time>
+          <a href="#task-16">&sect; Task 16</a>
+        </header>
+        <p>质量审查建议 fixup（903477ebe）：CLAUDE.md 提 MetroMap 静默失败面为独立注意点（width/换乘坐标硬编码无测试兜底）、补站数断言同步提醒；README 补 CI 节；根表 TS 版本改 5/6（portal 行一并改齐——其 package.json 实为 ^6.0.3）。16/16 任务全部完成。</p>
+      </li>
+    </ol>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">4</span> decisions /
+      <span data-counter="change">23</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">5</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>

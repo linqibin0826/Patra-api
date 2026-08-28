@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Patra 学习站（patra-learn）设计规格</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#architecture">架构与目录</a></li>
+      <li><a href="#design-system">设计系统落地</a></li>
+      <li><a href="#content-model">内容模型与站点拓扑</a></li>
+      <li><a href="#pages">六类页面</a></li>
+      <li><a href="#progress">进度机制</a></li>
+      <li><a href="#deployment">部署与 CD 接入</a></li>
+      <li><a href="#testing">测试策略</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>Patra 学习站（patra-learn）设计规格</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-27</span>
+        <span>🌿 feat/patra-learn-site</span>
+        <span>👤 linqibin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>把 Claude Design 画布「Patra 学习站」（方向 A 六类页面 + 独立设计系统）落地为工作区新子项目 <code>patra-learn</code>。技术栈与 patra-portal 同栈（Next.js 15 / React 19 / TS strict / Tailwind v4），内容采用「类型化 TS 数据 + 每站一个 TSX 文章」模式，不引入 MDX / CMS。v1 一次交付完整六类页面与 CI/CD 全部 13 站内容（迁移自「上线线路图」手册）。学习进度存读者浏览器 localStorage。部署为 Mac mini 上的新容器（端口 4001，仅 tailscale 内网），完整复用现有 CD 流水线模式（mini 原生构建 + deploy.sh 闭环）。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>CI/CD 原生化改造完成后，产出了两份学习资产：图解手册「上线线路图」（Artifact）与设计画布「Patra 学习站」（Claude Design 画布 <code>e2bb7c08</code>，含方向 A 六类页面高保真稿 + 独立设计系统 Tokens/Components 页）。画布已确认为建站蓝本，但它只是设计稿——本规格把它变成真实网站：新成员入门、自己回顾、未来扩展新学习主题（架构线、数据线）都在这个站上进行。</p>
+      <p>现状约束：工作区已有 patra-portal（Next.js 15 成熟工程模板）与 patra-infra（CD 流水线：mini 原生 arm64 构建 → deploy.sh 健康检查/回滚闭环 → GHCR 归档），学习站应最大化复用两者，不新增基建概念。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>新子项目 <code>patra-learn/</code>：Next.js 15 工程（配置照抄 portal 模式）</li>
+            <li>六类页面全部实现：首页网络图 / 课程页 / 名词图鉴 / 事故档案馆 / 操作小抄 +（信息架构由路由体现）</li>
+            <li>CI/CD 全内容：3 条线 13 站文章（迁移自「上线线路图」手册）、10 词条、6 档案、3 操作卡</li>
+            <li>画布设计系统 → Tailwind v4 <code>@theme</code> token（中性 7 阶 / 线路色 5 / 语义色 3 / Noto Sans SC 900 + JetBrains Mono）</li>
+            <li>localStorage 学习进度打卡与首页点亮</li>
+            <li>部署接入：Dockerfile、compose 服务、services.json 条目、learn-cd.yml 工作流</li>
+            <li>内容完整性测试 + 进度库单测 + Playwright 冒烟</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>4 号线（架构线）、5 号线（数据线）的文章内容——首页仅以「规划中」虚线呈现</li>
+            <li>账号体系 / 服务端进度同步（进度仅存浏览器）</li>
+            <li>公网暴露（仅 tailscale 内网；不做内容脱敏）</li>
+            <li>全文搜索服务（图鉴搜索为客户端数组过滤）</li>
+            <li>CMS / MDX / 后台编辑（内容即代码，改内容走 PR）</li>
+            <li>与 claude.ai/design 的组件同步（design-sync 已决策推迟）</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 架构与目录</h2>
+      <p>与 patra-portal 并列的独立 pnpm 项目，全站 SSG 静态生成（<code>generateStaticParams</code> 枚举 13 站），仅进度相关组件为 client component。工程配置（Biome / Vitest / Playwright / tsconfig）从 portal 复制后按项目名调整。</p>
+      <pre><code>patra-learn/
+├── src/app/
+│   ├── page.tsx                          # 首页：地铁网络图 + 进度徽章 + 三个全局资源入口
+│   ├── lines/[line]/[station]/page.tsx   # 课程页（SSG）
+│   ├── glossary/page.tsx                 # 名词图鉴（10 词条 + 客户端过滤搜索）
+│   ├── archive/page.tsx                  # 事故档案馆（6 份档案）
+│   ├── cheatsheet/page.tsx               # 操作小抄（3 操作卡 + 2 红线）
+│   ├── api/health/route.ts               # CD 健康检查端点
+│   └── layout.tsx                        # 全局布局：顶栏（站名 + 面包屑）+ 字体 + token
+├── src/content/
+│   ├── lines.ts                          # 线路拓扑（3 开通线 + 2 规划线 + 换乘节点）
+│   ├── glossary.ts / incidents.ts / cheatsheet.ts
+│   └── articles/&lt;line&gt;/&lt;station&gt;.tsx      # 每站一篇 TSX 文章（含 SVG 图解）
+├── src/components/                       # 站牌、线路徽章、卡片、SVG 图解原语、打卡按钮
+├── src/lib/progress.ts                   # localStorage 进度读写
+├── Dockerfile                            # multi-stage standalone，端口 4001
+└── （biome.json / vitest.config.ts / playwright.config.ts / …照抄 portal）</code></pre>
+    </section>
+
+    <section id="design-system">
+      <h2>4. 设计系统落地</h2>
+      <p>画布 Tokens/Components 页（page-3）是唯一视觉规范来源，转成 Tailwind v4 <code>@theme</code> CSS 变量：</p>
+      <ul>
+        <li><strong>色板</strong>：中性色 7 阶（bg <code>#FAFAF8</code> → ink <code>#22262C</code>）；线路色 L1 <code>#2E66C9</code> / L2 <code>#D95B32</code> / L3 <code>#7A5FB8</code> / L4 <code>#1E8E7E</code> / L5 <code>#B0498C</code>（各配 +12% 明度 soft 变体）；语义色 成功 <code>#2C9457</code> / 提醒 <code>#B98014</code> / 危险 <code>#CC4747</code>。</li>
+        <li><strong>字体</strong>：<code>next/font</code> 内置 Noto Sans SC（400/500/700/900，900 为「站牌黑」标题）+ JetBrains Mono（代码/编号）。构建期自托管，运行时零外部字体请求（内网可用性）。</li>
+        <li><strong>验收铁律</strong>：吸取 portal 教训（<code>@theme</code> 语义 token 未映射导致死类）——每个 token 必须有对应可编译的 utility，DS 落地任务的测试是「用 token utility 写的样式在构建产物中非空」。</li>
+        <li><strong>核心组件</strong>（照 Components 画板）：LineChip（线路徽章）、StationNode（站点节点：实心已学 / 空心未学 / 圆环当前）、StationBadge（站牌标题）、ResourceCard（词条/档案/操作卡三种变体）、CodeBlock（小抄命令块 + 复制按钮）、MetroMap（首页 SVG 网络图）。</li>
+      </ul>
+      <p>本设计系统与 portal 的 DS <strong>相互独立</strong>（已决策）：共享工程习惯（Tailwind v4 / token 化），隔离视觉语言。</p>
+    </section>
+
+    <section id="content-model">
+      <h2>5. 内容模型与站点拓扑</h2>
+      <p>内容即代码，两种形态：结构化数据（typed const）与文章组件（TSX）。核心类型：</p>
+      <pre><code>type StationRef = `${LineId}/${string}`            // 如 'l2/native-build'
+type Station = { id: string; name: string; summary: string }
+type Line = {
+  id: 'l1' | 'l2' | 'l3' | 'l4' | 'l5'
+  name: string; theme: string; color: string
+  status: 'open' | 'planned'
+  stations: Station[]                               // planned 线也列站名，仅展示
+}
+type GlossaryEntry = { term; analogy; explain; appearsAt: StationRef[] | 'all' }
+type Incident = { no; tag; title; story; lesson; relatedStation: StationRef }
+type OpsCard  = { action; scenario; command; note; lineColor }</code></pre>
+      <p><strong>v1 拓扑</strong>（源自画布 Main/Sitemap 画板，站名以 Sitemap 完整版为准）：</p>
+      <table>
+        <thead><tr><th>线路</th><th>主题</th><th>站点（order 即顺序）</th></tr></thead>
+        <tbody>
+          <tr><td>1 号线 · 质检线</td><td>合并前的门禁考试（CI）</td><td>写代码 → 开 PR → 只考改过的 → 并行考试（4 站）</td></tr>
+          <tr><td>2 号线 · 上线线</td><td>合并后的自动部署（CD）</td><td>mini 领任务 → 本机打包 → 部署闭环 → 健康检查 → 上线与回滚（5 站）</td></tr>
+          <tr><td>3 号线 · 守夜线</td><td>每日自动巡检</td><td>每天 07:00 → 查岗与钥匙 → 四项体检 → 通知哲学（4 站）</td></tr>
+          <tr><td>换乘节点</td><td colspan="2">「合并进 main」：连接 1 号线终点与 2 号线起点的视觉节点，不计入 13 站、无独立文章，点击滚动至 2 号线</td></tr>
+          <tr><td>4 / 5 号线</td><td colspan="2"><code>status: 'planned'</code>：首页灰色虚线 + 站名灰点，不可点击（架构线 3 站 / 数据线 2 站站名已定）</td></tr>
+        </tbody>
+      </table>
+      <p><strong>互链网络</strong>：词条的 <code>appearsAt</code>、档案的 <code>relatedStation</code> 都是 <code>StationRef</code>，由内容完整性测试保证不断链；课程文章正文中的术语用 <code>&lt;Term&gt;</code> 组件包裹跳转图鉴。13 站正文从「上线线路图」手册逐站迁移（手册章节 → 站的映射表在实现计划中给出）。</p>
+    </section>
+
+    <section id="pages">
+      <h2>6. 六类页面</h2>
+      <ul>
+        <li><strong>首页 <code>/</code></strong>：顶栏（站名 + 搜索占位 + 进度徽章「已到 N/13 站」）；MetroMap SVG 网络图（3 条开通线按线路色、已学站实心、当前站圆环、规划线虚线）；「继续通勤 →」卡片指向第一个未打卡站；底部三个全局资源入口卡。</li>
+        <li><strong>课程页 <code>/lines/[line]/[station]</code></strong>：站牌标题（900 黑体 + 线路徽章）、本线站点条（当前站高亮）、TSX 正文（SVG 图解 + <code>&lt;Term&gt;</code> 术语链）、文末打卡按钮、上一站/下一站导航。</li>
+        <li><strong>名词图鉴 <code>/glossary</code></strong>：10 词条卡片墙（术语 + ≈Java 类比 + 解释 + 「出现于」线路色 chip 回链）；顶部客户端过滤搜索框。</li>
+        <li><strong>事故档案馆 <code>/archive</code></strong>：6 档案卡（红色档案编号 tag + 故事 + 绿色「→ 于是有了」教训 + 相关站回链）。</li>
+        <li><strong>操作小抄 <code>/cheatsheet</code></strong>：回滚 / 巡检 / 升级三张命令卡（场景说明 + mono 命令块 + 复制按钮）+ 两条红线提示（任务执行中禁重启 runner；RUNNER_ADMIN_TOKEN 不可删）。</li>
+        <li><strong>信息架构</strong>：Sitemap 画板不单独成页，它就是以上路由结构本身。</li>
+      </ul>
+    </section>
+
+    <section id="progress">
+      <h2>7. 进度机制</h2>
+      <ul>
+        <li><code>src/lib/progress.ts</code>：读写 localStorage key <code>patra-learn.progress.v1</code>（已打卡 <code>StationRef</code> 数组）；所有读写包 try/catch，异常时按零进度渲染。</li>
+        <li>课程页文末「✓ 我学完这一站了」打卡按钮，可再点取消；打卡状态驱动首页 MetroMap 点亮、进度徽章、「继续通勤」目标（第一个未打卡站，全通则显示完成态）。</li>
+        <li>纯客户端、每浏览器独立；服务端渲染时按零进度出静态 HTML，客户端 hydrate 后点亮（注意避免 hydration mismatch：进度渲染放 <code>useEffect</code> 后）。</li>
+      </ul>
+    </section>
+
+    <section id="deployment">
+      <h2>8. 部署与 CD 接入</h2>
+      <p>完全复制 portal 模式，动四处、不新增基建概念：</p>
+      <ol>
+        <li><code>patra-learn/Dockerfile</code>：照抄 portal 的 multi-stage standalone 构建，容器端口 4001。</li>
+        <li><code>patra-infra/docker/</code> compose：新增 <code>patra-learn</code> 服务（网络/暴露策略与 portal 内网部分一致，仅 tailscale 可达）。</li>
+        <li><code>patra-infra/cd/services.json</code>：新增条目 <code>{ name: "learn", port: 4001, healthPath: "/api/health", gradleTask: null }</code>（短名对齐 portal 惯例，容器名仍为 patra-learn）；<code>deploy.sh</code> 的 <code>ORDER</code> 末尾追加 <code>learn</code>——健康检查、last-good、自动回滚机制零改动自动生效。</li>
+        <li><code>.github/workflows/learn-cd.yml</code>：从 portal-cd.yml 复制，路径过滤 <code>patra-learn/**</code>，mini 原生构建 arm64 镜像 → deploy.sh → GHCR 归档（best-effort）。CI 侧同样复制 portal 的 lint/typecheck/test 工作流模式。</li>
+      </ol>
+    </section>
+
+    <section id="testing">
+      <h2>9. 测试策略（TDD）</h2>
+      <ul>
+        <li><strong>内容完整性测试</strong>（Vitest，核心防线）：所有 <code>StationRef</code>（词条 appearsAt / 档案 relatedStation）指向真实开通站；每个开通站的文章组件文件存在且可 import；线路/站点/词条/档案 id 无重复；开通站总数 = 13。加内容的 TDD 循环：先写引用与数据 → 测试红 → 补文章 → 绿。</li>
+        <li><strong>进度库单测</strong>：打卡 / 取消 / 重复打卡幂等 / localStorage 抛异常时降级为零进度。</li>
+        <li><strong>Playwright 冒烟</strong>（3 条）：首页渲染 13 个站点节点；课程页打卡 → 返回首页站点点亮 → 刷新仍点亮；图鉴搜索输入后卡片过滤生效。</li>
+        <li>Biome + <code>tsc --noEmit</code> 由仓库根 pre-commit 与 CI learn job 覆盖（不装 husky/lint-staged，避免与根 hooks 冲突——实现期决策，见 plan notes）。</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：v1 一次交付六类页面 + CI/CD 全内容</h3>
+        <p>不做「先壳后内容」的分期。内容源（上线线路图手册）已完备，绿地项目按最终形态交付。</p>
+        <p class="alternatives"><strong>备选 A：</strong>先做壳走通部署，内容后补 — 否决：上线时站点是半成品，且内容迁移并无技术风险，分期是伪需求。<br>
+        <strong>备选 B：</strong>额外做「配置化扩线」抽象 — 否决：YAGNI；数据驱动的内容模型本身已让加线 = 加数据 + 加文章，无需更多抽象。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：与 portal 同栈，内容用「类型化 TS 数据 + TSX 文章」</h3>
+        <p>Next.js 15 照抄 portal 工程模式；结构化内容为 typed const，课程正文每站一个 TSX 组件。作者是"你 + Claude"，markdown 写作便利是伪收益；文章价值在自定义 SVG 图解，TSX 是最直接表达。</p>
+        <p class="alternatives"><strong>备选 A：</strong>Astro + MDX — 否决：引入第二套前端栈，与 portal 工程心智割裂；交互（网络图/打卡）本就需要 island，静态优势被抵消。<br>
+        <strong>备选 B：</strong>Next.js + MDX — 否决：图解密集场景下 MDX 嵌组件比直接写 TSX 绕，且 Next 15 + RSC 的 MDX 工具链仍有摩擦。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：学习进度 = 读者个人进度，存 localStorage</h3>
+        <p>每个读者各自打卡各自点亮，符合「学习站」语义；无账号无后端。</p>
+        <p class="alternatives"><strong>备选 A：</strong>进度写死在内容数据里（内容建设进度）— 否决：所有人看到同一张图，失去「我的通勤」体验；线路的 planned 状态已承载内容建设维度。<br>
+        <strong>备选 B：</strong>两层叠加（发布状态 × 个人打卡逐站叠加）— 否决：v1 开通线全部有文章，站级发布状态无信息量，只留线级 status 即可。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：仅 tailscale 内网暴露</h3>
+        <p>与其他 patra 服务一致；事故档案含运维细节（机器名、密钥名、红线），不对公网可见，因此内容无需脱敏。</p>
+        <p class="alternatives"><strong>备选 A：</strong>经 cloudflare tunnel 公开（如 portal）— 否决：需先内容脱敏，且受众（自己 + 未来新成员）本就在内网准入范围。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：部署为独立容器 + 独立 CD 工作流（learn-cd.yml）</h3>
+        <p>复制 portal-cd.yml 而非在其中加分支逻辑：两个前端项目的构建/部署生命周期独立，工作流文件一一对应更清晰，watchdog / deploy.sh 无需感知差异。</p>
+        <p class="alternatives"><strong>备选 A：</strong>合并进 portal-cd.yml 用 matrix — 否决：路径过滤与失败隔离变复杂，违背现有「一服务一工作流」模式。<br>
+        <strong>备选 B：</strong>静态导出 + nginx 容器 — 否决：需要新的镜像模式与健康检查方式，next start standalone 已是现成闭环，省的那点内存不值得引入第二种部署形态。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>13 站正文迁移工作量大，页面质量参差</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>手册「上线线路图」已含全部内容与图解结构；实现计划中给出手册章节 → 站的逐站映射表，每站独立任务独立验收</td>
+          </tr>
+          <tr>
+            <td>Tailwind v4 @theme token 落地成死类（portal 踩过）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>DS 任务的验收即「token utility 在构建产物中非空」；发现映射不全时改 @theme 定义而非 arbitrary value 绕行</td>
+          </tr>
+          <tr>
+            <td>localStorage 进度导致 hydration mismatch</td>
+            <td><span class="pill low">low</span></td>
+            <td>进度渲染统一放客户端 effect 后；SSG 输出恒为零进度态；Playwright 冒烟覆盖「打卡 → 刷新仍点亮」</td>
+          </tr>
+          <tr>
+            <td>首页 SVG 网络图布局复杂，实现偏离画布视觉</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>MetroMap 数据驱动（从 lines.ts 生成），布局常量对照 Main.dc.html 逐值校准；开发期浏览器对照画布验收</td>
+          </tr>
+          <tr>
+            <td>新 CD 工作流首跑失败阻塞（新镜像名 / compose 服务未就位）</td>
+            <td><span class="pill low">low</span></td>
+            <td>接入顺序固定：先合入 compose + services.json 并在 mini 手动 deploy 验证一次，再启用 learn-cd.yml；deploy.sh 回滚机制兜底</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td><code>patra-learn/</code>（整个子项目）</td><td><span class="pill create">create</span></td><td>Next.js 15 工程：app 路由 5 页 + content 数据与 13 篇文章 + components + lib/progress + 测试；配置照抄 portal</td></tr>
+          <tr><td>2</td><td><code>patra-learn/Dockerfile</code></td><td><span class="pill create">create</span></td><td>multi-stage standalone，端口 4001</td></tr>
+          <tr><td>3</td><td><code>patra-infra/docker/docker-compose.apps.yaml</code></td><td><span class="pill modify">modify</span></td><td>新增 patra-learn 服务（仅内网暴露，模式对齐 portal 服务定义）</td></tr>
+          <tr><td>4</td><td><code>patra-infra/cd/services.json</code></td><td><span class="pill modify">modify</span></td><td>新增 patra-learn 条目（port 4001 / healthPath /api/health / gradleTask null）</td></tr>
+          <tr><td>5</td><td><code>patra-infra/cd/deploy.sh</code></td><td><span class="pill modify">modify</span></td><td>ORDER 末尾追加 patra-learn（一行）</td></tr>
+          <tr><td>6</td><td><code>.github/workflows/learn-cd.yml</code></td><td><span class="pill create">create</span></td><td>复制 portal-cd.yml，路径过滤 patra-learn/**</td></tr>
+          <tr><td>7</td><td><code>.github/workflows/ci.yml</code></td><td><span class="pill modify">modify</span></td><td>detect-changes 增加 learn_changed 输出；新增 learn job（镜像 portal job：lint / typecheck / vitest）；required-check 的 allowed-skips 补 learn</td></tr>
+          <tr><td>8</td><td><code>patra-learn/CLAUDE.md</code> 与 <code>README.md</code></td><td><span class="pill create">create</span></td><td>子项目约定：内容即代码的加站/加词条流程、DS token 来源（画布 e2bb7c08）</td></tr>
+          <tr><td>9</td><td><code>patra-infra/CLAUDE.md</code></td><td><span class="pill modify">modify</span></td><td>服务清单补 patra-learn（端口 / 健康检查 / CD 接入）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>六类页面全部可用：13 站文章、10 词条、6 档案、3 操作卡内容完整，互链（术语跳图鉴、档案回课程、词条回站点）全通</li>
+        <li>内容完整性测试 + 进度库单测 + Playwright 3 条冒烟全绿；Biome / typecheck 干净</li>
+        <li>打卡进度端到端生效：课程页打卡 → 首页点亮 → 刷新保持</li>
+        <li>mini 上容器健康运行，tailscale 内网可访问，learn-cd.yml 走一次真实 push 部署成功</li>
+        <li>services.json / deploy.sh / compose / CLAUDE.md 文档同步完成</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.husky
+tests
+test-results
+playwright-report
+playwright.config.ts
+vitest.config.ts
+docs
+coverage
+*.log
+.DS_Store
+.env.local
+.env*.local
+Dockerfile
+.dockerignore

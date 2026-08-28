@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================================
 # 受影响单元路由 SSOT —— ci.yml 与 cd.yml 共用。输出一个 JSON 对象到 stdout：
-#   { "backend_units":[...], "portal_changed":bool, "docs_only":bool,
-#     "full_run":bool, "coverage_mode":"none|flags|full" }
+#   { "backend_units":[...], "portal_changed":bool, "learn_changed":bool,
+#     "docs_only":bool, "full_run":bool, "coverage_mode":"none|flags|full" }
 #   backend_units ⊆ [registry,object-storage,catalog,ingest,gateway,foundation]
 #
 # 模式：
@@ -19,10 +19,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GRAPH="$SCRIPT_DIR/module-graph.json"
 ALL_UNITS='["registry","object-storage","catalog","ingest","gateway","foundation"]'
+LEARN_CHANGED=false   # 全局初始化：防环境注入假阳性 / 非布尔值炸 --argjson
 
-emit() { # $1=units_json $2=portal $3=docs_only $4=full_run $5=coverage_mode
-  jq -cn --argjson u "$1" --argjson p "$2" --argjson d "$3" --argjson f "$4" --arg c "$5" \
-    '{backend_units:$u, portal_changed:$p, docs_only:$d, full_run:$f, coverage_mode:$c}'
+emit() { # $1=units_json $2=portal $3=docs_only $4=full_run $5=coverage_mode（learn 走全局 LEARN_CHANGED）
+  local learn="${LEARN_CHANGED:-false}"
+  jq -cn --argjson u "$1" --argjson p "$2" --argjson le "$learn" --argjson d "$3" --argjson f "$4" --arg c "$5" \
+    '{backend_units:$u, portal_changed:$p, learn_changed:$le, docs_only:$d, full_run:$f, coverage_mode:$c}'
 }
 emit_full() { emit "$ALL_UNITS" "${1:-false}" false true full; }
 
@@ -34,8 +36,8 @@ classify() {
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     saw_any=true
-    # workflow 自身变更：全量后端 + 额外触发 portal（验证整条管线）
-    case "$f" in .github/workflows/*) full=true; portal=true; docs_all=false; continue;; esac
+    # workflow 自身变更：全量后端 + 额外触发 portal/learn（验证整条管线）
+    case "$f" in .github/workflows/*) full=true; portal=true; LEARN_CHANGED=true; docs_all=false; continue;; esac
     # 全局影响、模块图覆盖不到的非 project 路径 → 全量
     case "$f" in
       build-logic/*|gradle/*|gradlew|gradlew.bat|build.gradle.kts|settings.gradle.kts|gradle.properties) full=true; docs_all=false; continue;;
@@ -43,6 +45,7 @@ classify() {
       patra-infra/cd/*) full=true; docs_all=false; continue;;
     esac
     case "$f" in patra-portal/*) portal=true; docs_all=false; continue;; esac
+    case "$f" in patra-learn/*) LEARN_CHANGED=true; docs_all=false; continue;; esac
     case "$f" in *.md|docs/*|.gitignore|.editorconfig|LICENSE|.claude/*) continue;; esac
     docs_all=false
     # 文件落到哪个模块（module-graph dir 为其最长前缀）→ 取该模块 impacts
@@ -66,7 +69,7 @@ classify() {
 
 MODE="${1:-}"
 case "$MODE" in
-  schedule) emit_full true ;;   # nightly：全量 + 触发 portal（UI 回归）
+  schedule) LEARN_CHANGED=true; emit_full true ;;   # nightly：全量 + 触发 portal/learn（UI 回归）
   classify) classify ;;
   dispatch)
     SVC="${2:-}"
