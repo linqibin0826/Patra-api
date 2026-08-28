@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>v0.6 Catalog 作者与摘要数据链路修复</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#authors">作者落库链路</a></li>
+      <li><a href="#abstracts">摘要写读链路</a></li>
+      <li><a href="#rebuild">数据重建与验证</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>v0.6 Catalog 作者与摘要数据链路修复</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-28</span>
+        <span>🌿 feat/v0.6-catalog-authors-abstracts</span>
+        <span>👤 linqibin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>v0.6 是纯后端 + 数据版本（portal 前端零改动）：① 补齐从未实现的文献作者落库三层（Processor→Writer→DAO），作者采用「行内存名 + 可空 ORCID 软关联」——关联表直接存展示名，绝不向 cat_author 新建行，作者库保持纯净；② 摘要 schema 定型为有序数组并类型化序列化（根治双重编码与读写不一致），非结构化摘要不再丢弃、结构化摘要同时生成 plain_text，两种形态一等公民；③ 修完代码后 drop patra_catalog 整库重建（直接改 V3 baseline migration），重导同一个 baseline 文件（pubmed26n1333）对齐现状，不写任何存量迁移脚本。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>mini 生产库 patra_catalog 现有 18,807 篇文献（2026-05-31 由 XXL-Job <code>pubmedBaselineImportJob</code> 从 NCBI 下载 <code>pubmed26n1333.xml.gz</code> 单文件导入），portal 文献详情页（v0.5 / PAP-45）的作者区与摘要区均为空。排查确认两条链路的缺陷：</p>
+      <p><strong>作者：从未实现。</strong>Parser（<code>CanonicalPublicationParsingStrategy.parseAuthorList</code>）完整解析了 <code>&lt;AuthorList&gt;</code>（姓名 / ORCID / 机构 / EqualContrib），但 <code>PubmedArticleItemProcessor</code> 无 <code>buildAuthorData()</code>、<code>PublicationItemWriter</code> 无作者分支、<code>PublicationAuthorDao</code> 类不存在——数据解析进内存后无声丢弃。<code>cat_publication_author</code> 0 行；<code>cat_author</code> 的 49.7 万行来自另一条独立链路（<code>authorImportJob</code> 导入 PubMed Computed Authors 全局作者库，dev 配置限 50 万条），与文献无行级关联。项目自带的 <code>pubmed-parsing-gap-analysis.md</code> 早已将此标为 🔴 高优先级缺口；详情页读端 SQL 已写好 <code>FROM cat_publication_author</code> 在等数据。</p>
+      <p><strong>摘要：四层缺陷叠加。</strong>① 写端把 sections 序列化为对象 <code>{"LABEL":"text"}</code>，读端 <code>parseSections</code> 期望数组 <code>[{label,text}]</code>——schema 从未对齐，解析失败被 catch 吞掉返回空数组（读空的主因）；② 存量 5,114 行摘要全部是双重编码的 JSON 字符串（commons <code>Jackson3JsonFormatMapper</code> String 透传修复前，手工 Jackson 2 序列化的字符串又被 Hibernate 二次序列化）；③ 批量路径从不生成 <code>plain_text</code>（API 路径的对照实现 <code>PubmedPublicationConverter.extractAbstract</code> 是正确的）；④ 无 Label 的非结构化摘要（PubMed 的大多数）被整条丢弃不落库——这是 27% 覆盖率（5,114/18,807）的主因，也解释了表内 100% 是 STRUCTURED。</p>
+      <p><strong>关键前提。</strong>数据源头是可重复下载的 NCBI baseline 文件（原始采集文件未留存、ext_data 全 NULL，但不需要——重新下载即可）；portal 前端 <code>AuthorList</code> / <code>AbstractBlock</code> 组件 v0.5 已就绪，<code>AbstractBlock</code> 对 empty / plain / structured 三种形态的渲染逻辑齐备，API 响应契约不变则 FE 零改动。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>作者落库三层实现（Processor / Writer / DAO）+ 机构关联表 <code>cat_publication_author_affiliation</code> 落库</li>
+            <li><code>cat_publication_author</code> DDL 改造：行内存名列 + <code>author_id</code> 可空（直接改 V3 baseline）</li>
+            <li>ORCID 软关联：命中 <code>cat_author_orcid</code> 时填 <code>author_id</code>，未命中留空</li>
+            <li>摘要 schema 定型有序数组 + Entity 字段类型化（删手工 <code>mapToJson</code>）</li>
+            <li>非结构化摘要落库（UNSTRUCTURED）+ 结构化摘要拼接生成 <code>plain_text</code></li>
+            <li><code>cat_publication_alternative_abstract</code> 对称改造</li>
+            <li>详情读端 SQL 改读行内作者名；<code>parseSections</code> 兜底日志 warn→error</li>
+            <li>mini 上 patra_catalog 整库重建 + 重导（Computed Authors + pubmed26n1333）</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>Computed Authors PMID 证据关联消歧（<code>author_id</code> 回填留白，schema 已预留）</li>
+            <li>作者检索 / 作者详情页</li>
+            <li>portal 前端改动（契约不变，FE 已就绪）</li>
+            <li>AI 速读（<code>aiSummary</code> 维持留空）</li>
+            <li>扩大导入数据量（仍为单文件 pubmed26n1333，对齐现状）</li>
+            <li><code>authors_complete</code> 标志改造——其语义是「PubMed 声明作者列表完整」，与 patra 是否落库无关，保持原样，仅此文档澄清语义</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="authors">
+      <h2>3. 作者落库链路</h2>
+      <h3>3.1 DDL（直接改 V3__create_author.sql）</h3>
+      <p><code>cat_publication_author</code> 改造：<code>author_id</code> 改 <code>NULL</code>（软关联位）；新增行内列 <code>display_name VARCHAR(200) NOT NULL</code>（"Lastname Forename" 或集体名）、<code>last_name</code>、<code>fore_name</code>、<code>initials</code>、<code>collective_name</code>、<code>orcid VARCHAR(19)</code>（原始 ORCID 存档，便于未来重关联 / 审计）；删除 <code>uk_pub_author (publication_id, author_id)</code>（author_id 大量为空后无意义），保留 <code>uk_author_order (publication_id, author_order)</code>。整库重建使 Flyway checksum 天然干净，无需新增 ALTER migration。</p>
+      <h3>3.2 写链路（补齐三层）</h3>
+      <ul>
+        <li><strong>Processor</strong>：新增 <code>buildAuthorData()</code>，从已解析的 <code>publication.getAuthors()</code> 产出——<code>author_order</code> 从 1 递增、<code>is_first_author</code> = (order==1)、<code>is_equal_contribution</code> 取 XML <code>EqualContrib</code> 标记、<code>is_corresponding_author</code> 恒 false（PubMed XML 无通讯作者显式标记，不造假数据）；CollectiveName 作者 <code>display_name</code> 存集体名、姓名各列为空。</li>
+        <li><strong>ORCID 软关联</strong>：作者带 ORCID 时查 <code>cat_author_orcid</code>，命中填 <code>author_id</code>，未命中留空；<strong>绝不向 <code>cat_author</code> 新建行</strong>——作者库只属于 Computed Authors 导入链路，保持每行都是真正消歧过的人。批内对 ORCID→author_id 做缓存避免逐行查库。</li>
+        <li><strong>Writer / Repository</strong>：中间 record（<code>PublicationImportResult</code> / <code>PublicationCompleteData</code>）增加 authors 字段；新建 <code>PublicationAuthorDao</code>；<code>PublicationRepositoryAdapter.insertAllWithAssociations</code> 增加 <code>writeAuthorAssociations</code>（作者行 + 机构行批量写入，机构写入 <code>cat_publication_author_affiliation</code>，Parser 已解析的 affiliation 数据链路打通）。</li>
+      </ul>
+      <h3>3.3 读端</h3>
+      <p><code>PublicationDetailDao.findAuthorsByPublicationId</code> 改读行内 <code>pa.display_name</code>，去掉 <code>JOIN cat_author</code>（行内名恒有值）；affiliation 子查询不变。API 响应字段结构不变（name / order / first / corresponding / affiliation），portal 零改动。</p>
+    </section>
+
+    <section id="abstracts">
+      <h2>4. 摘要写读链路（两种形态一等公民）</h2>
+      <h3>4.1 写端分流</h3>
+      <ul>
+        <li><strong>结构化</strong>（XML 带 Label 分节）：sections 落有序数组，同时拼接生成 <code>plain_text</code>（"LABEL: text" 段落连接，规则与 <code>PubmedPublicationConverter.extractAbstract</code> 对照实现一致）→ <code>ofBoth</code>，type=STRUCTURED，两字段都有值。</li>
+        <li><strong>非结构化</strong>（无 Label 纯文本）：不再丢弃——文本落 <code>plain_text</code>，sections 为空 → <code>ofPlainText</code>，type=UNSTRUCTURED（枚举已存在）。多段无 Label 文本按段落合并。此项将摘要覆盖率从 27% 拉回预期 ≥85%（其余为真无摘要文献）。</li>
+      </ul>
+      <h3>4.2 schema 定型与类型化序列化</h3>
+      <ul>
+        <li><code>structured_sections</code> 统一定为有序数组 <code>[{"label","text"}]</code>：保序（INTRODUCTION→METHODS→RESULTS→CONCLUSIONS 顺序是语义）、容纳重复 label（现 Map 形态会覆盖丢数据）。</li>
+        <li>Domain VO <code>PublicationAbstract.structuredSections</code> 从 <code>Map&lt;String,String&gt;</code> 改 <code>List&lt;AbstractSection&gt;</code>（有序 record）。</li>
+        <li>Entity 字段从 <code>String</code> + 手工 Jackson 2 序列化，改为类型化 record 列表 + <code>@JdbcTypeCode(SqlTypes.JSON)</code>，交给全局 <code>Jackson3JsonFormatMapper</code> 单点序列化；删除 <code>PublicationJpaMapper.mapToJson</code>（静默吞异常返 null 的源头），双重编码从机制上不可能再发生。</li>
+        <li><code>cat_publication_alternative_abstract</code>（多语言摘要）完全对称，一并改造。</li>
+      </ul>
+      <h3>4.3 读端</h3>
+      <p>读写共享同一 section record 定义，数组直接反序列化；<code>parseSections</code> 吞异常兜底从 <code>log.warn</code> 升 <code>log.error</code>（重建后数据格式可信，再失败即 bug，必须响；仍返回空数组保详情页可用）。<code>plain_text</code> 直接透传。前端 <code>AbstractBlock</code> 按 <code>deriveAbstract</code> 自动三态渲染（empty / plain / structured），无需改动。</p>
+    </section>
+
+    <section id="rebuild">
+      <h2>5. 数据重建与验证</h2>
+      <h3>5.1 重建操作（mini，代码部署后执行）</h3>
+      <ol>
+        <li>drop 并重建 <code>patra_catalog</code> 库 → catalog 服务重启，Flyway 全量重跑（含改过的 V3）</li>
+        <li><code>authorImportJob</code> 重导 Computed Authors（恢复 ~50 万作者库，dev 配置 max-records 不变）</li>
+        <li><code>pubmedBaselineImportJob</code>（fileIndex=1333）重导同一 baseline 文件</li>
+      </ol>
+      <h3>5.2 测试策略</h3>
+      <ul>
+        <li><strong>单测</strong>：Parser→Processor 两种摘要形态分流；<code>buildAuthorData</code>（普通 / 集体作者、EqualContrib、order 递增）；ORCID 命中 / 未命中软关联分支。</li>
+        <li><strong>IT 补真实 round-trip</strong>：用写链路真实落库的数据喂读链路断言——当初 IT 手造数组格式测试数据、从未走真实写路径，schema 不一致因此漏网；本次两条链路必须经同一条真实路径闭环。</li>
+        <li><strong>验收</strong>（重导后 mini 实测）：curl 详情端点抽查结构化篇（sections + plainText 双非空）与非结构化篇（plainText 非空）、作者非空且顺序正确；SQL 核对摘要覆盖率 ≥85%、<code>cat_publication_author</code> 行数 ≈ 篇数 × 平均作者数（预估 10 万+）；portal 页面人工点开确认渲染。</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>6. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：存量数据清库重导，不写迁移脚本</h3>
+        <p>修完代码后 drop patra_catalog 整库重建 + 重导同一 baseline 文件。源头（NCBI baseline）可重复下载，5,114 行坏格式摘要与空作者一次性全部重建，符合绿地「禁止数据迁移」原则。</p>
+        <p class="alternatives"><strong>备选：</strong>保留存量 + SQL 迁移修复坏摘要 + 按 PMID 补作者 — 否决：工作量更大、违反绿地原则，且数据可再生没有保留价值。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：作者采用「行内存名 + 可空 ORCID 软关联」</h3>
+        <p>关联表直接存展示名（详情页 100% 有作者可显示、不依赖 join），<code>author_id</code> 可空、仅 ORCID 命中时填，绝不因导文献向 <code>cat_author</code> 新建行——作者库保持纯净（每行都是消歧过的人），作者检索能力不被重复行破坏。未来证据关联只需回填 <code>author_id</code>，schema 不再动。</p>
+        <p class="alternatives"><strong>备选 A：</strong>ORCID 匹配 + 未命中新建 cat_author — 否决：PubMed ORCID 覆盖率仅两三成，作者库会被无法消歧的重复行淹没爆炸，作者检索直接废掉（用户明确否决）。<br>
+        <strong>备选 B：</strong>Computed Authors PMID 证据精确关联 — 否决（本版）：3.6GB 全量数据重导 + 证据匹配是独立大项目体量，且快照覆盖不到新文献；schema 已为其留好回填位。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：structured_sections 定型有序数组 + 类型化序列化</h3>
+        <p>数组保 section 顺序、容纳重复 label；Entity 字段类型化后由全局 <code>Jackson3JsonFormatMapper</code> 单点序列化，读写共享同一 record 定义，schema 不一致与双重编码从机制上消除。</p>
+        <p class="alternatives"><strong>备选 A：</strong>保持对象形态、改读端适配对象 — 否决：Map 丢 section 顺序（顺序是语义）、重复 label 覆盖丢数据。<br>
+        <strong>备选 B：</strong>保持 String 字段 + 集中手工 codec — 否决：仍是双轨序列化，静默吞异常隐患仍在。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：直接改 V3 baseline migration，不新增 ALTER migration</h3>
+        <p>本次整库重建使 Flyway 从零重跑，checksum 天然干净；绿地原则下 schema 按最终形态维护单一版本。</p>
+        <p class="alternatives"><strong>备选：</strong>新增 V-next ALTER migration — 否决：为一次性重建保留演化台账没有价值，违背「只维护当前版本」纪律。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：is_corresponding_author 恒 false</h3>
+        <p>PubMed XML 无通讯作者显式标记（通讯信息散落在 affiliation / email 中不可靠），不做启发式推断、不造假数据；列保留，等未来更可靠数据源。</p>
+        <p class="alternatives"><strong>备选：</strong>从 affiliation 文本 / email 启发式识别 — 否决：准确率无保障，错标比不标更误导。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>7. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>NCBI baseline 目录年度轮换（pubmed26 → pubmed27）导致 pubmed26n1333.xml.gz 下线，重导拿不到同一文件</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>执行重建前先 HEAD 探测文件存在性；若已下线则改用当年 baseline 对应文件（数据集变化可接受，v0.6 目标是修链路不是保数据快照）</td>
+          </tr>
+          <tr>
+            <td>mini 出站走代理，重下 baseline（~200MB）与 Computed Authors（3.6GB）可能慢或中断</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>Computed Authors 若 mini 本地仍有缓存文件则复用；下载中断重跑 Job 即可（Spring Batch 幂等重启）；历史上两个 Job 都在 mini 成功跑通过</td>
+          </tr>
+          <tr>
+            <td>整库重建误伤：patra_catalog 之外的库（batch 元数据、registry 等）被波及</td>
+            <td><span class="pill low">low</span></td>
+            <td>只 drop/create patra_catalog 单库；patra_batch 元数据库不动（旧 job 实例参数留档无害）</td>
+          </tr>
+          <tr>
+            <td>VO Map→List 改动波及面：PublicationAbstract 的现有调用方（API 路径 converter 等）编译期暴露</td>
+            <td><span class="pill low">low</span></td>
+            <td>编译期全量暴露即修；./gradlew check 全栈门控兜底</td>
+          </tr>
+          <tr>
+            <td>作者行数量级（10 万+ 行 / 批 500 篇 chunk）拖慢导入</td>
+            <td><span class="pill low">low</span></td>
+            <td>沿用现有 batchSaveWithFlush 批量写模式（keyword 7.5 万行同模式无压力）；导入是离线 Job，时长非敏感</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>8. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><code>patra-catalog-infra/.../db/migration/V3__create_author.sql</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>cat_publication_author：author_id 可空 + 行内姓名/ORCID 列 + 删 uk_pub_author</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><code>patra-catalog-domain/.../vo/publication/PublicationAbstract.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>structuredSections Map→List&lt;AbstractSection&gt;（有序）；工厂方法签名同步</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><code>patra-catalog-domain/.../aggregate/PublicationAggregate.java</code>（作者 VO 挂接）</td>
+            <td><span class="pill modify">modify</span></td>
+            <td>聚合根携带作者列表（含行内姓名 / ORCID / order / 标记位）</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><code>patra-catalog-infra/.../batch/publication/PubmedArticleItemProcessor.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>新增 buildAuthorData()；buildPublicationAbstract 两形态分流 + plain_text 拼接</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><code>patra-catalog-infra/.../parser/strategy/CanonicalPublicationParsingStrategy.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>buildAbstract 补 .text()；无 Label 摘要文本保留不丢弃</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><code>patra-catalog-infra/.../batch/publication/PublicationImportResult / PublicationCompleteData</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>中间 record 增加 authors 字段</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><code>patra-catalog-infra/.../persistence/dao/PublicationAuthorDao.java</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>作者关联表批量写 DAO（当前不存在）</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td><code>patra-catalog-infra/.../adapter/persistence/PublicationRepositoryAdapter.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>writeAuthorAssociations（作者 + affiliation 批量写）+ ORCID 软关联查询</td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td><code>patra-catalog-infra/.../persistence/entity/PublicationAuthorEntity.java</code> 及 Abstract/AlternativeAbstract Entity</td>
+            <td><span class="pill modify">modify</span></td>
+            <td>作者 entity 行内列；摘要 entity structured_sections 类型化（String→record 列表）</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td><code>patra-catalog-infra/.../converter/mapper/PublicationJpaMapper.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>删 mapToJson / jsonToMap 手工序列化；作者 VO↔Entity 映射</td>
+          </tr>
+          <tr>
+            <td>11</td>
+            <td><code>patra-catalog-infra/.../persistence/dao/PublicationDetailDao.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>作者查询改读行内 display_name，去 JOIN cat_author</td>
+          </tr>
+          <tr>
+            <td>12</td>
+            <td><code>patra-catalog-infra/.../adapter/read/PublicationDetailReadAdapter.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>parseSections 兜底 warn→error；section record 与写端共享定义</td>
+          </tr>
+          <tr>
+            <td>13</td>
+            <td><code>patra-catalog-infra/src/integrationTest/...（写读 round-trip IT）</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>真实写链路落库→读链路断言的闭环 IT（补当初漏网的覆盖）</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>注：路径为主干示意，实施计划（writing-plans）阶段展开到精确文件与代码级步骤。</p>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li><code>./gradlew check</code> 全栈门控通过（含新增单测与 round-trip IT）</li>
+        <li>mini 重建重导完成：摘要覆盖率 ≥85%，<code>cat_publication_author</code> 行数 ≈ 篇数 × 平均作者数，<code>cat_author</code> 恢复 ~50 万行且无导入链路新建行</li>
+        <li>curl 详情端点抽查：结构化篇 sections+plainText 双非空、非结构化篇 plainText 非空、作者列表非空且序正确</li>
+        <li>portal 文献详情页人工确认：作者区与摘要区（两种形态）渲染真实数据</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>
