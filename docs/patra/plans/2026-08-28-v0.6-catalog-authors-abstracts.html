@@ -27,8 +27,8 @@
           <li data-task-status="done"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
           <li data-task-status="done"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
           <li data-task-status="done"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
-          <li data-task-status="in-progress"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
-          <li data-task-status="pending"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
+          <li data-task-status="in-progress"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
           <li data-task-status="pending"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
           <li data-task-status="pending"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
           <li data-task-status="pending"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
@@ -738,7 +738,7 @@ git commit -m "feat(catalog): 聚合根携带作者快照 attachAuthors（任务
         </ol>
       </article>
 
-<article class="task" id="task-5" data-status="in-progress">
+<article class="task" id="task-5" data-status="done">
         <header>
           <h2>任务 5：common-model 与 Parser 改造（主摘要 copyright + AlternativeAbstract sections 不拍平）</h2>
           <dl class="files">
@@ -750,7 +750,7 @@ git commit -m "feat(catalog): 聚合根携带作者快照 attachAuthors（任务
         <p>Canonical 层已有带 label 的 <code>AbstractSection(label, category, content)</code>——主摘要结构无需改。本任务补三处：AlternativeAbstract 携带 sections（现被 <code>joinAbstractSections</code> 拍平丢 label）、主摘要 CopyrightInformation 解析（现完全不解析）、保留 text 拼接（<code>starter-provenance</code> 的 PubMed converter 也消费该类型，text 语义仍有效）。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试（Parser 三个新行为）</strong>
             <p>在 <code>CanonicalPublicationParsingStrategyTest</code> 追加（fixture XML 内联字符串，参考该测试类现有构造方式）：</p>
             <pre><code class="lang-java">  @Test
@@ -783,14 +783,14 @@ git commit -m "feat(catalog): 聚合根携带作者快照 attachAuthors（任务
             <p>运行 <code>./gradlew :patra-catalog:patra-catalog-infra:test --tests "*CanonicalPublicationParsingStrategyTest"</code>，预期编译失败（<code>getSections()</code> 不存在）。注：此时 infra 主代码尚有任务 2 造成的 Map→List 编译错误——先做步骤 2/3 的实现，此步只为立契约。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：common-model 加 sections</strong>
             <p><code>CanonicalPublication.AlternativeAbstract</code> 增加组件（放 <code>text</code> 之后）：</p>
             <pre><code class="lang-java">    /// 结构化摘要段落列表（保 label 与顺序；text 为拼接便捷形态）。
     List&lt;AbstractSection&gt; sections;</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Parser 三处改动</strong>
             <p>① <code>PubmedXmlElements.Article</code> 增加常量：</p>
             <pre><code class="lang-java">    public static final String COPYRIGHT_INFORMATION = "CopyrightInformation";</code></pre>
@@ -813,13 +813,13 @@ git commit -m "feat(catalog): 聚合根携带作者快照 attachAuthors（任务
         .build();</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：运行验证（仅 parser 测试类）</strong>
             <p>运行：<code>./gradlew :patra-common:patra-common-model:build :patra-catalog:patra-catalog-infra:test --tests "*CanonicalPublicationParsingStrategyTest"</code></p>
             <p>预期：common-model 绿；parser 测试若因 infra 其他文件（Processor/JpaMapper 的 Map→List 波及）编译不过，属预期——本任务与任务 6/8 是同一编译单元的连续改造，此步先保证 parser 改动本身正确，整体编译在任务 8 末端闭合。若希望本任务独立绿，可将任务 6 的 Processor 摘要改造提前合入本次执行（工作者可自行合并任务 5+6 为一个提交序列，plan 状态分别标记）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-common/patra-common-model patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/parser \
   patra-api/patra-catalog/patra-catalog-infra/src/test
@@ -828,7 +828,7 @@ git commit -m "feat(catalog): Parser 主摘要 copyright + OtherAbstract section
         </ol>
       </article>
 
-      <article class="task" id="task-6" data-status="pending">
+      <article class="task" id="task-6" data-status="in-progress">
         <header>
           <h2>任务 6：Processor 摘要三态分流 + plain_text 统一生成 + Alternative 数据链</h2>
           <dl class="files">
@@ -2304,14 +2304,57 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查判可合并，三条 Minor 延后：① attachAuthors「二次挂载整体替换」缺测试守护——挂任务 7 顺带补（防止改成 addAll 语义不被发现）；② 作者 order 列表级唯一性不变量留任务 7 决策（当下加是无消费者的推测校验）；③ 任务 10 注意「恢复即变更」的 delete+insert 写放大在换库重建场景无害、增量同步需显式决策。已核对：聚合无 dirty 标记状态机，attachAuthors 不调 trackChildAdded 与持久化风格一致。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-28T22:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T22:00">08-28 22:00</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>parser 测试被任务 2 遗留编译面阻塞（预期），实现者未止步于「代码就位」：用隔离 javac（单独编译 infra/parser 包 + scratch main）以相同 fixture 完成三条新行为的运行时验证 + 4 组回归（含 sub/sup 内联、未知子元素 skip），全 PASS。JUnit 版本待任务 6 闭合编译面后随模块跑。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T22:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T22:00">08-28 22:00</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>parseAbstract switch 化顺带引入 default → skipElement（原 if/else 对未知子元素不消费）——plan 指定 switch 形态的必然结果，属行为变更，已用专门回归用例覆盖（未知子元素不污染解析）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T22:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T22:00">08-28 22:00</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>AlternativeAbstract 原本已有 copyright 字段，plan 担心的遗漏不存在；starter-provenance 无 CanonicalPublication.AlternativeAbstract 消费点（grep 确认），sections 为纯增量可选字段。commit subject 因 commitlint subject-case 改为中文开头。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T22:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T22:55">08-28 22:55</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>质量审查驱动的三处收口：① CanonicalPublication.AlternativeAbstract.sections javadoc 声明可空契约（starter-provenance 路径不填充，<strong>任务 6 消费方必须判空</strong>）；② ParsingStrategy 加 blankToNull helper——主摘要与 alt 两处 copyright 空白归 null（含空元素/自闭合形态，反向用例证实不误伤「空白+内联标签」内容）；③ copyright 用例补 sections 断言 + 顺序前置用例 + 空白→null 用例（隔离运行 66/66 绿）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T22:55">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T22:55">08-28 22:55</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>遗留动作：任务 8 编译闭合后必须补跑官方 <code>:patra-api:patra-catalog:patra-catalog-infra:test --tests "*CanonicalPublicationParsingStrategyTest"</code>（当前 5 个新用例只被隔离 javac 验证过）。环境观察：gradle 多任务首跑偶发无因 BUILD FAILED、重跑即绿，疑似 configuration cache 抖动——CI 同类失败先怀疑这个。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">4</span> decisions /
-      <span data-counter="change">8</span> changes /
+      <span data-counter="change">11</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">6</span> others
+      <span data-counter="other">8</span> others
     </footer>
   </aside>
 
