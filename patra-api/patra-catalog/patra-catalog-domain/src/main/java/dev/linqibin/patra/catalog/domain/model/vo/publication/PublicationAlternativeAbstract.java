@@ -7,9 +7,9 @@ import dev.linqibin.patra.catalog.domain.model.enums.TranslationType;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.Builder;
 
 /// 文献翻译摘要值对象。
@@ -51,7 +51,8 @@ import lombok.Builder;
 /// @param languageCode 语言代码（ISO 639-1，如 "zh-CN"、"ja"）
 /// @param languageName 语言名称（如 "Chinese"、"Japanese"）
 /// @param plainText 纯文本摘要
-/// @param structuredSections 结构化摘要段落
+/// @param structuredSections 结构化摘要段落（有序列表，保顺序 / 重复标签 / 无标签段）
+/// @param copyright 版权信息/使用限制
 /// @param sourceType 摘要来源类型（如 `publisher`、`plain-language-summary`）
 /// @param translationType 翻译类型
 /// @param translator 译者姓名或机构
@@ -66,7 +67,8 @@ public record PublicationAlternativeAbstract(
     String languageCode,
     String languageName,
     String plainText,
-    Map<String, String> structuredSections,
+    List<PublicationAbstractSection> structuredSections,
+    String copyright,
     String sourceType,
     TranslationType translationType,
     String translator,
@@ -86,7 +88,7 @@ public record PublicationAlternativeAbstract(
     Assert.notBlank(languageCode, "语言代码不能为空");
 
     // 防御性拷贝：确保 structuredSections 不可变
-    structuredSections = structuredSections != null ? Map.copyOf(structuredSections) : Map.of();
+    structuredSections = structuredSections != null ? List.copyOf(structuredSections) : List.of();
 
     // 规范化来源类型（空值回退为 unknown）。
     sourceType = normalizeSourceType(sourceType);
@@ -187,12 +189,18 @@ public record PublicationAlternativeAbstract(
     return qualityLevel != null && qualityLevel.isAcceptable();
   }
 
-  /// 获取指定段落的内容。
+  /// 按标签查段落（忽略大小写与首尾空白），可返回多条（重复 label 是合法形态）。
   ///
-  /// @param sectionName 段落名称
-  /// @return 段落内容（如果存在）
-  public Optional<String> getSection(String sectionName) {
-    return Optional.ofNullable(structuredSections.get(sectionName));
+  /// @param label 段落标签
+  /// @return 命中的段落列表（可能为空）
+  public List<PublicationAbstractSection> findSectionsByLabel(String label) {
+    if (label == null) {
+      return List.of();
+    }
+    String upper = label.trim().toUpperCase(Locale.ROOT);
+    return structuredSections.stream()
+        .filter(s -> s.label() != null && s.label().toUpperCase(Locale.ROOT).equals(upper))
+        .toList();
   }
 
   /// 获取完整的翻译文本。
@@ -203,7 +211,9 @@ public record PublicationAlternativeAbstract(
       return plainText;
     }
     if (!structuredSections.isEmpty()) {
-      return String.join(" ", structuredSections.values());
+      return structuredSections.stream()
+          .map(PublicationAbstractSection::text)
+          .collect(Collectors.joining(" "));
     }
     return "";
   }

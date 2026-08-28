@@ -1,12 +1,13 @@
 package dev.linqibin.patra.catalog.domain.model.vo.publication;
 
+import cn.hutool.core.lang.Assert;
 import cn.hutool.core.util.StrUtil;
 import dev.linqibin.patra.catalog.domain.model.enums.AbstractType;
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.Builder;
 
 /// 文献摘要值对象。
@@ -15,10 +16,19 @@ import lombok.Builder;
 ///
 /// **摘要类型**：
 ///
-/// - **STRUCTURED**：结构化摘要，含多个命名段落（BACKGROUND、METHODS、RESULTS、CONCLUSIONS）
+/// - **STRUCTURED**：结构化摘要，含多个带标签段落（BACKGROUND、METHODS、RESULTS、CONCLUSIONS）
 /// - **UNSTRUCTURED**：非结构化摘要，纯文本段落
 /// - **GRAPHICAL**：图形化摘要（通常为图片，此处仅存储描述）
 /// - **NONE**：无摘要
+///
+/// **段落形态**：
+///
+/// - 段落是有序列表 `List<PublicationAbstractSection>`，而非 Map——保 section 顺序、
+///   容纳重复 label 与无 label 段（混合形态的无标签段以 `label=null` 保位）
+/// - 本层判型只看段落列表：非空 → STRUCTURED；为空且 plainText 非空 → UNSTRUCTURED；
+///   否则 NONE。本层不扫描 label
+/// - 「全无 label 视为非结构化摘要、段落不入库」是上游导入 Processor 的分流规则，
+///   传入本层的段落列表已是导入侧决定要持久化的最终形态
 ///
 /// **聚合边界内管理**：
 ///
@@ -42,23 +52,23 @@ import lombok.Builder;
 /// PublicationAbstract abs1 = PublicationAbstract.ofPlainText("This study examines...");
 ///
 /// // 创建结构化摘要
-/// Map<String, String> sections = Map.of(
-///     "BACKGROUND", "Cancer is...",
-///     "METHODS", "We conducted...",
-///     "RESULTS", "The study found...",
-///     "CONCLUSIONS", "Our findings suggest..."
+/// List<PublicationAbstractSection> sections = List.of(
+///     PublicationAbstractSection.of("BACKGROUND", "Cancer is..."),
+///     PublicationAbstractSection.of("METHODS", "We conducted..."),
+///     PublicationAbstractSection.of("RESULTS", "The study found..."),
+///     PublicationAbstractSection.of("CONCLUSIONS", "Our findings suggest...")
 /// );
 /// PublicationAbstract abs2 = PublicationAbstract.ofStructured(sections);
 ///
-/// // 获取特定段落
-/// Optional<String> methods = abs2.getSection("METHODS");
+/// // 按标签查段落（可能命中多条）
+/// List<PublicationAbstractSection> methods = abs2.findSectionsByLabel("METHODS");
 ///
 /// // 创建空摘要
 /// PublicationAbstract empty = PublicationAbstract.empty();
 /// ```
 ///
 /// @param plainText 纯文本摘要（非结构化摘要的全文）
-/// @param structuredSections 结构化摘要段落（段落名 → 段落内容）
+/// @param structuredSections 结构化摘要段落（有序列表）
 /// @param copyright 版权信息/使用限制
 /// @param abstractType 摘要类型
 /// @author linqibin
@@ -66,7 +76,7 @@ import lombok.Builder;
 @Builder(toBuilder = true)
 public record PublicationAbstract(
     String plainText,
-    Map<String, String> structuredSections,
+    List<PublicationAbstractSection> structuredSections,
     String copyright,
     AbstractType abstractType)
     implements Serializable {
@@ -76,7 +86,7 @@ public record PublicationAbstract(
   /// 紧凑构造器：处理防御性拷贝和默认值。
   public PublicationAbstract {
     // 防御性拷贝：确保 structuredSections 不可变
-    structuredSections = structuredSections != null ? Map.copyOf(structuredSections) : Map.of();
+    structuredSections = structuredSections != null ? List.copyOf(structuredSections) : List.of();
 
     // 推断摘要类型（如果未指定）
     if (abstractType == null) {
@@ -109,18 +119,25 @@ public record PublicationAbstract(
 
   /// 创建结构化摘要。
   ///
-  /// @param sections 段落映射（段落名 → 段落内容）
+  /// @param sections 段落有序列表（非空）
   /// @return 结构化摘要
-  public static PublicationAbstract ofStructured(Map<String, String> sections) {
-    return new PublicationAbstract(null, sections, null, AbstractType.STRUCTURED);
+  /// @throws IllegalArgumentException 如果段落列表为空
+  public static PublicationAbstract ofStructured(List<PublicationAbstractSection> sections) {
+    return ofStructured(sections, null);
   }
 
   /// 创建带版权信息的结构化摘要。
   ///
-  /// @param sections 段落映射
+  /// 工厂方法名已承诺 STRUCTURED，故拒绝空段落列表——否则会产出
+  /// `isStructured()` 为 true 但 `hasContent()` 为 false 的矛盾态。
+  ///
+  /// @param sections 段落有序列表（非空）
   /// @param copyright 版权信息
   /// @return 结构化摘要
-  public static PublicationAbstract ofStructured(Map<String, String> sections, String copyright) {
+  /// @throws IllegalArgumentException 如果段落列表为空
+  public static PublicationAbstract ofStructured(
+      List<PublicationAbstractSection> sections, String copyright) {
+    Assert.notEmpty(sections, "结构化摘要段落不能为空");
     return new PublicationAbstract(null, sections, copyright, AbstractType.STRUCTURED);
   }
 
@@ -129,11 +146,11 @@ public record PublicationAbstract(
   /// 某些数据源同时提供两种格式。
   ///
   /// @param plainText 纯文本内容
-  /// @param sections 结构化段落
+  /// @param sections 段落有序列表
   /// @param copyright 版权信息
   /// @return 结构化摘要（优先标记为结构化）
   public static PublicationAbstract ofBoth(
-      String plainText, Map<String, String> sections, String copyright) {
+      String plainText, List<PublicationAbstractSection> sections, String copyright) {
     return new PublicationAbstract(plainText, sections, copyright, AbstractType.STRUCTURED);
   }
 
@@ -165,42 +182,18 @@ public record PublicationAbstract(
     return StrUtil.isNotBlank(copyright);
   }
 
-  /// 获取指定段落的内容。
+  /// 按标签查段落（忽略大小写与首尾空白），可返回多条（重复 label 是合法形态）。
   ///
-  /// @param sectionName 段落名称（如 "METHODS"、"RESULTS"）
-  /// @return 段落内容（如果存在）
-  public Optional<String> getSection(String sectionName) {
-    return Optional.ofNullable(structuredSections.get(sectionName));
-  }
-
-  /// 获取指定段落的内容（不区分大小写）。
-  ///
-  /// @param sectionName 段落名称
-  /// @return 段落内容（如果存在）
-  public Optional<String> getSectionIgnoreCase(String sectionName) {
-    if (sectionName == null) {
-      return Optional.empty();
+  /// @param label 段落标签
+  /// @return 命中的段落列表（可能为空）
+  public List<PublicationAbstractSection> findSectionsByLabel(String label) {
+    if (label == null) {
+      return List.of();
     }
-    String upperName = sectionName.toUpperCase(Locale.ROOT);
-    return structuredSections.entrySet().stream()
-        .filter(e -> e.getKey().toUpperCase(Locale.ROOT).equals(upperName))
-        .map(Map.Entry::getValue)
-        .findFirst();
-  }
-
-  /// 判断是否包含指定段落。
-  ///
-  /// @param sectionName 段落名称
-  /// @return true 如果包含该段落
-  public boolean hasSection(String sectionName) {
-    return structuredSections.containsKey(sectionName);
-  }
-
-  /// 获取所有段落名称。
-  ///
-  /// @return 段落名称集合（不可变）
-  public java.util.Set<String> getSectionNames() {
-    return structuredSections.keySet();
+    String upper = label.trim().toUpperCase(Locale.ROOT);
+    return structuredSections.stream()
+        .filter(s -> s.label() != null && s.label().toUpperCase(Locale.ROOT).equals(upper))
+        .toList();
   }
 
   /// 获取段落数量。
@@ -220,7 +213,9 @@ public record PublicationAbstract(
       return plainText;
     }
     if (!structuredSections.isEmpty()) {
-      return String.join(" ", structuredSections.values());
+      return structuredSections.stream()
+          .map(PublicationAbstractSection::text)
+          .collect(Collectors.joining(" "));
     }
     return "";
   }

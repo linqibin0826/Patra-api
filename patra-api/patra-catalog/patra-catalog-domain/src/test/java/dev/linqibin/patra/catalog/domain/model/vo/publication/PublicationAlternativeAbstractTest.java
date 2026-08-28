@@ -3,6 +3,8 @@ package dev.linqibin.patra.catalog.domain.model.vo.publication;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.linqibin.patra.catalog.domain.model.enums.TranslationType;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -60,5 +62,39 @@ class PublicationAlternativeAbstractTest {
     assertThat(official.sourceType()).isEqualTo("publisher");
     assertThat(professional.sourceType()).isEqualTo("professional");
     assertThat(machine.sourceType()).isEqualTo("machine");
+  }
+
+  @Test
+  @DisplayName("段落列表应做防御性拷贝并保持顺序")
+  void shouldDefensivelyCopySections() {
+    List<PublicationAbstractSection> mutable = new ArrayList<>();
+    mutable.add(PublicationAbstractSection.of("背景", "第一段"));
+    mutable.add(PublicationAbstractSection.of(null, "第二段"));
+
+    PublicationAlternativeAbstract value =
+        PublicationAlternativeAbstract.builder()
+            .languageCode("zh-CN")
+            .structuredSections(mutable)
+            .build();
+    mutable.clear();
+
+    assertThat(value.structuredSections()).hasSize(2);
+    assertThat(value.structuredSections().get(1).text()).isEqualTo("第二段");
+    assertThat(value.hasStructuredSections()).isTrue();
+    assertThat(value.getFullText()).isEqualTo("第一段 第二段");
+    assertThat(value.findSectionsByLabel("背景")).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("copyright 应原样透传")
+  void shouldCarryCopyright() {
+    PublicationAlternativeAbstract value =
+        PublicationAlternativeAbstract.builder()
+            .languageCode("ja")
+            .plainText("翻译摘要")
+            .copyright("©2026 Publisher")
+            .build();
+
+    assertThat(value.copyright()).isEqualTo("©2026 Publisher");
   }
 }
