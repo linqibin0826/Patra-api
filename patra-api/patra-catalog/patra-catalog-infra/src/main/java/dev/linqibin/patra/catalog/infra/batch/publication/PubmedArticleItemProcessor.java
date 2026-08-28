@@ -8,9 +8,12 @@ import dev.linqibin.patra.catalog.domain.model.enums.IndexingStatus;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationDateType;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationMedium;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationStatus;
+import dev.linqibin.patra.catalog.domain.model.vo.author.Orcid;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.LanguageInfo;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorAffiliationSnapshot;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationIdentifier;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationMetadata;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
@@ -33,6 +36,8 @@ import dev.linqibin.patra.common.enums.ProvenanceCode;
 import dev.linqibin.patra.common.model.CanonicalPublication;
 import dev.linqibin.patra.common.model.CanonicalPublication.Abstract;
 import dev.linqibin.patra.common.model.CanonicalPublication.AbstractSection;
+import dev.linqibin.patra.common.model.CanonicalPublication.Affiliation;
+import dev.linqibin.patra.common.model.CanonicalPublication.Author;
 import dev.linqibin.patra.common.model.CanonicalPublication.DescriptorName;
 import dev.linqibin.patra.common.model.CanonicalPublication.FundingInfo;
 import dev.linqibin.patra.common.model.CanonicalPublication.Identifier;
@@ -83,6 +88,10 @@ import org.springframework.batch.infrastructure.item.ItemProcessor;
 @RequiredArgsConstructor
 public class PubmedArticleItemProcessor
     implements ItemProcessor<CanonicalPublication, PublicationImportResult> {
+
+  /// ORCID 官方 URL 前缀（已大写，匹配前先将原始值大写以实现忽略大小写剥离）。
+  private static final List<String> ORCID_URL_PREFIXES =
+      List.of("HTTPS://ORCID.ORG/", "HTTP://ORCID.ORG/");
 
   private final VenueLookupPort venueLookupPort;
   private final VenueInstanceGateway venueInstanceGateway;
@@ -322,6 +331,12 @@ public class PubmedArticleItemProcessor
       aggregate.attachAbstract(abstractContent);
     }
 
+    // 补充作者快照（唯一事实来源挂聚合；软关联 authorId 由 Repository 层填充）
+    List<PublicationAuthorSnapshot> authorSnapshots = buildAuthorSnapshots(publication);
+    if (!authorSnapshots.isEmpty()) {
+      aggregate.attachAuthors(authorSnapshots);
+    }
+
     // 补充扩展标识符（PMC、PII 等非主要标识符）
     List<PublicationIdentifier> extendedIdentifiers = extractExtendedIdentifiers(publication);
     if (!extendedIdentifiers.isEmpty()) {
@@ -437,6 +452,109 @@ public class PubmedArticleItemProcessor
       }
     }
     return extendedIds;
+  }
+
+  // ========== 作者快照构建 ==========
+
+  /// 构建作者快照列表（姓名规则见 `PublicationAuthorSnapshot.deriveDisplayName`）。
+  ///
+  /// 全部姓名字段与集体名均空的作者跳过（不落库），跳过后顺序保持连续。
+  /// ORCID 在此仅归一化存档；软关联 `authorId` 由 Repository 层批查填充。
+  ///
+  /// @param publication 规范化文献
+  /// @return 作者快照列表（可能为空，不会为 null）
+  private List<PublicationAuthorSnapshot> buildAuthorSnapshots(CanonicalPublication publication) {
+    List<Author> authors = publication.getAuthors();
+    if (authors == null || authors.isEmpty()) {
+      return List.of();
+    }
+
+    List<PublicationAuthorSnapshot> snapshots = new ArrayList<>();
+    int order = 1;
+    for (Author author : authors) {
+      if (author == null) {
+        continue;
+      }
+      String lastName = trimToNull(author.getLastName());
+      String foreName = trimToNull(author.getForeName());
+      String initials = trimToNull(author.getInitials());
+      String collectiveName = trimToNull(author.getOrganizationName());
+      String displayName =
+          PublicationAuthorSnapshot.deriveDisplayName(lastName, foreName, initials, collectiveName);
+      if (displayName == null) {
+        log.debug("跳过无有效姓名的作者：importBatch={}", importBatch);
+        continue;
+      }
+
+      snapshots.add(
+          PublicationAuthorSnapshot.builder()
+              .order(order)
+              .lastName(lastName)
+              .foreName(foreName)
+              .initials(initials)
+              .suffix(trimToNull(author.getSuffix()))
+              .collectiveName(collectiveName)
+              .displayName(displayName)
+              .orcid(normalizeOrcid(extractOrcid(author.getIdentifiers())))
+              .firstAuthor(order == 1)
+              .equalContribution(Boolean.TRUE.equals(author.getEqualContribution()))
+              .affiliations(buildAffiliationSnapshots(author))
+              .build());
+      order++;
+    }
+    return snapshots;
+  }
+
+  /// 构建作者机构快照（保留文献侧顺序，1 起连续编号，空白机构原文跳过）。
+  ///
+  /// @param author 规范化作者
+  /// @return 机构快照列表（可能为空，不会为 null）
+  private List<PublicationAuthorAffiliationSnapshot> buildAffiliationSnapshots(Author author) {
+    List<Affiliation> affiliations = author.getAffiliations();
+    if (affiliations == null || affiliations.isEmpty()) {
+      return List.of();
+    }
+
+    List<PublicationAuthorAffiliationSnapshot> snapshots = new ArrayList<>();
+    int order = 1;
+    for (Affiliation affiliation : affiliations) {
+      String name = affiliation != null ? trimToNull(affiliation.getName()) : null;
+      if (name == null) {
+        continue;
+      }
+      snapshots.add(PublicationAuthorAffiliationSnapshot.of(order++, name));
+    }
+    return snapshots;
+  }
+
+  /// 归一化 ORCID：trim → 大写 → 剥离官方 URL 前缀（大写常量匹配）→ 格式与 ISO 7064 校验位校验。
+  ///
+  /// 任一校验不通过返回 null（脏数据不落库，而非抛异常中断整批导入）。
+  ///
+  /// @param raw ORCID 原始值（可能为 null）
+  /// @return 归一化后的 ORCID，非法时返回 null
+  private String normalizeOrcid(String raw) {
+    String value = trimToNull(raw);
+    if (value == null) {
+      return null;
+    }
+    value = value.toUpperCase(Locale.ROOT);
+    for (String prefix : ORCID_URL_PREFIXES) {
+      if (value.startsWith(prefix)) {
+        value = value.substring(prefix.length());
+        break;
+      }
+    }
+    if (!Orcid.isValid(value)) {
+      log.debug("丢弃格式非法的 ORCID：raw={}, importBatch={}", raw, importBatch);
+      return null;
+    }
+    Orcid orcid = Orcid.of(value);
+    if (!orcid.isChecksumValid()) {
+      log.debug("丢弃校验位非法的 ORCID：raw={}, importBatch={}", raw, importBatch);
+      return null;
+    }
+    return orcid.value();
   }
 
   /// 构建语言信息。

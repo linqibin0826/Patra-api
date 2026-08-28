@@ -123,6 +123,16 @@ class PublicationAuthorSnapshotTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  @Test
+  @DisplayName("超长机构原文应按 2000 截断而非抛异常")
+  void affiliationSnapshot_overlongString_shouldTruncate() {
+    String overlong = "A".repeat(2500);
+
+    var snap = PublicationAuthorAffiliationSnapshot.of(1, overlong);
+
+    assertThat(snap.affiliationString()).hasSize(2000);
+  }
+
   /// 构造仅指定集体作者名的快照。
   ///
   /// @param collectiveName 集体作者名

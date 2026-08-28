@@ -14,6 +14,7 @@ import dev.linqibin.patra.catalog.domain.model.aggregate.VenueInstanceAggregate;
 import dev.linqibin.patra.catalog.domain.model.enums.AbstractType;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationMedium;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationIdentifier;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueInstanceId;
@@ -1435,6 +1436,227 @@ class PubmedArticleItemProcessorTest {
               .abstractContent(abstractContent)
               .build();
       return processor.process(publication).publication().getPublicationAbstract();
+    }
+  }
+
+  @Nested
+  @DisplayName("作者快照构建")
+  class AuthorSnapshotTest {
+
+    @BeforeEach
+    void stubVenueResolution() {
+      when(venueLookupPort.findByPriority(eq(NLM_ID), any()))
+          .thenReturn(Optional.of(VenueId.of(VENUE_ID)));
+      when(venueInstanceGateway.findOrCreateJournalInstance(any(JournalInstanceParams.class)))
+          .thenReturn(createVenueInstance());
+    }
+
+    @Test
+    @DisplayName("按 XML 顺序 1 起编号，首位标记第一作者并透传同等贡献")
+    void should_number_authors_from_one_and_mark_first_author() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              personalAuthor("Smith", "John", null, true),
+              personalAuthor("Doe", "Jane", null, null));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots).hasSize(2);
+      assertThat(snapshots.get(0).order()).isEqualTo(1);
+      assertThat(snapshots.get(0).firstAuthor()).isTrue();
+      assertThat(snapshots.get(0).equalContribution()).isTrue();
+      assertThat(snapshots.get(1).order()).isEqualTo(2);
+      assertThat(snapshots.get(1).firstAuthor()).isFalse();
+      assertThat(snapshots.get(1).equalContribution()).isFalse();
+      assertThat(snapshots.get(1).displayName()).isEqualTo("Doe Jane");
+    }
+
+    @Test
+    @DisplayName("集体作者应以组织名成展示名且不落姓名字段")
+    void should_map_collective_author() throws Exception {
+      // given
+      CanonicalPublication.Author collective =
+          CanonicalPublication.Author.builder().organizationName("WHO Study Group").build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(collective));
+
+      // then
+      assertThat(snapshots).hasSize(1);
+      assertThat(snapshots.getFirst().isCollective()).isTrue();
+      assertThat(snapshots.getFirst().displayName()).isEqualTo("WHO Study Group");
+      assertThat(snapshots.getFirst().lastName()).isNull();
+      assertThat(snapshots.getFirst().orcid()).isNull();
+      assertThat(snapshots.getFirst().affiliations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("姓名全空的作者应跳过且不留顺序空洞")
+    void should_skip_blank_name_authors_keeping_order_continuous() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              personalAuthor("Smith", null, null, null),
+              personalAuthor("  ", "  ", null, null),
+              personalAuthor("Wang", null, null, null));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots).hasSize(2);
+      assertThat(snapshots.get(0).order()).isEqualTo(1);
+      assertThat(snapshots.get(1).order()).isEqualTo(2);
+      assertThat(snapshots.get(1).displayName()).isEqualTo("Wang");
+    }
+
+    @Test
+    @DisplayName("机构原文应保序并从 1 起连续编号")
+    void should_number_affiliations_from_one() throws Exception {
+      // given
+      CanonicalPublication.Author author =
+          CanonicalPublication.Author.builder()
+              .lastName("Smith")
+              .affiliations(
+                  List.of(
+                      CanonicalPublication.Affiliation.builder().name("Harvard").build(),
+                      CanonicalPublication.Affiliation.builder().name("  ").build(),
+                      CanonicalPublication.Affiliation.builder().name("MIT").build()))
+              .build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(author));
+
+      // then
+      var affiliations = snapshots.getFirst().affiliations();
+      assertThat(affiliations).hasSize(2);
+      assertThat(affiliations.get(0).order()).isEqualTo(1);
+      assertThat(affiliations.get(0).affiliationString()).isEqualTo("Harvard");
+      assertThat(affiliations.get(1).order()).isEqualTo(2);
+      assertThat(affiliations.get(1).affiliationString()).isEqualTo("MIT");
+    }
+
+    @Test
+    @DisplayName("ORCID 应剥离 URL 前缀并大写校验位")
+    void should_normalize_orcid_url_prefix_and_uppercase_check_digit() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              authorWithOrcid("Smith", "https://orcid.org/0000-0002-1825-0097"),
+              authorWithOrcid("Doe", "0000-0002-1694-233x"));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots.get(0).orcid()).isEqualTo("0000-0002-1825-0097");
+      assertThat(snapshots.get(1).orcid()).isEqualTo("0000-0002-1694-233X");
+    }
+
+    @Test
+    @DisplayName("格式或校验位非法的 ORCID 应丢弃为 null")
+    void should_drop_invalid_orcid() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              authorWithOrcid("Smith", "0000-0002-1825-0098"),
+              authorWithOrcid("Doe", "not-an-orcid"));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots.get(0).orcid()).isNull(); // 校验位错
+      assertThat(snapshots.get(1).orcid()).isNull(); // 格式错
+    }
+
+    @Test
+    @DisplayName("非 ORCID 类型的标识符不应被误取为 ORCID")
+    void should_ignore_non_orcid_identifiers() throws Exception {
+      // given
+      CanonicalPublication.Author author =
+          CanonicalPublication.Author.builder()
+              .lastName("Smith")
+              .identifiers(
+                  List.of(
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.DOI)
+                          .value("10.1234/example")
+                          .build(),
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.PMID)
+                          .value(PMID)
+                          .build()))
+              .build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(author));
+
+      // then
+      assertThat(snapshots.getFirst().orcid()).isNull();
+    }
+
+    @Test
+    @DisplayName("缩写与后缀应透传，且后缀不拼入展示名")
+    void should_pass_through_initials_and_suffix_without_suffix_in_display_name() throws Exception {
+      // given
+      CanonicalPublication.Author author =
+          CanonicalPublication.Author.builder()
+              .lastName("Smith")
+              .initials("J")
+              .suffix("Jr")
+              .build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(author));
+
+      // then
+      assertThat(snapshots.getFirst().initials()).isEqualTo("J");
+      assertThat(snapshots.getFirst().suffix()).isEqualTo("Jr");
+      assertThat(snapshots.getFirst().displayName()).isEqualTo("Smith J");
+    }
+
+    /// 构造个人作者。
+    private CanonicalPublication.Author personalAuthor(
+        String lastName, String foreName, String initials, Boolean equalContribution) {
+      return CanonicalPublication.Author.builder()
+          .lastName(lastName)
+          .foreName(foreName)
+          .initials(initials)
+          .equalContribution(equalContribution)
+          .build();
+    }
+
+    /// 构造带 ORCID 标识符的个人作者。
+    private CanonicalPublication.Author authorWithOrcid(String lastName, String orcid) {
+      return CanonicalPublication.Author.builder()
+          .lastName(lastName)
+          .identifiers(
+              List.of(
+                  Identifier.builder().type(PublicationIdentifierType.ORCID).value(orcid).build()))
+          .build();
+    }
+
+    /// 走完整 process() 链路取出聚合根上的作者快照列表。
+    private List<PublicationAuthorSnapshot> processAuthors(
+        List<CanonicalPublication.Author> authors) throws Exception {
+      CanonicalPublication publication =
+          CanonicalPublication.builder()
+              .identifiers(
+                  List.of(
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.PMID)
+                          .value(PMID)
+                          .build()))
+              .title("Test Article")
+              .journal(Journal.builder().nlmUniqueId(NLM_ID).build())
+              .dates(PublicationDates.builder().published(LocalDate.of(2024, 1, 1)).build())
+              .authors(authors)
+              .build();
+      return processor.process(publication).publication().getAuthors();
     }
   }
 

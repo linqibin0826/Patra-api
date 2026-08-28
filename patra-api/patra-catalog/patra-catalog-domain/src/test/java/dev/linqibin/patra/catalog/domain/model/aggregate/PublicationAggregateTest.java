@@ -7,6 +7,7 @@ import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueInstanceId;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
 import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,32 @@ class PublicationAggregateTest {
       agg.attachAuthors(null);
 
       assertThat(agg.getAuthors()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("二次挂载应整体替换而非追加")
+    void attachAuthors_twice_shouldReplaceNotAppend() {
+      PublicationAggregate agg = createMinimalAggregate();
+      agg.attachAuthors(
+          List.of(
+              PublicationAuthorSnapshot.builder()
+                  .order(1)
+                  .lastName("Smith")
+                  .displayName("Smith")
+                  .firstAuthor(true)
+                  .build()));
+
+      agg.attachAuthors(
+          List.of(
+              PublicationAuthorSnapshot.builder()
+                  .order(1)
+                  .lastName("Jones")
+                  .displayName("Jones")
+                  .firstAuthor(true)
+                  .build()));
+
+      assertThat(agg.getAuthors()).hasSize(1);
+      assertThat(agg.getAuthors().getFirst().displayName()).isEqualTo("Jones");
     }
 
     @Test
