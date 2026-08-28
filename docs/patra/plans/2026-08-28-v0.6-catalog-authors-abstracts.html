@@ -23,8 +23,8 @@
           <!-- ENTRY TEMPLATE（注释保留供添加 task 时复制）:
           <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
           -->
-          <li data-task-status="pending"><a href="#task-1">Task 1 — 作者侧 DDL 与 Entity 原子改造</a></li>
-          <li data-task-status="pending"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
+          <li data-task-status="done"><a href="#task-1">Task 1 — 作者侧 DDL 与 Entity 原子改造</a></li>
+          <li data-task-status="in-progress"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
           <li data-task-status="pending"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
           <li data-task-status="pending"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
           <li data-task-status="pending"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
@@ -164,7 +164,7 @@ patra-infra/scripts/v06-rebuild/
       </article>
       -->
 
-<article class="task" id="task-1" data-status="pending">
+<article class="task" id="task-1" data-status="done">
         <header>
           <h2>任务 1：作者侧 DDL 与 Entity 原子改造（V3 + 两 Entity + affiliation DAO/IT 级联）</h2>
           <dl class="files">
@@ -177,7 +177,7 @@ patra-infra/scripts/v06-rebuild/
         <p>作者侧 schema 是一个原子单元：DDL、Entity、DAO、IT 必须同任务改完，否则 <code>ddl-auto=validate</code> 与 Spring Data 派生方法校验会让所有 IT 红掉。本任务<strong>不改</strong>读端 SQL（任务 11）——现有详情/Feed IT 的数据构造助手仍设 authorId，保持绿。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：改 V3 的 cat_publication_author 表定义</strong>
             <p>将表 4 整段替换为（行内列 + author_id 可空；删除表内 <code>uk_pub_author</code> 约束，改为表外部分唯一索引；保留 uk_author_order）：</p>
             <pre><code class="lang-sql">CREATE TABLE cat_publication_author (
@@ -212,12 +212,12 @@ CREATE INDEX idx_first_author         ON cat_publication_author (is_first_author
 CREATE INDEX idx_corresponding        ON cat_publication_author (is_corresponding_author);</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：改 V3 的 cat_publication_author_affiliation 表定义</strong>
             <p>删除 <code>author_id BIGINT NOT NULL</code> 列与 <code>CREATE INDEX idx_affil_author ...</code> 一行；其余列/索引原样保留。同步更新表 5 上方注释（删掉 author_id 冗余说明）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：改 PublicationAuthorEntity</strong>
             <p>类级 <code>@Table</code>：删除 <code>uk_pub_author</code> 的 <code>@UniqueConstraint</code>（JPA 表达不了 partial index，Flyway 独占定义），保留 <code>uk_author_order</code>；indexes 原样。字段区改动：</p>
             <pre><code class="lang-java">  /// 作者 ID（外键：cat_author.id；软关联位——仅 ORCID 命中已消歧作者时填，其余为 null）。
@@ -252,12 +252,12 @@ CREATE INDEX idx_corresponding        ON cat_publication_author (is_correspondin
             <p>同时删除便捷方法 <code>markAsFirstAuthor()</code> / <code>markAsCorresponding(String)</code>（生产代码零引用，行为由写链路显式赋值），并把类 javadoc 的「索引设计」段更新为部分唯一索引说明。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：改 PublicationAuthorAffiliationEntity</strong>
             <p>删除字段 <code>authorId</code>（连同其 javadoc）；<code>@Table.indexes</code> 中删除 <code>@Index(name = "idx_author", columnList = "author_id")</code>；类 javadoc 中删除 author_id 冗余说明与 idx_author 条目。其余字段（含 publicationId 冗余）不动。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：清理 PublicationAuthorAffiliationDao 的 authorId 派生方法</strong>
             <p>删除以下方法（Entity 字段消失后 Spring Data 启动会抛 <code>PropertyReferenceException</code>）：<code>findAllByAuthorId</code>、<code>findAllByAuthorIdIn</code>、<code>findByAuthorId(Long, Pageable)</code>，及「按作者查询」分节注释。新增一个替换语义要用的批量删除（任务 10 消费）：</p>
             <pre><code class="lang-java">  /// 按出版物 ID 批量删除（重导替换语义用）。
@@ -266,18 +266,18 @@ CREATE INDEX idx_corresponding        ON cat_publication_author (is_correspondin
   void deleteAllByPublicationIdIn(Collection&lt;Long&gt; publicationIds);</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 6：重写 PublicationAuthorAffiliationDaoIT + 修编译波及</strong>
             <p>① <code>createTestEntity</code> 助手删掉 <code>.authorId(authorId)</code> 一行、方法签名去掉 authorId 参数（调用点同步）；② 删除 <code>FindByAssociationIdTests.findAllByAuthorId_shouldReturnMatching</code> 用例；③ 新增用例验证 <code>deleteAllByPublicationIdIn</code>：两个 publicationId 各插 2 行，删其一，断言剩 2 行且全属另一 publicationId。④ 全仓 grep <code>setAuthorId</code> / <code>.authorId(</code> 在 affiliation 语境下的残留调用（<code>PublicationDetailReadAdapterIT.saveAffiliation</code>、<code>PortalFeedReadAdapterIT</code> 同名助手）：这些助手删掉 authorId 赋值行、签名收窄，但<strong>保留 savePublicationAuthor 对 cat_author 的写入与 authorId 赋值</strong>（读端 SQL 本任务未改，仍 join）。⑤ savePublicationAuthor 助手补 <code>pa.setDisplayName(displayName)</code>——displayName 列 NOT NULL，取现有 cat_author displayName 同值传入。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 7：跑作者侧 IT 验证</strong>
             <p>运行：<code>cd patra-api &amp;&amp; ./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationAuthorAffiliationDaoIT" --tests "*PublicationDetailReadAdapterIT" --tests "*PortalFeedReadAdapterIT"</code></p>
             <p>预期：全部通过（Flyway 建新 schema，Entity 与之匹配，读端 SQL 仍走 join 路径不受影响）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 8：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/resources/db/migration/V3__create_author.sql \
   patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/entity/PublicationAuthorEntity.java \
@@ -289,7 +289,7 @@ git commit -m "feat(catalog): 作者关联表行内存名+可空软关联 DDL/En
         </ol>
       </article>
 
-      <article class="task" id="task-2" data-status="pending">
+      <article class="task" id="task-2" data-status="in-progress">
         <header>
           <h2>任务 2：摘要领域类型定型——PublicationAbstractSection + 两个 VO 重设计</h2>
           <dl class="files">
@@ -2149,16 +2149,76 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
       data-type 4 类：decision / change / tradeoff / other
       追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
       -->
-    </ol>
 
-    <p class="empty-state">no notes yet</p>
+      <li class="note" data-type="other" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 写「从 patra-api/ 目录跑 ./gradlew」，实际 gradlew 在仓库根，且 Gradle project path 为 <code>:patra-api:patra-catalog:patra-catalog-infra</code>（非 <code>:patra-catalog:...</code>）。后续任务命令统一按此修正。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>savePublicationAuthor 助手原签名只收 authorId 拿不到姓名，为满足 display_name NOT NULL 给它加 <code>String displayName</code> 参数，调用点显式传与 saveAuthor 一致的名字。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 步骤 6④ 假设 PortalFeedReadAdapterIT 有 affiliation 同名助手，实际没有；改为在其两处 <code>PublicationAuthorEntity.builder()</code>（saveAuthors / saveAuthorWithDeletedFlag）补 <code>.displayName(...)</code>。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>V3 表 4 表头「idx_publication 被 uk_pub_author 首列覆盖」注释随部分索引化失效，改述为「被 uk_author_order 首列覆盖」。Entity @Index 名与 DDL 索引名不一致属既有状况（validate 不校验索引），按 plan「indexes 原样」未动。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>PublicationAuthorAffiliationDao 类 javadoc 的「支持按…作者…维度查询」删去「作者」——对应派生方法已删，javadoc 同步。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>pre-commit 含 spotless，spotlessApply 重排了新增用例与助手签名换行；格式化后 IT 重跑仍全绿（39 用例 0 失败）。另：PublicationDetailReadAdapterIT.shouldReturnAuthorsInOrder 的 pubAuthorId2 是既有未使用变量，不在本任务范围，未清理。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T17:55">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T17:55">08-28 17:55</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>质量审查指出 uk_pub_author 唯一部分索引会被「同篇重复 ORCID → 同 resolvedAuthorId」阻断重导（整批回滚）。裁决：不改 DDL（spec 定唯一索引），在任务 10 写链路补去重不变量——同篇同 resolvedAuthorId 仅 author_order 最小行保留 authorId，其余置 null，并加 IT 覆盖「同篇两作者同 ORCID」。派生 delete 非 bulk DML 的性能提示也留任务 10 压测裁决。</p>
+      </li>
+    </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">0</span> decisions /
-      <span data-counter="change">0</span> changes /
+      <span data-counter="decision">3</span> decisions /
+      <span data-counter="change">2</span> changes /
       <span data-counter="tradeoff">0</span> tradeoffs /
-      <span data-counter="other">0</span> others
+      <span data-counter="other">2</span> others
     </footer>
   </aside>
 
