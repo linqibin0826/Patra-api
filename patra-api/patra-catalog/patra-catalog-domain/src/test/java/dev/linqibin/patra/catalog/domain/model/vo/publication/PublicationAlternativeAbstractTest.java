@@ -83,6 +83,8 @@ class PublicationAlternativeAbstractTest {
     assertThat(value.hasStructuredSections()).isTrue();
     assertThat(value.getFullText()).isEqualTo("第一段 第二段");
     assertThat(value.findSectionsByLabel("背景")).hasSize(1);
+    // 入参首尾空白应被 trim 后再匹配
+    assertThat(value.findSectionsByLabel("  背景 ")).hasSize(1);
   }
 
   @Test

@@ -6,6 +6,8 @@ import dev.linqibin.patra.catalog.domain.model.aggregate.PublicationAggregate;
 import dev.linqibin.patra.catalog.domain.model.enums.DatePrecision;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationDateType;
 import dev.linqibin.patra.catalog.domain.model.enums.TranslationType;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAlternativeAbstract;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationCompleteData;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationDate;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationFunding;
@@ -81,7 +83,7 @@ class PublicationImportResultMapperTest {
       PublicationTypeData pubType = PublicationTypeData.of("D016428", "Journal Article", "MeSH", 1);
       SupplMeshData supplMesh = SupplMeshData.of("C538003", 1);
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of("zh", "Publisher", "中文摘要", null, 1);
+          AlternativeAbstractData.of("zh", "Publisher", "中文摘要", List.of(), null, 1);
       PublicationDateData date = PublicationDateData.of("published", 2024, 3, 15, 1);
       InvestigatorData investigator =
           InvestigatorData.builder()
@@ -338,7 +340,7 @@ class PublicationImportResultMapperTest {
     void should_map_publisher_to_official() {
       // given
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of("zh", "Publisher", "中文摘要", null, 1);
+          AlternativeAbstractData.of("zh", "Publisher", "中文摘要", List.of(), null, 1);
 
       PublicationImportResult result =
           PublicationImportResult.builder()
@@ -357,6 +359,38 @@ class PublicationImportResultMapperTest {
       assertThat(data.alternativeAbstracts().getFirst().sourceType()).isEqualTo("publisher");
     }
 
+    @Test
+    @DisplayName("段落与版权信息应透传到翻译摘要值对象")
+    void should_pass_through_sections_and_copyright() {
+      // given
+      AlternativeAbstractData altAbstract =
+          AlternativeAbstractData.of(
+              "zh",
+              "Publisher",
+              null,
+              List.of(
+                  PublicationAbstractSection.of("目的", "评估疗效。"),
+                  PublicationAbstractSection.of(null, "补充说明。")),
+              "版权所有 2024",
+              1);
+
+      PublicationImportResult result =
+          PublicationImportResult.builder()
+              .publication(createPublication("12345678"))
+              .alternativeAbstracts(List.of(altAbstract))
+              .build();
+
+      // when
+      PublicationCompleteData data = mapper.toCompleteData(result);
+
+      // then
+      PublicationAlternativeAbstract converted = data.alternativeAbstracts().getFirst();
+      assertThat(converted.structuredSections()).hasSize(2);
+      assertThat(converted.structuredSections().getFirst().label()).isEqualTo("目的");
+      assertThat(converted.structuredSections().get(1).label()).isNull();
+      assertThat(converted.copyright()).isEqualTo("版权所有 2024");
+    }
+
     @ParameterizedTest(name = "[{index}] abstractType=\"{0}\" 应该映射为 PROFESSIONAL")
     @ValueSource(
         strings = {
@@ -373,7 +407,8 @@ class PublicationImportResultMapperTest {
     void should_map_professional_types(String abstractType) {
       // given
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of("en", abstractType, "Professional abstract", null, 1);
+          AlternativeAbstractData.of(
+              "en", abstractType, "Professional abstract", List.of(), null, 1);
 
       PublicationImportResult result =
           PublicationImportResult.builder()
@@ -398,7 +433,7 @@ class PublicationImportResultMapperTest {
     void should_map_null_or_unknown_to_official(String abstractType) {
       // given
       AlternativeAbstractData altAbstract =
-          AlternativeAbstractData.of("en", abstractType, "Some abstract", null, 1);
+          AlternativeAbstractData.of("en", abstractType, "Some abstract", List.of(), null, 1);
 
       PublicationImportResult result =
           PublicationImportResult.builder()

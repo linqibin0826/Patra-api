@@ -1,6 +1,7 @@
 package dev.linqibin.patra.catalog.infra.batch.publication;
 
 import dev.linqibin.patra.catalog.domain.model.aggregate.PublicationAggregate;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationMetadata;
 import java.util.List;
 import lombok.Builder;
@@ -320,6 +321,7 @@ public record PublicationImportResult(
   /// @param languageCode 语言代码（ISO 639-1，如 "zh"、"ja"）
   /// @param abstractType 摘要类型（如 "Publisher"、"AIMSHP"、"plain-language-summary"）
   /// @param plainText 摘要文本
+  /// @param sections 结构化摘要段落（有序列表，保顺序 / 重复标签 / 无标签段）
   /// @param copyright 版权信息
   /// @param abstractOrder 顺序号
   @Builder
@@ -327,17 +329,25 @@ public record PublicationImportResult(
       String languageCode,
       String abstractType,
       String plainText,
+      List<PublicationAbstractSection> sections,
       String copyright,
       Integer abstractOrder) {
+
+    /// Compact constructor：确保段落列表不为 null。
+    public AlternativeAbstractData {
+      sections = sections != null ? List.copyOf(sections) : List.of();
+    }
 
     /// 创建翻译摘要数据。
     public static AlternativeAbstractData of(
         String languageCode,
         String abstractType,
         String plainText,
+        List<PublicationAbstractSection> sections,
         String copyright,
         Integer order) {
-      return new AlternativeAbstractData(languageCode, abstractType, plainText, copyright, order);
+      return new AlternativeAbstractData(
+          languageCode, abstractType, plainText, sections, copyright, order);
     }
   }
 
