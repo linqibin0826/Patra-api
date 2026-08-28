@@ -13,18 +13,24 @@ export const FreshCommuter = () => (
   </div>
 );
 
-/** 通勤中途态：渲染期预置 1 号线全线打卡（子组件 effect 先于父 effect 读到），挂载后立即清掉，避免污染同源其他预览的零进度态 */
+/** 通勤中途态：渲染期预置 1 号线全线打卡（子组件 effect 先于父 effect 读到），挂载后恢复原值，不覆盖同源已有进度 */
 export const MidJourney = () => {
+  let prev: string | null = null;
   try {
+    prev = localStorage.getItem(KEY);
     localStorage.setItem(KEY, JSON.stringify(SEED));
   } catch {
     // storage 不可用时退化为零进度态，预览仍可渲染
   }
   useEffect(() => {
     try {
-      localStorage.removeItem(KEY);
+      if (prev === null) {
+        localStorage.removeItem(KEY);
+      } else {
+        localStorage.setItem(KEY, prev);
+      }
     } catch {
-      // 清理失败仅影响本页会话，忽略
+      // 恢复失败仅影响本页会话，忽略
     }
   }, []);
   return (

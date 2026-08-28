@@ -3,7 +3,7 @@
 - 预览导出名必须以 ASCII 大写字母开头（emit.mjs 的 cells 过滤 `/^[A-Z]/`）——中文导出名会被静默滤掉，报 "no exports"。
 - 宽组件预览容器不要低于 ~560px（TopBar 400px 下站名换行撑破定高，是组件真实行为）。
 - GlossaryWall 需 overrides.viewport=1280x800（lg 断点看视口宽度，容器 maxWidth 无效；900 默认视口只出 2 列且底部裁切）。
-- ContinueCard 的 MidJourney 预览用渲染期预置 localStorage 模拟进度（effect 自清理，不污染其他捕获）。
+- ContinueCard 的 MidJourney 预览用渲染期预置 localStorage 模拟进度（effect 恢复原值，不污染其他捕获与同源已有进度）。
 
 ## Re-sync 步骤（一次命令前的准备）
 

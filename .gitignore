@@ -137,3 +137,7 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+# design-sync 资产生成物（由 patra-learn/.design-sync-assets/prepare.sh 生成）
+patra-learn/.design-sync-assets/entry.css
+patra-learn/.design-sync-assets/tailwind.css
+patra-learn/.design-sync-assets/process-shim.js
