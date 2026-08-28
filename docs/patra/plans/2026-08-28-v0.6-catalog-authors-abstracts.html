@@ -31,8 +31,8 @@
           <li data-task-status="done"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
           <li data-task-status="done"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
           <li data-task-status="done"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
-          <li data-task-status="in-progress"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
-          <li data-task-status="pending"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
+          <li data-task-status="in-progress"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
           <li data-task-status="pending"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
           <li data-task-status="pending"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
           <li data-task-status="pending"><a href="#task-13">Task 13 — generation 参数全链</a></li>
@@ -1213,7 +1213,7 @@ git commit -m "feat(catalog): 摘要 Entity 类型化 jsonb + 删手工 JSON 序
         </ol>
       </article>
 
-<article class="task" id="task-9" data-status="in-progress">
+<article class="task" id="task-9" data-status="done">
         <header>
           <h2>任务 9：ORCID 轻量投影批查 DAO</h2>
           <dl class="files">
@@ -1224,7 +1224,7 @@ git commit -m "feat(catalog): 摘要 Entity 类型化 jsonb + 删手工 JSON 序
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败 IT</strong>
             <pre><code class="lang-java">  @Test
   @DisplayName("批查投影：仅返回 ACTIVE 未删作者的 orcid→authorId")
@@ -1244,7 +1244,7 @@ git commit -m "feat(catalog): 摘要 Entity 类型化 jsonb + 删手工 JSON 序
             <p>（saveAuthorWithOrcid 助手：persist AuthorEntity（status / deletedAt 按参）+ AuthorOrcidEntity 挂该 author——AuthorOrcidEntity 走 ManyToOne <code>author</code> 关联，构造时 set 关联实体，字段名以实际 Entity 为准。）运行 IT 确认编译失败。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：实现投影与查询</strong>
             <p><code>OrcidAuthorIdView.java</code>（dao 包）：</p>
             <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
@@ -1276,7 +1276,7 @@ public interface OrcidAuthorIdView {
             <p>（AuthorEntity 的 status 若为枚举而非 String，JPQL 改 <code>a.status = dev.linqibin.patra.catalog.domain.model.enums.AuthorStatus.ACTIVE</code> 形态——以实际字段类型为准，IT 会裁决。）运行 IT，预期通过。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/dao \
   patra-api/patra-catalog/patra-catalog-infra/src/integrationTest
@@ -1285,7 +1285,7 @@ git commit -m "feat(catalog): ORCID 轻量投影批查 DAO（任务 9/16）"</co
         </ol>
       </article>
 
-      <article class="task" id="task-10" data-status="pending">
+      <article class="task" id="task-10" data-status="in-progress">
         <header>
           <h2>任务 10：作者写链路（writeAuthorAssociations）+ 聚合恢复 + 闭环 IT</h2>
           <dl class="files">
@@ -2448,12 +2448,37 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p><strong>Critical 修复</strong>：PublicationAbstractSection.isLabeled() 被 Jackson 拾取为 bean 属性，把 "labeled" 写进 jsonb——读端严格 Jackson 2 反序列化 AbstractSectionView 会静默降级空列表（v0.5 症状类复现）。重命名为 hasLabel()（javadoc 写明刻意避开 bean getter 形态防回退；4 调用点零残留；未用 @JsonIgnore 保 domain 零 Jackson 依赖）。补两条 wire format 回归锚：生产同款 Jackson3JsonFormatMapper 精确串断言 + 严格 Jackson 2 读端路径复刻（反向验证会红）。PublicationDetailReadAdapterIT 10/10 复绿。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-29T05:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T05:10">08-29 05:10</time>
+          <a href="#task-9">§ Task 9</a>
+        </header>
+        <p>JPQL 删去 plan 写的 <code>AND a.deletedAt IS NULL</code>——SoftDeletableJpaEntity 用 Hibernate 原生 @SoftDelete（表级注解，无 Java 字段可引用，写了直接语义解析错）；Hibernate 对 cat_author 的表引用（含 JOIN 侧）自动追加 deleted_at IS NULL。IT 用「ACTIVE+已软删」数据实证 JOIN 侧过滤生效，方法 javadoc 已写明防误补。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T05:10">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T05:10">08-29 05:10</time>
+          <a href="#task-9">§ Task 9</a>
+        </header>
+        <p>IT 助手用 JdbcTemplate 直插而非 persist Entity——AuthorEntity 的 orcids 子集合 cascade=ALL+orphanRemoval，走 em.remove 软删会级联硬删 ORCID 子行、把测试变成假命题；软删靠 SQL UPDATE deleted_at（同包 PublicationDaoTopByVenueIT 先例）。额外补空入参用例。IT 落 dao 包（不套用 PublicationAuthorAffiliationDaoIT——其目录与 package 不一致属既有问题未动）。任务 10 接口提示：未命中 ORCID 不产生行，写链路收成 Map 后缺失即保持 NULL。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T06:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T06:00">08-29 06:00</time>
+          <a href="#task-9">§ Task 9</a>
+        </header>
+        <p>质量审查收口：DAO javadoc 固化契约（单次规模有界/未命中不产生行/uk_orcid 至多一行）；ORCID_ABSENT 样例改校验位合法值；空入参用例命名收敛；IT setUp 补清父表（原生 DELETE 绕 @SoftDelete 改写）。<strong>任务 10 义务</strong>：ORCID 收成后按 5000/片分片调用再合并 Map（PG 绑定参数 65535 悬崖）；(a,b)-&gt;a merge 承接多片。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">6</span> decisions /
-      <span data-counter="change">18</span> changes /
+      <span data-counter="decision">7</span> decisions /
+      <span data-counter="change">20</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
       <span data-counter="other">10</span> others
     </footer>
