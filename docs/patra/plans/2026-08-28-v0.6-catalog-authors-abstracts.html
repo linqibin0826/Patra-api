@@ -33,8 +33,8 @@
           <li data-task-status="done"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
           <li data-task-status="done"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
           <li data-task-status="done"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
-          <li data-task-status="in-progress"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
-          <li data-task-status="pending"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
+          <li data-task-status="done"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
+          <li data-task-status="in-progress"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
           <li data-task-status="pending"><a href="#task-13">Task 13 — generation 参数全链</a></li>
           <li data-task-status="pending"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
           <li data-task-status="pending"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
@@ -1554,7 +1554,7 @@ git commit -m "feat(catalog): 作者写链路+ORCID软关联+聚合恢复闭环�
         </ol>
       </article>
 
-      <article class="task" id="task-11" data-status="in-progress">
+      <article class="task" id="task-11" data-status="done">
         <header>
           <h2>任务 11：读端 SQL 改行内名 + parseSections 上下文日志</h2>
           <dl class="files">
@@ -1564,7 +1564,7 @@ git commit -m "feat(catalog): 作者写链路+ORCID软关联+聚合恢复闭环�
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败 IT（快照语义）</strong>
             <p>两个读端 IT 各加一条：</p>
             <pre><code class="lang-java">  @Test
@@ -1594,7 +1594,7 @@ git commit -m "feat(catalog): 作者写链路+ORCID软关联+聚合恢复闭环�
             <p>（savePublicationAuthor 助手加 displayName 尾参；saveAbstract 在 Entity 类型化后无法直塞坏 JSON——malformed 用例改用 <code>em.getEntityManager().createNativeQuery("UPDATE cat_publication_abstract SET structured_sections = to_jsonb('not-a-json-array'::text) WHERE publication_id = :id")</code> 注入坏形态，或 INSERT 原生 SQL。）</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：改两条 SQL</strong>
             <p><code>PublicationDetailDao.findAuthorsByPublicationId</code>：</p>
             <pre><code class="lang-sql">SELECT pa.author_order AS "order", pa.is_first_author AS "first",
@@ -1611,7 +1611,7 @@ ORDER BY pa.author_order ASC, pa.id ASC</code></pre>
             <p>两处 javadoc 同步：删「已过滤软删 author」句，改为「作者为文献快照（行内 display_name），不受 cat_author 软删/合并影响」。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：parseSections 带上下文</strong>
             <pre><code class="lang-java">  /// 解析结构化摘要 JSON（有序数组形态）。
   ///
@@ -1636,13 +1636,13 @@ ORDER BY pa.author_order ASC, pa.id ASC</code></pre>
             <p>调用点改：<code>.abstractSections(parseSections(main.getId(), main.getAbstractType(), main.getStructuredSectionsJson()))</code>。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：IT 全量改写并验证</strong>
             <p>两个读端 IT 的既有用例改造：① 数据助手 <code>savePublicationAuthor</code> 必须写 displayName（作者名断言以 displayName 为准）；② 原「过滤软删 author」类断言反转为快照语义（见步骤 1 用例）；③ 结构化摘要用例的 JSON 构造维持数组形态（本来就是数组，不变）。运行：</p>
             <p><code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationDetailReadAdapterIT" --tests "*PortalFeedReadAdapterIT"</code>，预期全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra
 git commit -m "feat(catalog): 详情/Feed 作者读行内快照 + parseSections 上下文日志（任务 11/16）"</code></pre>
@@ -1650,7 +1650,7 @@ git commit -m "feat(catalog): 详情/Feed 作者读行内快照 + parseSections 
         </ol>
       </article>
 
-      <article class="task" id="task-12" data-status="pending">
+      <article class="task" id="task-12" data-status="in-progress">
         <header>
           <h2>任务 12：摘要写读 round-trip IT（断言矩阵）</h2>
           <dl class="files">
@@ -2498,12 +2498,37 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查驱动的三组改造：① 6 处 toAggregate 全挂 loadAuthors（含 findByDoi/findByPmidOrDoi/两个 venue list finder），port javadoc 写死「完整重建聚合、getAuthors 空即确无作者」契约；② 两 DAO deleteAllByPublicationIdIn 改 @Modifying bulk DML——DELETE 立即下发，flush 定序隐患被消除而非绕开（显式 flush 及注释删除，删旧行范围取 data 全集使替换语义无条件成立）；③ IT 补强（机构删除断言真实化、作者行 id 更换、双作者机构归属、initials/suffix/equalContribution 双向映射）。裁定：venue list finder 零生产调用方，2N 查询不加批量重载（无界列表未来正确形态是随分页签名长出）；port javadoc 成本提示 2 行留作可选尾巴。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-29T09:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T09:45">08-29 09:45</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>读端 mapper 统一（任务 8 审查建议落地）：PublicationDetailReadAdapter 的裸 Jackson 2 ObjectMapper 改为构造注入 Jackson 3 Bean（对齐 OpenAlexSourcesClient 等既有注入先例），消除写 Jackson 3 / 读 Jackson 2 双 mapper 形态漂移根因；Detail IT @Import 补 JacksonAutoConfiguration（切片默认无该 bean，仓内先例同款）。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T09:45">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T09:45">08-29 09:45</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>软删注入用原生 query（Feed IT 既有先例，仓内无 JdbcTemplate 用法）；Feed 快照断言比 plan 模板强——cat_author 名故意写 "Renamed D." 而快照写 "Snapshot D."，同时证明不过滤软删与名字取行内列。malformed 用例 abstract_type 用大写 STRUCTURED（对齐落库值）；旧用例的小写 "structured" 属既有测试数据未动。助手对 cat_author 写入按最小改动保留（authorId 软关联位仍填）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T10:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T10:40">08-29 10:40</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>质量审查收口：① 「与写端同源」注释改事实表述（两个 Jackson 3 实例配置不共享，wire format 由 key 集合断言钉死）；② 任务 8 的严格读端锚随读端切宽松 Jackson 3 而失效——改为读端同款宽松还原锚，拦截未知属性的职责显式归 key 集合断言（hasLabel javadoc 措辞同步）；③ Detail 快照用例 author_id 改 NULL（生产主形态，护栏覆盖反而更大——任何 JOIN cat_author 复活即红）；④ saveSoftDeletedAuthor 删除（Detail SQL 已不引用 cat_author 无鉴别力，软删回归集中 Feed 侧 Renamed/Snapshot 用例，两侧各守一个失效模式）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">8</span> decisions /
-      <span data-counter="change">22</span> changes /
+      <span data-counter="decision">9</span> decisions /
+      <span data-counter="change">24</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
       <span data-counter="other">10</span> others
     </footer>
