@@ -111,3 +111,41 @@ describe("parseInlineMarkup · 排版标签", () => {
     expect(parseInlineMarkup("&lt;i&gt;x&lt;/i&gt;")).toEqual([text("<i>x</i>")]);
   });
 });
+
+describe("parseInlineMarkup · 降级铁律与安全", () => {
+  it("正文里的裸 < 按字面保留", () => {
+    expect(parseInlineMarkup("P <median vs >0.05")).toEqual([text("P <median vs >0.05")]);
+    expect(parseInlineMarkup("CD4 <0.05 cells")).toEqual([text("CD4 <0.05 cells")]);
+  });
+
+  it("白名单外标签按字面保留", () => {
+    expect(parseInlineMarkup("<fib-4> index")).toEqual([text("<fib-4> index")]);
+    expect(parseInlineMarkup("<script>alert(1)</script>")).toEqual([
+      text("<script>alert(1)</script>"),
+    ]);
+  });
+
+  it("未闭合标签自动闭合到段尾", () => {
+    expect(parseInlineMarkup("<i>abc")).toEqual([el("i", text("abc"))]);
+  });
+
+  it("孤儿闭合标签按字面保留", () => {
+    expect(parseInlineMarkup("abc</i>def")).toEqual([text("abc</i>def")]);
+  });
+
+  it("交叉嵌套：闭合外层时内层自动闭合", () => {
+    expect(parseInlineMarkup("<i>a<b>c</i>d")).toEqual([
+      el("i", text("a"), el("b", text("c"))),
+      text("d"),
+    ]);
+  });
+
+  it("恶意元素按字面保留", () => {
+    expect(parseInlineMarkup("<img src=x onerror=alert(1)>")).toEqual([
+      text("<img src=x onerror=alert(1)>"),
+    ]);
+    expect(parseInlineMarkup('<a href="javascript:alert(1)">x</a>')).toEqual([
+      text('<a href="javascript:alert(1)">x</a>'),
+    ]);
+  });
+});
