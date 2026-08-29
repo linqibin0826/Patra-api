@@ -5,7 +5,8 @@ import type { PaperDetail } from "@/types/portal";
 /** 摘要正文段：统一排版 + 白名单富文本渲染（三处共用）。 */
 function BodyText({ text }: { text: string }) {
   return (
-    <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">
+    // 左对齐 + text-wrap:pretty：断行更均匀、消孤行，右缘参差显著缓解；不用 justify（浏览器贪心断行会拉出不均匀词距，WCAG 亦不建议）
+    <p className="m-0 text-pretty font-serif text-lg leading-relaxed text-ink-800">
       <RichInlineText text={text} />
     </p>
   );
