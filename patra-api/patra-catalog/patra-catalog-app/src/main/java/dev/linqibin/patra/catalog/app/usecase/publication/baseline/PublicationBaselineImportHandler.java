@@ -70,7 +70,7 @@ public class PublicationBaselineImportHandler
     try {
       // 构建导入参数
       PublicationImportParams params =
-          PublicationImportParams.of(command.baseUrl(), command.fileIndex());
+          PublicationImportParams.of(command.baseUrl(), command.fileIndex(), command.generation());
 
       // 启动批处理导入
       Long executionId = publicationBatchPort.launchBaselineImport(params);

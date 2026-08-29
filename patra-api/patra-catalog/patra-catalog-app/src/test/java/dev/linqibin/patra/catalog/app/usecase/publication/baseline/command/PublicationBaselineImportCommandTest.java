@@ -25,7 +25,7 @@ class PublicationBaselineImportCommandTest {
     @DisplayName("有效参数应该成功创建命令")
     void should_create_command_with_valid_params() {
       // when
-      var command = new PublicationBaselineImportCommand(BASE_URL, 1);
+      var command = new PublicationBaselineImportCommand(BASE_URL, 1, null);
 
       // then
       assertThat(command.baseUrl()).isEqualTo(BASE_URL);
@@ -35,7 +35,7 @@ class PublicationBaselineImportCommandTest {
     @Test
     @DisplayName("baseUrl 为空时应该抛出异常")
     void should_throw_when_base_url_is_blank() {
-      assertThatThrownBy(() -> new PublicationBaselineImportCommand("", 1))
+      assertThatThrownBy(() -> new PublicationBaselineImportCommand("", 1, null))
           .isInstanceOf(CatalogScheduleParameterException.class)
           .hasMessageContaining("baseUrl");
     }
@@ -43,7 +43,7 @@ class PublicationBaselineImportCommandTest {
     @Test
     @DisplayName("baseUrl 为 null 时应该抛出异常")
     void should_throw_when_base_url_is_null() {
-      assertThatThrownBy(() -> new PublicationBaselineImportCommand(null, 1))
+      assertThatThrownBy(() -> new PublicationBaselineImportCommand(null, 1, null))
           .isInstanceOf(CatalogScheduleParameterException.class)
           .hasMessageContaining("baseUrl");
     }
@@ -51,7 +51,7 @@ class PublicationBaselineImportCommandTest {
     @Test
     @DisplayName("baseUrl 不是 HTTP 协议时应该抛出异常")
     void should_throw_when_base_url_is_not_http() {
-      assertThatThrownBy(() -> new PublicationBaselineImportCommand("ftp://example.com", 1))
+      assertThatThrownBy(() -> new PublicationBaselineImportCommand("ftp://example.com", 1, null))
           .isInstanceOf(CatalogScheduleParameterException.class)
           .hasMessageContaining("HTTP");
     }
@@ -59,7 +59,7 @@ class PublicationBaselineImportCommandTest {
     @Test
     @DisplayName("fileIndex 小于 1 时应该抛出异常")
     void should_throw_when_file_index_less_than_1() {
-      assertThatThrownBy(() -> new PublicationBaselineImportCommand(BASE_URL, 0))
+      assertThatThrownBy(() -> new PublicationBaselineImportCommand(BASE_URL, 0, null))
           .isInstanceOf(CatalogScheduleParameterException.class)
           .hasMessageContaining("fileIndex");
     }
@@ -67,7 +67,7 @@ class PublicationBaselineImportCommandTest {
     @Test
     @DisplayName("fileIndex 大于 1334 时应该抛出异常")
     void should_throw_when_file_index_greater_than_1334() {
-      assertThatThrownBy(() -> new PublicationBaselineImportCommand(BASE_URL, 1335))
+      assertThatThrownBy(() -> new PublicationBaselineImportCommand(BASE_URL, 1335, null))
           .isInstanceOf(CatalogScheduleParameterException.class)
           .hasMessageContaining("fileIndex");
     }
@@ -76,7 +76,7 @@ class PublicationBaselineImportCommandTest {
     @DisplayName("fileIndex 边界值 1 应该有效")
     void should_accept_file_index_1() {
       // when
-      var command = new PublicationBaselineImportCommand(BASE_URL, 1);
+      var command = new PublicationBaselineImportCommand(BASE_URL, 1, null);
 
       // then
       assertThat(command.fileIndex()).isEqualTo(1);
@@ -86,7 +86,7 @@ class PublicationBaselineImportCommandTest {
     @DisplayName("fileIndex 边界值 1334 应该有效")
     void should_accept_file_index_1334() {
       // when
-      var command = new PublicationBaselineImportCommand(BASE_URL, 1334);
+      var command = new PublicationBaselineImportCommand(BASE_URL, 1334, null);
 
       // then
       assertThat(command.fileIndex()).isEqualTo(1334);
@@ -106,6 +106,41 @@ class PublicationBaselineImportCommandTest {
       // then
       assertThat(command.baseUrl()).isEqualTo(BASE_URL);
       assertThat(command.fileIndex()).isEqualTo(42);
+    }
+
+    @Test
+    @DisplayName("两参 of() 应保持 generation 为 null")
+    void should_keep_generation_null_when_omitted() {
+      // when
+      var command = PublicationBaselineImportCommand.of(BASE_URL, 42);
+
+      // then
+      assertThat(command.generation()).isNull();
+    }
+  }
+
+  @Nested
+  @DisplayName("generation 归一化")
+  class GenerationNormalization {
+
+    @Test
+    @DisplayName("应保留并去除 generation 首尾空白")
+    void should_trim_generation() {
+      // when
+      var command = PublicationBaselineImportCommand.of(BASE_URL, 42, "  v0.6  ");
+
+      // then
+      assertThat(command.generation()).isEqualTo("v0.6");
+    }
+
+    @Test
+    @DisplayName("空白 generation 应归一化为 null")
+    void should_normalize_blank_generation_to_null() {
+      // when
+      var command = PublicationBaselineImportCommand.of(BASE_URL, 42, "   ");
+
+      // then
+      assertThat(command.generation()).isNull();
     }
   }
 }

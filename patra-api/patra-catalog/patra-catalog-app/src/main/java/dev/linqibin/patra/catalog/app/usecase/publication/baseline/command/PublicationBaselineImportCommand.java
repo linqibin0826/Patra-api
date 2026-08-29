@@ -24,6 +24,7 @@ import java.net.URI;
 ///
 /// - **baseUrl**：FTP 基础 URL，必填，必须是 HTTP/HTTPS 协议
 /// - **fileIndex**：文件索引（1-1334），对应 pubmed26n0001.xml.gz ~ pubmed26n1334.xml.gz
+/// - **generation**：代次标识，可选，null 表示沿用现有 JobInstance 语义（断点续传）
 ///
 /// **不变量**：
 ///
@@ -37,15 +38,18 @@ import java.net.URI;
 ///
 /// @param baseUrl FTP 基础 URL（必填，HTTP/HTTPS 协议）
 /// @param fileIndex 文件索引（1-1334）
+/// @param generation 代次标识（可空）
 /// @author linqibin
 /// @since 0.1.0
-public record PublicationBaselineImportCommand(String baseUrl, int fileIndex)
+public record PublicationBaselineImportCommand(String baseUrl, int fileIndex, String generation)
     implements Command<PublicationBaselineImportResult> {
 
   /// 2025 Baseline 文件总数。
   private static final int TOTAL_FILE_COUNT = PublicationImportParams.TOTAL_FILE_COUNT;
 
   /// 构造并验证命令参数。
+  ///
+  /// `generation` 不做取值校验，仅将空白归一化为 null。
   ///
   /// @throws CatalogScheduleParameterException 当 baseUrl 为空或格式无效时
   /// @throws CatalogScheduleParameterException 当 fileIndex 不在有效范围内时
@@ -58,16 +62,32 @@ public record PublicationBaselineImportCommand(String baseUrl, int fileIndex)
       throw new CatalogScheduleParameterException(
           "fileIndex 必须在 1 到 %d 之间，当前值：%d".formatted(TOTAL_FILE_COUNT, fileIndex));
     }
+    generation = CharSequenceUtil.isBlank(generation) ? null : generation.trim();
   }
 
-  /// 从参数构建命令。
+  /// 从参数构建命令（默认代次：不指定 generation，维持断点续传语义）。
+  ///
+  /// 这是常规导入的默认入口：相同 `fileIndex` 复用同一 JobInstance，
+  /// Job 失败后重跑可从上次中断处继续。
   ///
   /// @param baseUrl FTP 基础 URL
   /// @param fileIndex 文件索引
   /// @return 构建的命令对象
   /// @throws CatalogScheduleParameterException 当参数无效时
   public static PublicationBaselineImportCommand of(String baseUrl, int fileIndex) {
-    return new PublicationBaselineImportCommand(baseUrl, fileIndex);
+    return new PublicationBaselineImportCommand(baseUrl, fileIndex, null);
+  }
+
+  /// 从参数构建命令。
+  ///
+  /// @param baseUrl FTP 基础 URL
+  /// @param fileIndex 文件索引
+  /// @param generation 代次标识（可空）
+  /// @return 构建的命令对象
+  /// @throws CatalogScheduleParameterException 当参数无效时
+  public static PublicationBaselineImportCommand of(
+      String baseUrl, int fileIndex, String generation) {
+    return new PublicationBaselineImportCommand(baseUrl, fileIndex, generation);
   }
 
   /// 验证 URL 格式（必须是 HTTP 或 HTTPS 协议）。

@@ -2,6 +2,7 @@ package dev.linqibin.patra.catalog.domain.model.vo.publication;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -90,6 +91,35 @@ class PublicationImportParamsTest {
       var params = PublicationImportParams.of(BASE_URL, 1334);
 
       assertEquals("pubmed26n1334.xml.gz", params.getFileName());
+    }
+  }
+
+  @Nested
+  @DisplayName("generation 归一化")
+  class GenerationTest {
+
+    @Test
+    @DisplayName("两参 of() 应保持 generation 为 null")
+    void should_keep_generation_null_when_omitted() {
+      var params = PublicationImportParams.of(BASE_URL, 1);
+
+      assertNull(params.generation());
+    }
+
+    @Test
+    @DisplayName("应保留并去除 generation 首尾空白")
+    void should_trim_generation() {
+      var params = PublicationImportParams.of(BASE_URL, 1, "  v0.6  ");
+
+      assertEquals("v0.6", params.generation());
+    }
+
+    @Test
+    @DisplayName("空白 generation 应归一化为 null")
+    void should_normalize_blank_generation_to_null() {
+      var params = PublicationImportParams.of(BASE_URL, 1, "   ");
+
+      assertNull(params.generation());
     }
   }
 
