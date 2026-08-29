@@ -17,7 +17,7 @@ import lombok.Builder;
 /// @param foreName 名（可空）
 /// @param initials 缩写（可空）
 /// @param suffix 后缀（可空，不拼入 displayName）
-/// @param collectiveName 集体作者名（个人作者为 null）
+/// @param collectiveName 集体作者名（个人作者为 null，超长按 500 截断）
 /// @param displayName 展示名（恒非空，由 [#deriveDisplayName] 派生）
 /// @param orcid 归一化 ORCID（可空）
 /// @param authorId 软关联作者 ID（可空）
@@ -47,10 +47,16 @@ public record PublicationAuthorSnapshot(
   /// 展示名列宽上限（与 DDL `display_name VARCHAR(200)` 对齐）。
   private static final int DISPLAY_NAME_MAX_LENGTH = 200;
 
-  /// 紧凑构造器：校验 + 空白归一化 + 机构列表防御性拷贝。
+  /// 集体作者名列宽上限（与 DDL `collective_name VARCHAR(500)` 对齐）。
+  private static final int COLLECTIVE_NAME_MAX_LENGTH = 500;
+
+  /// 紧凑构造器：校验 + 空白归一化 + 集体名截断 + 机构列表防御性拷贝。
   ///
   /// 展示名列宽校验在此兜底：绕过 [#deriveDisplayName] 直接 build 的超长展示名
   /// 在领域层即失败，而非拖到数据库写入才炸。
+  ///
+  /// 集体作者名同样是 PubMed 侧无长度约束的自由文本，超长时截断而非抛异常：
+  /// 一个超长集体名不应导致整篇文献被跳过（与机构原文一致的处置）。
   ///
   /// @throws IllegalArgumentException 如果作者顺序小于 1、展示名为空白或超过 200 字符
   public PublicationAuthorSnapshot {
@@ -59,6 +65,9 @@ public record PublicationAuthorSnapshot(
     Assert.isTrue(
         displayName.length() <= DISPLAY_NAME_MAX_LENGTH, "作者展示名长度不能超过 " + DISPLAY_NAME_MAX_LENGTH);
     collectiveName = StrUtil.trimToNull(collectiveName);
+    if (collectiveName != null) {
+      collectiveName = truncate(collectiveName, COLLECTIVE_NAME_MAX_LENGTH);
+    }
     affiliations = affiliations != null ? List.copyOf(affiliations) : List.of();
   }
 
@@ -74,7 +83,7 @@ public record PublicationAuthorSnapshot(
       String lastName, String foreName, String initials, String collectiveName) {
     String collective = StrUtil.trimToNull(collectiveName);
     if (collective != null) {
-      return truncate(collective);
+      return truncate(collective, DISPLAY_NAME_MAX_LENGTH);
     }
     String last = StrUtil.trimToNull(lastName);
     if (last == null) {
@@ -82,24 +91,22 @@ public record PublicationAuthorSnapshot(
     }
     String fore = StrUtil.trimToNull(foreName);
     if (fore != null) {
-      return truncate(last + " " + fore);
+      return truncate(last + " " + fore, DISPLAY_NAME_MAX_LENGTH);
     }
     String init = StrUtil.trimToNull(initials);
     if (init != null) {
-      return truncate(last + " " + init);
+      return truncate(last + " " + init, DISPLAY_NAME_MAX_LENGTH);
     }
-    return truncate(last);
+    return truncate(last, DISPLAY_NAME_MAX_LENGTH);
   }
 
-  /// 按展示名列宽截断，并去除截断后可能残留的首尾空白。
+  /// 按给定列宽截断，并去除截断后可能残留的首尾空白。
   ///
   /// @param value 待截断字符串
-  /// @return 长度不超过 200 且无首尾空白的字符串
-  private static String truncate(String value) {
-    String limited =
-        value.length() <= DISPLAY_NAME_MAX_LENGTH
-            ? value
-            : value.substring(0, DISPLAY_NAME_MAX_LENGTH);
+  /// @param maxLength 列宽上限
+  /// @return 长度不超过 maxLength 且无首尾空白的字符串
+  private static String truncate(String value, int maxLength) {
+    String limited = value.length() <= maxLength ? value : value.substring(0, maxLength);
     return limited.strip();
   }
 

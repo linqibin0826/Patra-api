@@ -143,6 +143,23 @@ class PublicationAuthorSnapshotTest {
     assertThat(snap.affiliationString()).isEqualTo("Harvard");
   }
 
+  @Test
+  @DisplayName("集体作者名超过 500 字符时应截断，展示名仍受 200 约束")
+  void snapshot_collectiveNameOver500_shouldTruncate() {
+    String longCollectiveName = "C".repeat(600);
+
+    var snap =
+        PublicationAuthorSnapshot.builder()
+            .order(1)
+            .collectiveName(longCollectiveName)
+            .displayName(
+                PublicationAuthorSnapshot.deriveDisplayName(null, null, null, longCollectiveName))
+            .build();
+
+    assertThat(snap.collectiveName()).hasSize(500);
+    assertThat(snap.displayName()).hasSize(200);
+  }
+
   /// 构造仅指定集体作者名的快照。
   ///
   /// @param collectiveName 集体作者名
