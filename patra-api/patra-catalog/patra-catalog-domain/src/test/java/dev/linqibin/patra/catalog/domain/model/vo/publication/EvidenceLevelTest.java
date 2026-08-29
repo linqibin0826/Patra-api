@@ -31,6 +31,13 @@ class EvidenceLevelTest {
   }
 
   @Test
+  @DisplayName("Scoping review 不做效应合成 → 2 档（非系统综述）")
+  void scopingReview_ranksAsNonSystematicReview() {
+    assertThat(EvidenceLevel.classify(List.of("Scoping Review")))
+        .isEqualTo(EvidenceLevel.NON_SYSTEMATIC_REVIEW);
+  }
+
+  @Test
   @DisplayName("多类型取最强档：Journal Article + Meta-Analysis → 5 档")
   void takesStrongest() {
     assertThat(EvidenceLevel.classify(List.of("Journal Article", "Meta-Analysis")))
