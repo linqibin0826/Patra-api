@@ -19,11 +19,10 @@ describe("EvidenceBadge", () => {
     expect(screen.getByText(/RCT/)).toBeInTheDocument();
     expect(screen.getByText("衍生")).toBeInTheDocument();
   });
-  it("UNKNOWN：muted 态显示 ? 且无衍生标记", () => {
-    render(
+  it("UNKNOWN：不渲染徽章（未分级无信息量，仅速览行保留）", () => {
+    const { container } = render(
       <EvidenceBadge level={{ level: "UNKNOWN", rank: 0, label: "未分级", derived: false }} />,
     );
-    expect(screen.getByText("?")).toBeInTheDocument();
-    expect(screen.queryByText("衍生")).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 });

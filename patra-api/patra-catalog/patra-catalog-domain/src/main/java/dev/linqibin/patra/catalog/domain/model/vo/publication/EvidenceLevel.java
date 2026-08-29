@@ -55,7 +55,6 @@ public enum EvidenceLevel {
           Map.entry("systematic review", SYSTEMATIC_REVIEW),
           Map.entry("meta-analysis", SYSTEMATIC_REVIEW),
           Map.entry("network meta-analysis", SYSTEMATIC_REVIEW),
-          Map.entry("scoping review", SYSTEMATIC_REVIEW),
           Map.entry("randomized controlled trial", RANDOMIZED_CONTROLLED_TRIAL),
           Map.entry("pragmatic clinical trial", RANDOMIZED_CONTROLLED_TRIAL),
           Map.entry("equivalence trial", RANDOMIZED_CONTROLLED_TRIAL),
@@ -72,6 +71,7 @@ public enum EvidenceLevel {
           Map.entry("clinical trial, phase iv", NON_SYSTEMATIC_REVIEW),
           Map.entry("practice guideline", NON_SYSTEMATIC_REVIEW),
           Map.entry("consensus statement", NON_SYSTEMATIC_REVIEW),
+          Map.entry("scoping review", NON_SYSTEMATIC_REVIEW),
           Map.entry("case reports", CASE_REPORT));
 
   /// 由出版类型词汇列表衍生证据等级（取最强档）。
