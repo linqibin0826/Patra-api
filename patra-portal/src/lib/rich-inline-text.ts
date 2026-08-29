@@ -32,13 +32,89 @@ export function decodeEntities(text: string): string {
   });
 }
 
+type ElementNode = Extract<InlineNode, { kind: "element" }>;
+
+/** 排版组白名单：任何位置放行。 */
+const FORMATTING_TAGS = new Set(["i", "b", "sub", "sup", "u"]);
+
+/** 标签形态：`<` 后紧跟可选 `/` 与标签名（`<`、`</` 后跟空白按 HTML 规范视为文本）、可选属性段（不含尖括号）、可选自闭合 `/`、`>`。 */
+const TAG_RE = /^<(\/?)([a-zA-Z][a-zA-Z0-9]*)(?:\s[^<>]*)?\s*\/?\s*>/;
+
 /**
- * 把带内联标记的文本解析为节点树。
- * 本阶段：纯文本 + 实体解码（标签解析在后续任务加入）。
+ * 把带内联标记的文本解析为节点树（栈式单遍扫描）。
+ *
+ * 铁律：白名单外的一切（未知标签、裸 `<`、孤儿闭合标签）按字面文本输出，
+ * 一个字符都不吞；未闭合标签自动闭合到段尾；属性全剥；标签名大小写不敏感。
+ * 实体解码发生在文本片段层（flushText），晚于标签识别，解码产物不可能再被识别为标签。
  */
 export function parseInlineMarkup(text: string): InlineNode[] {
-  if (text.length === 0) {
-    return [];
+  const rootChildren: InlineNode[] = [];
+  const stack: ElementNode[] = [];
+  let buf = "";
+  let i = 0;
+
+  const currentChildren = (): InlineNode[] => stack.at(-1)?.children ?? rootChildren;
+
+  const flushText = (): void => {
+    if (buf.length > 0) {
+      currentChildren().push({ kind: "text", value: decodeEntities(buf) });
+      buf = "";
+    }
+  };
+
+  const isAllowed = (tag: string): boolean => FORMATTING_TAGS.has(tag);
+
+  while (i < text.length) {
+    const ch = text.charAt(i);
+    if (ch !== "<") {
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    const m = TAG_RE.exec(text.slice(i));
+    if (m === null) {
+      // 裸 `<`（接不出合法标签形态）→ 字面
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    const isClosing = m[1] === "/";
+    const tag = (m[2] ?? "").toLowerCase();
+    if (isClosing) {
+      let openIdx = -1;
+      for (let s = stack.length - 1; s >= 0; s -= 1) {
+        if (stack[s]?.tag === tag) {
+          openIdx = s;
+          break;
+        }
+      }
+      if (openIdx === -1) {
+        // 孤儿闭合标签 → 字面（`<` 进 buf，其余字符随后续扫描继续进 buf）
+        buf += ch;
+        i += 1;
+        continue;
+      }
+      flushText();
+      // 弹栈到匹配层：中间未闭合的标签自动闭合
+      stack.length = openIdx;
+      i += m[0].length;
+      continue;
+    }
+    if (!isAllowed(tag)) {
+      // 白名单外标签 → 字面
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    flushText();
+    const element: ElementNode = { kind: "element", tag, children: [] };
+    currentChildren().push(element);
+    // 自闭合（如 <mspace/>）不进栈
+    if (!/\/\s*>$/.test(m[0])) {
+      stack.push(element);
+    }
+    i += m[0].length;
   }
-  return [{ kind: "text", value: decodeEntities(text) }];
+  flushText();
+  return rootChildren;
 }

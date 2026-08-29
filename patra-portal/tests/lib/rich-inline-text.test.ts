@@ -14,7 +14,6 @@ const el = (tag: string, ...children: InlineNode[]): InlineNode => ({
 function textOf(nodes: InlineNode[]): string {
   return nodes.map((n) => (n.kind === "text" ? n.value : textOf(n.children))).join("");
 }
-void el;
 void textOf;
 
 describe("decodeEntities", () => {
@@ -67,5 +66,48 @@ describe("parseInlineMarkup · 纯文本", () => {
 
   it("文本中的实体被解码", () => {
     expect(parseInlineMarkup("A &amp; B")).toEqual([text("A & B")]);
+  });
+});
+
+describe("parseInlineMarkup · 排版标签", () => {
+  it("解析下标：CO<sub>2</sub>", () => {
+    expect(parseInlineMarkup("CO<sub>2</sub> fixation")).toEqual([
+      text("CO"),
+      el("sub", text("2")),
+      text(" fixation"),
+    ]);
+  });
+
+  it("解析上标 / 斜体 / 粗体 / 下划线", () => {
+    expect(parseInlineMarkup("h<sup>-1</sup>")).toEqual([text("h"), el("sup", text("-1"))]);
+    expect(parseInlineMarkup("<i>E. coli</i>")).toEqual([el("i", text("E. coli"))]);
+    expect(parseInlineMarkup("<b>P</b>")).toEqual([el("b", text("P"))]);
+    expect(parseInlineMarkup("<u>x</u>")).toEqual([el("u", text("x"))]);
+  });
+
+  it("支持嵌套", () => {
+    expect(parseInlineMarkup("<i>A<sub>n</sub></i>")).toEqual([
+      el("i", text("A"), el("sub", text("n"))),
+    ]);
+  });
+
+  it("剥离全部属性", () => {
+    expect(parseInlineMarkup('<i class="x" onclick="alert(1)">y</i>')).toEqual([
+      el("i", text("y")),
+    ]);
+  });
+
+  it("标签名大小写不敏感，归一化小写", () => {
+    expect(parseInlineMarkup("<SUP>2</SUP>")).toEqual([el("sup", text("2"))]);
+  });
+
+  it("< 或 </ 后跟空白不构成标签（HTML 规范：视为文本）", () => {
+    expect(parseInlineMarkup("a < b and c > d")).toEqual([text("a < b and c > d")]);
+    expect(parseInlineMarkup("< i>x")).toEqual([text("< i>x")]);
+    expect(parseInlineMarkup("</ i>x")).toEqual([text("</ i>x")]);
+  });
+
+  it("实体不会被解码成标签（解码在文本片段层，晚于标签识别）", () => {
+    expect(parseInlineMarkup("&lt;i&gt;x&lt;/i&gt;")).toEqual([text("<i>x</i>")]);
   });
 });
