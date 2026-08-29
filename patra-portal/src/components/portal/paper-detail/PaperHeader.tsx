@@ -2,6 +2,7 @@ import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { BookmarkButton } from "@/components/portal/paper-detail/BookmarkButton";
 import { EvidenceBadge } from "@/components/portal/paper-detail/EvidenceBadge";
+import { RichInlineText } from "@/components/portal/RichInlineText";
 import { deriveByline, deriveFullText } from "@/lib/portal-api/publication-derive";
 import { btnPrimary, btnSecondary } from "@/lib/portal-ui";
 import type { PaperDetail } from "@/types/portal";
@@ -29,11 +30,11 @@ export function PaperHeader({ paper }: { paper: PaperDetail }) {
       </div>
 
       <h1 className="m-0 mb-1.5 text-pretty font-serif text-[clamp(26px,3.4vw,36px)] font-medium leading-[1.16] tracking-[-0.02em] text-(--fg-1)">
-        {paper.title}
+        <RichInlineText text={paper.title} />
       </h1>
       {paper.originalTitle && (
         <p className="m-0 mb-4 font-serif text-lg italic leading-snug text-(--fg-3)">
-          {paper.originalTitle}
+          <RichInlineText text={paper.originalTitle} />
         </p>
       )}
 

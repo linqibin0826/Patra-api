@@ -27,6 +27,18 @@ describe("RichInlineText", () => {
     const { container } = render(
       <RichInlineText text="<math><msub><mi>T</mi><mn>2</mn></msub></math>" />,
     );
+    const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
+    expect(container.querySelector("math")?.namespaceURI).toBe(MATHML_NS);
     expect(container.querySelector("math msub mi")?.textContent).toBe("T");
+  });
+
+  it("空字符串渲染为空且不崩溃", () => {
+    const { container } = render(<RichInlineText text="" />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("自闭合空元素正常渲染（空 children 数组）", () => {
+    const { container } = render(<RichInlineText text="<math><mspace/></math>" />);
+    expect(container.querySelector("math mspace")).not.toBeNull();
   });
 });

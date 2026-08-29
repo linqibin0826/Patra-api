@@ -1,6 +1,7 @@
 import { ArrowLeftRight, Bookmark, ChevronRight, MessageSquare, Share2 } from "lucide-react";
 import Link from "next/link";
 import { AISummaryBadge } from "@/components/portal/AISummaryBadge";
+import { RichInlineText } from "@/components/portal/RichInlineText";
 import type { Paper } from "@/types/portal";
 
 interface PaperCardProps {
@@ -33,7 +34,7 @@ export function PaperCard({ paper }: PaperCardProps) {
       </div>
 
       <h3 className="font-serif text-lg font-medium leading-snug tracking-tight text-ink-900">
-        {paper.title}
+        <RichInlineText text={paper.title} />
       </h3>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-3">
