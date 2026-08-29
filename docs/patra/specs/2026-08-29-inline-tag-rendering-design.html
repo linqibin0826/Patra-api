@@ -142,7 +142,7 @@
         <li><strong>属性全剥</strong>：<code>&lt;i class="x" onclick="…"&gt;</code> 认标签、丢全部属性，渲染成干净 <code>&lt;i&gt;</code>——不存在任何属性攻击面（含 MathML 的 <code>display</code>，公式强制随文内联）</li>
         <li><strong>不认识 = 字面文本</strong>：<code>&lt;0.05</code>、<code>P &lt;median</code>、<code>&lt;fib-4&gt;</code>、<code>&lt;script&gt;</code> 等一切白名单外内容原样当文字显示，一个字符都不吞</li>
         <li><strong>未闭合标签</strong>：开了没关（<code>&lt;i&gt;abc</code> 到结尾）→ 格式生效到段尾自动闭合；孤儿闭合标签（<code>&lt;/i&gt;</code> 前面没开）→ 按字面文本显示</li>
-        <li><strong>semantics/annotation 特判</strong>：<code>&lt;annotation&gt;</code> 内容<strong>整体丢弃</strong>（它是同一公式的 LaTeX 重复表述，渲染会导致公式显示两遍）；<code>&lt;semantics&gt;</code> 渲染其余子节点</li>
+        <li><strong>semantics/annotation 特判</strong>：已闭合的 <code>&lt;annotation&gt;</code> 内容<strong>整体丢弃</strong>（它是同一公式的 LaTeX 重复表述，渲染会导致公式显示两遍）；未闭合的 <code>&lt;annotation&gt;</code>（上游截断形态）只<strong>展开子节点</strong>不删除，保证正文一个字符不丢；<code>&lt;semantics&gt;</code> 渲染其余子节点</li>
         <li><strong>实体解码</strong>：文本段里 <code>&amp;amp;</code> <code>&amp;lt;</code> <code>&amp;gt;</code> <code>&amp;quot;</code> <code>&amp;apos;</code> 及数字/十六进制实体（<code>&amp;#8722;</code> / <code>&amp;#x2212;</code>）解码回真字符；解码出的 <code>&lt;</code> 是文本节点，天然安全</li>
         <li><strong>大小写不敏感</strong>：<code>&lt;SUP&gt;</code> 也认，标签名归一化为小写</li>
         <li><strong>禁 <code>dangerouslySetInnerHTML</code></strong>：输出 React 元素树，文本内容由 React 自动转义——这是方案不可能 XSS 的根本保证</li>
@@ -266,7 +266,7 @@
           </tr>
           <tr>
             <td>2</td>
-            <td><code>patra-portal/src/lib/rich-inline-text.test.ts</code></td>
+            <td><code>patra-portal/tests/lib/rich-inline-text.test.ts</code></td>
             <td><span class="pill create">create</span></td>
             <td>解析器纯函数测试（主测试面）</td>
           </tr>
@@ -278,7 +278,7 @@
           </tr>
           <tr>
             <td>4</td>
-            <td><code>patra-portal/src/components/portal/RichInlineText.test.tsx</code></td>
+            <td><code>patra-portal/tests/components/portal/RichInlineText.test.tsx</code></td>
             <td><span class="pill create">create</span></td>
             <td>组件渲染测试（sub 真实元素 + 恶意输入反例）</td>
           </tr>
