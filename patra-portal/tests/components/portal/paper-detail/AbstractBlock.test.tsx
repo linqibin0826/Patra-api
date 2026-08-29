@@ -24,4 +24,21 @@ describe("AbstractBlock", () => {
     render(<AbstractBlock paper={base} />);
     expect(screen.getByText(/暂无摘要/)).toBeInTheDocument();
   });
+  it("混合：无 label 段渲染正文且不渲染空标签槽", () => {
+    const { container } = render(
+      <AbstractBlock
+        paper={{
+          ...base,
+          abstractSections: [
+            { label: "BACKGROUND", text: "bg text" },
+            { label: null, text: "unlabeled tail" },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText("BACKGROUND")).toBeInTheDocument();
+    expect(screen.getByText("unlabeled tail")).toBeInTheDocument();
+    // 无 label 段不应产生标签列节点（grid 两列结构只出现一次）
+    expect(container.querySelectorAll(".grid").length).toBe(1);
+  });
 });

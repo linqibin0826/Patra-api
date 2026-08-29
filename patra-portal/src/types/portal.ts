@@ -167,9 +167,9 @@ export interface EvidenceLevel {
   derived: boolean;
 }
 
-/** 结构化摘要段落；label 为 BACKGROUND / METHODS / RESULTS 等枚举值 */
+/** 结构化摘要段落；label 为 BACKGROUND / METHODS / RESULTS 等枚举值，混合摘要的无标签段为 null */
 export interface AbstractSection {
-  label: string;
+  label: string | null;
   text: string;
 }
 

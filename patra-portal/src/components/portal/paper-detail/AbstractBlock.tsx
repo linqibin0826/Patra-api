@@ -16,8 +16,15 @@ export function AbstractBlock({ paper }: { paper: PaperDetail }) {
   return (
     <div>
       {abstract.sections.map((s, i) => {
-        // 静态摘要段落列表（无状态、不重排），label 可能重复，用 index 复合键保唯一
-        const key = `${s.label}-${i}`;
+        // 静态摘要段落列表（无状态、不重排），label 可能重复或为 null，用 index 复合键保唯一
+        const key = `${s.label ?? "unlabeled"}-${i}`;
+        if (s.label === null) {
+          return (
+            <div key={key} className="border-t border-(--border-subtle) py-3.5 first:border-t-0">
+              <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">{s.text}</p>
+            </div>
+          );
+        }
         return (
           <div
             key={key}
