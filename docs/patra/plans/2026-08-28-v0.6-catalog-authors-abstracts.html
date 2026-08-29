@@ -36,8 +36,8 @@
           <li data-task-status="done"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
           <li data-task-status="done"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
           <li data-task-status="done"><a href="#task-13">Task 13 — generation 参数全链</a></li>
-          <li data-task-status="in-progress"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
-          <li data-task-status="pending"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
+          <li data-task-status="done"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
+          <li data-task-status="in-progress"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
           <li data-task-status="pending"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
         </ol>
       </li>
@@ -1815,7 +1815,7 @@ git commit -m "feat(catalog): baseline 导入 generation identifying 参数全�
         </ol>
       </article>
 
-      <article class="task" id="task-14" data-status="in-progress">
+      <article class="task" id="task-14" data-status="done">
         <header>
           <h2>任务 14：Portal 混合摘要最小适配</h2>
           <dl class="files">
@@ -1825,7 +1825,7 @@ git commit -m "feat(catalog): baseline 导入 generation identifying 参数全�
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试（混合摘要）</strong>
             <p><code>AbstractBlock.test.tsx</code> 追加：</p>
             <pre><code class="lang-tsx">  it("混合：无 label 段渲染正文且不渲染空标签槽", () =&gt; {
@@ -1848,7 +1848,7 @@ git commit -m "feat(catalog): baseline 导入 generation identifying 参数全�
             <p>运行 <code>cd patra-portal &amp;&amp; pnpm test -- AbstractBlock</code>，预期类型错误/断言失败。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：types + 组件实现</strong>
             <p><code>portal.ts</code>：</p>
             <pre><code class="lang-ts">/** 结构化摘要段落；label 为 BACKGROUND / METHODS 等，混合摘要的无标签段为 null */
@@ -1881,7 +1881,7 @@ export interface AbstractSection {
       })}</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：验证 + Commit</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code>，预期全绿（label 改可空若引发其他组件类型错误——如有直接消费 label 的地方——就地补空值分支）。</p>
             <pre><code class="lang-bash">git add patra-portal/src/types/portal.ts patra-portal/src/components/portal/paper-detail/AbstractBlock.tsx patra-portal/tests
@@ -1890,7 +1890,7 @@ git commit -m "feat(portal): 混合摘要无 label 段渲染适配（任务 14/1
         </ol>
       </article>
 
-      <article class="task" id="task-15" data-status="pending">
+      <article class="task" id="task-15" data-status="in-progress">
         <header>
           <h2>任务 15：换库重建 runbook 与配套脚本</h2>
           <dl class="files">
@@ -2591,6 +2591,22 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>任务 15 runbook 提醒（任务 13 审查产出）：generation 不改变 importBatch 值——重建后数据行仍标 baseline-pubmed26n1333，不携带代次信息，<strong>验收 SQL 不要按代次筛数据</strong>。</p>
       </li>
+      <li class="note" data-type="other" data-time="2026-08-29T15:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T15:00">08-29 15:00</time>
+          <a href="#task-14">§ Task 14</a>
+        </header>
+        <p>label 可空的波及面 grep 确认仅 AbstractBlock 一处直接消费点（publication-derive.ts 只做类型透传未解构 .label）；plan 预期的「其他组件类型错误就地补分支」未发生。按约束未跑 pnpm build（防污染可能在跑的 next dev）。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-29T15:40">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T15:40">08-29 15:40</time>
+          <a href="#task-14">§ Task 14</a>
+        </header>
+        <p>质量审查判可合并，留三条非阻塞尾巴：① 混合摘要桌面端 null 段正文顶格与 grid 段 110px 偏移的左边缘跳动——<strong>换库重建后拿真实混合摘要上屏实检再定</strong>（零冲突改法 pl-[110px] 已记录）；② `=== null` 可换 `== null` 防御（后端 wire 契约经复核确为 label:null，当前非 bug）；③ 任务 16 顺手项：后端 PortalPublicationDetailResponse javadoc 补 label 可空说明、PublicationDetailView.test 的 fixture abstractType 小写改大写（portal 无消费点，仅误导）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
@@ -2598,7 +2614,7 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
       <span data-counter="decision">11</span> decisions /
       <span data-counter="change">28</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
-      <span data-counter="other">12</span> others
+      <span data-counter="other">14</span> others
     </footer>
   </aside>
 
