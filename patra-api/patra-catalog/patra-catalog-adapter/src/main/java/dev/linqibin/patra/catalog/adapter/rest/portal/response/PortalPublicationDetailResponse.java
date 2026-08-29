@@ -107,7 +107,7 @@ public record PortalPublicationDetailResponse(
 
   /// 结构化摘要段落响应。
   ///
-  /// @param label 段落标签（如 BACKGROUND、METHODS、RESULTS）
+  /// @param label 段落标签（如 BACKGROUND、METHODS、RESULTS）；混合摘要的无标签段为 null
   /// @param text 段落内容
   public record AbstractSection(String label, String text) {
 

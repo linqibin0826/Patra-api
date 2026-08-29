@@ -18,7 +18,7 @@ function paper(overrides: Partial<PaperDetail> = {}): PaperDetail {
       label: "随机对照试验",
       derived: true,
     },
-    abstractType: "structured",
+    abstractType: "STRUCTURED",
     abstractSections: [{ label: "BACKGROUND", text: "bg" }],
     abstractPlainText: null,
     doi: "10.1/x",
