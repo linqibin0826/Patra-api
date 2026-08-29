@@ -37,8 +37,32 @@ type ElementNode = Extract<InlineNode, { kind: "element" }>;
 /** 排版组白名单：任何位置放行。 */
 const FORMATTING_TAGS = new Set(["i", "b", "sub", "sup", "u"]);
 
-/** 标签形态：`<` 后紧跟可选 `/` 与标签名（`<`、`</` 后跟空白按 HTML 规范视为文本）、可选属性段（不含尖括号）、可选自闭合 `/`、`>`。 */
+/** 公式组白名单：仅列只能出现在 <math> 子树内的标签（math 根标签在 isAllowed 单独放行）。 */
+const MATH_TAGS = new Set([
+  "mrow",
+  "mi",
+  "mo",
+  "mn",
+  "msub",
+  "msup",
+  "msubsup",
+  "mtext",
+  "mspace",
+  "mstyle",
+  "mover",
+  "munder",
+  "munderover",
+  "mfrac",
+  "msqrt",
+  "semantics",
+  "annotation",
+]);
+
+/** 标签形态：`<` 后紧跟可选 `/` 与标签名（`<`、`</` 后跟空白按 HTML 规范视为文本）、可选属性段（不含尖括号）、可选自闭合 `/`、`>`。不支持连字符标签名（如 annotation-xml，按字面降级；生产库实查无此标签）。 */
 const TAG_RE = /^<(\/?)([a-zA-Z][a-zA-Z0-9]*)(?:\s[^<>]*)?\s*\/?\s*>/;
+
+/** 解析深度上限：超过后的开标签按字面输出，防止畸形深嵌套压垮后处理与渲染递归。 */
+const MAX_DEPTH = 64;
 
 /**
  * 把带内联标记的文本解析为节点树（栈式单遍扫描）。
@@ -62,7 +86,17 @@ export function parseInlineMarkup(text: string): InlineNode[] {
     }
   };
 
-  const isAllowed = (tag: string): boolean => FORMATTING_TAGS.has(tag);
+  const inMath = (): boolean => stack.some((element) => element.tag === "math");
+
+  const isAllowed = (tag: string): boolean => {
+    if (FORMATTING_TAGS.has(tag)) {
+      return true;
+    }
+    if (tag === "math") {
+      return true;
+    }
+    return MATH_TAGS.has(tag) && inMath();
+  };
 
   while (i < text.length) {
     const ch = text.charAt(i);
@@ -106,6 +140,12 @@ export function parseInlineMarkup(text: string): InlineNode[] {
       i += 1;
       continue;
     }
+    if (stack.length >= MAX_DEPTH) {
+      // 超深开标签 → 字面
+      buf += ch;
+      i += 1;
+      continue;
+    }
     flushText();
     const element: ElementNode = { kind: "element", tag, children: [] };
     currentChildren().push(element);
@@ -116,5 +156,31 @@ export function parseInlineMarkup(text: string): InlineNode[] {
     i += m[0].length;
   }
   flushText();
-  return rootChildren;
+  // 段尾仍在栈中的元素 = 未被显式/祖先闭合；未闭合的 annotation 只展开不删除
+  const unclosed = new Set<InlineNode>(stack);
+  return stripAnnotations(rootChildren, unclosed);
+}
+
+/**
+ * 处理 annotation 元素——它是同一公式的 LaTeX 重复表述：
+ * 已闭合的整体丢弃（渲染会使公式显示两遍）；
+ * 未闭合的只展开其子节点（上游截断时不吞正文，一个字符都不丢）。
+ */
+function stripAnnotations(nodes: InlineNode[], unclosed: ReadonlySet<InlineNode>): InlineNode[] {
+  const out: InlineNode[] = [];
+  for (const node of nodes) {
+    if (node.kind === "element") {
+      const children = stripAnnotations(node.children, unclosed);
+      if (node.tag === "annotation") {
+        if (unclosed.has(node)) {
+          out.push(...children);
+        }
+        continue;
+      }
+      out.push({ ...node, children });
+    } else {
+      out.push(node);
+    }
+  }
+  return out;
 }

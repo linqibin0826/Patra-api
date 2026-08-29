@@ -14,7 +14,6 @@ const el = (tag: string, ...children: InlineNode[]): InlineNode => ({
 function textOf(nodes: InlineNode[]): string {
   return nodes.map((n) => (n.kind === "text" ? n.value : textOf(n.children))).join("");
 }
-void textOf;
 
 describe("decodeEntities", () => {
   it("解码命名实体", () => {
@@ -146,6 +145,77 @@ describe("parseInlineMarkup · 降级铁律与安全", () => {
     ]);
     expect(parseInlineMarkup('<a href="javascript:alert(1)">x</a>')).toEqual([
       text('<a href="javascript:alert(1)">x</a>'),
+    ]);
+  });
+});
+
+describe("parseInlineMarkup · 审查遗留护栏", () => {
+  it("自闭合白名单标签不吞后文", () => {
+    expect(parseInlineMarkup("<i/>abc")).toEqual([el("i"), text("abc")]);
+    expect(parseInlineMarkup("<sub />2")).toEqual([el("sub"), text("2")]);
+  });
+
+  it("同名嵌套：闭合最近的同名开标签", () => {
+    expect(parseInlineMarkup("<i>a<i>b</i>c</i>d")).toEqual([
+      el("i", text("a"), el("i", text("b")), text("c")),
+      text("d"),
+    ]);
+  });
+
+  it("超深嵌套安全降级：不抛异常，超限开标签按字面保留", () => {
+    expect(() => parseInlineMarkup("<math>".repeat(10000))).not.toThrow();
+    const nodes = parseInlineMarkup(`${"<i>".repeat(100)}x`);
+    expect(textOf(nodes)).toBe(`${"<i>".repeat(36)}x`);
+  });
+
+  it("未闭合 annotation 不吞段尾正文（展开子节点）", () => {
+    expect(parseInlineMarkup("<math><annotation>$$T$$ tail")).toEqual([
+      el("math", text("$$T$$ tail")),
+    ]);
+  });
+
+  it("被 </math> 弹栈闭合的 annotation 仍整体丢弃", () => {
+    expect(parseInlineMarkup("<math><annotation>$$T$$</math>tail")).toEqual([
+      el("math"),
+      text("tail"),
+    ]);
+  });
+});
+
+describe("parseInlineMarkup · MathML 公式组", () => {
+  it("math 子树内放行 MathML Core 标签", () => {
+    expect(parseInlineMarkup("x<math><msub><mi>T</mi><mn>2</mn></msub></math>y")).toEqual([
+      text("x"),
+      el("math", el("msub", el("mi", text("T")), el("mn", text("2")))),
+      text("y"),
+    ]);
+  });
+
+  it("annotation 内容整体丢弃（避免公式显示两遍）", () => {
+    expect(
+      parseInlineMarkup(
+        '<math><semantics><mrow><mi>T</mi></mrow><annotation encoding="application/x-tex">$$T$$</annotation></semantics></math>',
+      ),
+    ).toEqual([el("math", el("semantics", el("mrow", el("mi", text("T")))))]);
+  });
+
+  it("游离在 math 外的 MathML 标签按字面保留", () => {
+    expect(parseInlineMarkup("<mi>x</mi>")).toEqual([text("<mi>x</mi>")]);
+  });
+
+  it("生产库真实样本：解析出 math 元素且文本内容不丢", () => {
+    const sample =
+      "growth with <math><msub><mi>μ</mi> <mrow><mi>max</mi></mrow> </msub> </math> values of 0.37 h<sup>-1</sup>";
+    const nodes = parseInlineMarkup(sample);
+    const math = nodes.find((n) => n.kind === "element" && n.tag === "math");
+    expect(math).toBeDefined();
+    // 元素间空白成为文本节点：msub 内尾随 1 空格 + math 内尾随 1 空格 + " values" 前导 1 空格
+    expect(textOf(nodes)).toBe("growth with μ max   values of 0.37 h-1");
+  });
+
+  it("带引号属性的自闭合 mspace 不吞后续内容", () => {
+    expect(parseInlineMarkup('<math><mi>a</mi><mspace width="0.25em"/><mi>b</mi></math>')).toEqual([
+      el("math", el("mi", text("a")), el("mspace"), el("mi", text("b"))),
     ]);
   });
 });
