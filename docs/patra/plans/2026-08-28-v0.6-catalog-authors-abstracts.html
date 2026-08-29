@@ -37,8 +37,8 @@
           <li data-task-status="done"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
           <li data-task-status="done"><a href="#task-13">Task 13 — generation 参数全链</a></li>
           <li data-task-status="done"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
-          <li data-task-status="in-progress"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
-          <li data-task-status="pending"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
+          <li data-task-status="done"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
+          <li data-task-status="in-progress"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -1890,7 +1890,7 @@ git commit -m "feat(portal): 混合摘要无 label 段渲染适配（任务 14/1
         </ol>
       </article>
 
-      <article class="task" id="task-15" data-status="in-progress">
+      <article class="task" id="task-15" data-status="done">
         <header>
           <h2>任务 15：换库重建 runbook 与配套脚本</h2>
           <dl class="files">
@@ -1901,7 +1901,7 @@ git commit -m "feat(portal): 混合摘要无 label 段渲染适配（任务 14/1
         <p>纯文档/脚本任务（不动运行时代码，不实操）。runbook 按 spec §6.1 十步展开为可照抄执行的命令；allowlist 必须<strong>显式列表名</strong>。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：生成 allowlist 表清单</strong>
             <p>在 mini 上跑（只读查询）导出全部候选表名，人工核对后写进 runbook 与脚本：</p>
             <pre><code class="lang-bash">ssh mini 'docker exec patra-postgres psql -U postgres -d patra_catalog -Atc "
@@ -1911,7 +1911,7 @@ git commit -m "feat(portal): 混合摘要无 label 段渲染适配（任务 14/1
             <p>分类规则（在 runbook 中逐表标注 KEEP/DROP）：<code>cat_publication</code> 与所有 <code>cat_publication_*</code> → DROP（重导重建）；<code>flyway_schema_history</code> → DROP（新库自生成，<strong>绝不回填</strong>）；<code>cat_venue_publication_stats</code> → <strong>KEEP</strong>（296,600 行，baseline 不重建）；其余全部（venue 域 / ROR / MeSH / 评级 / cat_author 家族 / keyword 主表等）→ KEEP。注意 <code>cat_keyword</code>（关键词主表）属 KEEP 但 <code>cat_publication_keyword</code>（关联）属 DROP——重导会向 KEEP 表 upsert，允许。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：写 export-reference-allowlist.sh</strong>
             <pre><code class="lang-bash">#!/usr/bin/env bash
 # v0.6 换库重建：参考域数据导出 + 恢复 + 行数对照（在 mini 上执行）
@@ -1963,7 +1963,7 @@ esac</code></pre>
             <p>（bash 3.2 兼容：变量一律 <code>${VAR}</code> 花括号形态——中文注释紧邻变量的历史坑。）</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：写 closed-loop-stats.py</strong>
             <p>源数据闭环统计：读 <code>pubmed26n1333.xml.gz</code>，输出与库内核对的四组数（口径 = 成功导入 PMID 集合）：</p>
             <pre><code class="lang-python">#!/usr/bin/env python3
@@ -2013,7 +2013,7 @@ if __name__ == "__main__":
     main(sys.argv[1], sys.argv[2])</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：写 runbook 文档</strong>
             <p><code>docs/patra/runbooks/v0.6-catalog-rebuild-runbook.md</code> 章节结构（每步给可照抄命令）：</p>
             <pre><code class="lang-markdown"># v0.6 patra_catalog 换库重建 runbook
@@ -2059,7 +2059,7 @@ SELECT jsonb_typeof(structured_sections), count(*)
 FROM cat_publication_abstract GROUP BY 1;                          -- 只应有 array 与 NULL</code></pre>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 5：Commit</strong>
             <pre><code class="lang-bash">git add docs/patra/runbooks patra-infra/scripts/v06-rebuild
 git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计脚本（任务 15/16）"</code></pre>
@@ -2067,7 +2067,7 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </ol>
       </article>
 
-      <article class="task" id="task-16" data-status="pending">
+      <article class="task" id="task-16" data-status="in-progress">
         <header>
           <h2>任务 16：全栈门控收尾</h2>
           <dl class="files">
@@ -2607,14 +2607,39 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>质量审查判可合并，留三条非阻塞尾巴：① 混合摘要桌面端 null 段正文顶格与 grid 段 110px 偏移的左边缘跳动——<strong>换库重建后拿真实混合摘要上屏实检再定</strong>（零冲突改法 pl-[110px] 已记录）；② `=== null` 可换 `== null` 防御（后端 wire 契约经复核确为 label:null，当前非 bug）；③ 任务 16 顺手项：后端 PortalPublicationDetailResponse javadoc 补 label 可空说明、PublicationDetailView.test 的 fixture abstractType 小写改大写（portal 无消费点，仅误导）。</p>
       </li>
+      <li class="note" data-type="change" data-time="2026-08-29T17:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T17:00">08-29 17:00</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>plan 骨架四处调整：① 删死变量 PGI；② 验收 SQL 补强十项（affiliation_order 连续、冗余列一致、孤儿反查、jsonb_object_keys、ORCID 正则/软关联反查、abstract_type 一致性、alt jsonb、Batch generation 确认）；③ 闭环脚本加「命中数≠基准集」stderr WARN（防混入其他 baseline PMID 静默失真）；④ 回滚/验收命令拆成逐条 ssh 形态——plan 直译会在 zsh→ssh→sh→psql 四层转义里必炸。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T17:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T17:00">08-29 17:00</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>mini 实测环境事实（已入 runbook）：patra_catalog 56 表 = KEEP 33 / DROP 23；基线行数 cat_publication 18,807、abstract 5,114、author 0、venue_publication_stats 296,600、flyway 7 条（V1-V7）；XXL jobGroup=3 jobId=10；镜像 ghcr.io/linqibin0826/patra-catalog、手工构建对齐 cd.yml（bootJar + service.Dockerfile APP_PORT=6300）；catalog 迁移无 FK 无 serial → --data-only 任意序恢复可行。runbook 9.7 把混合摘要桌面对齐列为本次必做人工实检项。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T19:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T19:30">08-29 19:30</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>SRE 审查两轮返修（3 Critical + 8 Important + 10 Minor + 6 复核项全落）。要点：① <strong>构建目录改 runner workspace</strong>——~/Projects/patra 是 sparse checkout 无 patra-api（照抄必炸），--dry-run 实证可行；连带发现第二必炸点：非交互 ssh 无 JAVA_HOME，须先 source runner .env（含代理）；② rename 窗口原子块（ALLOW_CONNECTIONS false + terminate + pg_sleep(2) + rename 单 psql 会话）+ 回滚 datallowconn 复位 + MacBook 不跑 catalog 硬前置；③ 兜底 dump 改宿主留存 + docker cp 回灌 + 双向 sha256；④ portal-cd 与手工构建抢 runner workspace——加 3.1.5 等待步；⑤ 对账口径改「可解释偏差内」（DUP_PMIDS 用 XML 解析同口径量出，grep 会把 CommentsCorrections 计入虚高）；⑥ 断点续做表（附录 B）、分期清理、psql 交互入口防 zsh 历史展开等。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">11</span> decisions /
-      <span data-counter="change">28</span> changes /
+      <span data-counter="change">30</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
-      <span data-counter="other">14</span> others
+      <span data-counter="other">15</span> others
     </footer>
   </aside>
 
