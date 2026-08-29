@@ -3,6 +3,7 @@ import { type InlineNode, parseInlineMarkup } from "@/lib/rich-inline-text";
 
 /** InlineNode 树 → React 元素：文本节点由 React 自动转义，元素零属性。 */
 function renderNodes(nodes: InlineNode[]): ReactNode[] {
+  // 解析结果静态、不增删不重排，index key 安全
   return nodes.map((node, index) =>
     node.kind === "text"
       ? node.value

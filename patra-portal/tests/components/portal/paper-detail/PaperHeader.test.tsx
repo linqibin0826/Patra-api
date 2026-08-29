@@ -60,4 +60,13 @@ describe("PaperHeader", () => {
     render(<PaperHeader paper={paper({ fullTextUrl: null, doi: null, pmid: null })} />);
     expect(screen.getByRole("button", { name: /全文链接不可用/ })).toBeDisabled();
   });
+  it("原题按白名单渲染内联标签（回归：防止改回纯文本插值）", () => {
+    const { container } = render(
+      <PaperHeader
+        paper={paper({ originalTitle: "Studie zu <i>E. coli</i> und CO<sub>2</sub>" })}
+      />,
+    );
+    expect(container.querySelector("i")?.textContent).toBe("E. coli");
+    expect(container.querySelector("sub")).not.toBeNull();
+  });
 });
