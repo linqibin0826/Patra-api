@@ -35,8 +35,8 @@
           <li data-task-status="done"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
           <li data-task-status="done"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
           <li data-task-status="done"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
-          <li data-task-status="in-progress"><a href="#task-13">Task 13 — generation 参数全链</a></li>
-          <li data-task-status="pending"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
+          <li data-task-status="done"><a href="#task-13">Task 13 — generation 参数全链</a></li>
+          <li data-task-status="in-progress"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
           <li data-task-status="pending"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
           <li data-task-status="pending"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
         </ol>
@@ -1758,7 +1758,7 @@ git commit -m "test(catalog): 摘要写读 round-trip IT 断言矩阵（任务 1
         </ol>
       </article>
 
-<article class="task" id="task-13" data-status="in-progress">
+<article class="task" id="task-13" data-status="done">
         <header>
           <h2>任务 13：generation identifying 参数全链打通</h2>
           <dl class="files">
@@ -1769,7 +1769,7 @@ git commit -m "test(catalog): 摘要写读 round-trip IT 断言矩阵（任务 1
         <p>底座已支持：<code>JobOperatorHelper.buildJobParameters</code> 对 null 字段显式跳过（<code>case null -&gt; 跳过</code>），且未列入 nonIdentifyingKeys 的字段默认 identifying——所以 <strong>generation 缺省 null = 现行为完全不变</strong>（断点续传语义保留），传值即生成新 JobInstance。</p>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：写失败测试</strong>
             <p>① 调度 Job 测试类（现有 <code>PubmedBaselineImportScheduleJobTest</code> 或同级新建）追加参数解析用例：</p>
             <pre><code class="lang-java">  @Test
@@ -1795,7 +1795,7 @@ git commit -m "test(catalog): 摘要写读 round-trip IT 断言矩阵（任务 1
             <p>② <code>PublicationBatchAdapter</code> 测试追加：传 generation 时 <code>PublicationImportJobParams.generation</code> 被赋值；不传时为 null。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：五处实现</strong>
             <p>① domain <code>PublicationImportParams</code>：record 加第三组件 <code>String generation</code>（可空不校验，trim 空串归 null 在紧凑构造器做：<code>generation = (generation == null || generation.isBlank()) ? null : generation.trim();</code>）；保留 <code>of(baseUrl, fileIndex)</code> 两参重载（透传 null）+ 新增三参 <code>of(baseUrl, fileIndex, generation)</code>。② app <code>PublicationBaselineImportCommand</code>：同款加 <code>String generation</code> 组件与三参 <code>of</code>（保留两参重载）；Handler 中构造 Params 处透传。③ adapter 调度 Job：<code>parseFileIndex()</code> 重构为 <code>parseJobParam()</code> 返回小 record <code>ParsedJobParam(int fileIndex, String generation)</code>——按逗号分组、每组按 <code>=</code> 拆 key/value，仅认 <code>fileIndex</code>（必填）与 <code>generation</code>（可选），未知 key 抛 <code>IllegalArgumentException</code>；javadoc 参数格式更新为 <code>fileIndex=N[,generation=STR]</code>。④ infra <code>PublicationImportJobParams</code> 加字段：</p>
             <pre><code class="lang-java">  /// 重导代次标识（identifying；null 时不进 JobParameters = 维持断点续传语义）。
@@ -1806,7 +1806,7 @@ git commit -m "test(catalog): 摘要写读 round-trip IT 断言矩阵（任务 1
             <p>⑤ <code>PublicationBatchAdapter.launchBaselineImport</code> 的 builder 加 <code>.generation(params.generation())</code>。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：运行验证 + Commit</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-adapter:test :patra-catalog:patra-catalog-infra:test :patra-catalog:patra-catalog-app:test :patra-catalog:patra-catalog-domain:test</code>，预期全绿。</p>
             <pre><code class="lang-bash">git add patra-api/patra-catalog
@@ -1815,7 +1815,7 @@ git commit -m "feat(catalog): baseline 导入 generation identifying 参数全�
         </ol>
       </article>
 
-      <article class="task" id="task-14" data-status="pending">
+      <article class="task" id="task-14" data-status="in-progress">
         <header>
           <h2>任务 14：Portal 混合摘要最小适配</h2>
           <dl class="files">
@@ -2557,14 +2557,48 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p><strong>独立收尾事项</strong>（不阻塞本 plan，合并后另行处理）：PublicationAbstractRoundTripIT 是全仓唯一 @Import HibernatePropertiesCustomizer 的测试——catalog 另外约 20 个 @DataJpaTest 切片（含 ingest/registry）仍跑在 Hibernate 内置 Jackson 2 FormatMapper 上，而带 SqlTypes.JSON 的 Entity 有 19 个。建议把该 @Import 上提到 CatalogITBootstrap 一处修好全 catalog 切片（该 customizer 还改 batch_size/ALLOW_METADATA_ON_BOOT 等，需跑全量 IT 验证）。</p>
       </li>
+      <li class="note" data-type="decision" data-time="2026-08-29T13:20">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T13:20">08-29 13:20</time>
+          <a href="#task-13">§ Task 13</a>
+        </header>
+        <p>调度 Job 参数解析测试沿现场测法（XxlJobContext + execute() + ArgumentCaptor 捕 Command 断言，parseJobParam 保持 private）而非 plan 的反射 invoke；executeImport(int) 直接扩签名为 (int, String) 不加重载；ParsedJobParam 用规范构造器（Job 内部 package-private 载体，单产出单消费）。JobOperatorHelper 两前提源码确认：case null 跳过（206-208 行）+ identifying 缺省 true（未覆写 getNonIdentifyingKeys）——generation 缺省时 JobParameters 与改动前逐字节相同。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T13:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T13:20">08-29 13:20</time>
+          <a href="#task-13">§ Task 13</a>
+        </header>
+        <p>PublicationBaselineImportCommand 层也做空白→null 归一化（plan 只对 domain 明确）——Command record 紧凑构造器是自身契约唯一入口，不归一会让空白串存活到 domain 才清洗。domain 补 3 条归一化测试（TDD 要求行为先有失败覆盖）。CommandTest 8 处构造调用补 , null 属组件数 2→3 的必然连带。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T14:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T14:20">08-29 14:20</time>
+          <a href="#task-13">§ Task 13</a>
+        </header>
+        <p>质量审查收口：① javadoc 写明「generation 只解除 JobInstance 复用限制、不具备重导能力——非空库重跑被 Writer 按 PMID/DOI 全量跳过、SUCCESS 但零数据变化」（复核确认整体替换路径不会被触发，陈述成立）；「重导代次标识」9 处统一「代次标识」；② 重复 key 用 seenKeys 原始 key 记账 fail-fast（优于「判非 null」——generation 空白归 null 后重复会漏网）；③ 错误消息引号回显；④ Command 归一化补 characterization 测试；⑤ 两参 of 定位语义默认。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T14:20">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T14:20">08-29 14:20</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>任务 15 runbook 提醒（任务 13 审查产出）：generation 不改变 importBatch 值——重建后数据行仍标 baseline-pubmed26n1333，不携带代次信息，<strong>验收 SQL 不要按代次筛数据</strong>。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
-      <span data-counter="decision">10</span> decisions /
-      <span data-counter="change">26</span> changes /
+      <span data-counter="decision">11</span> decisions /
+      <span data-counter="change">28</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
-      <span data-counter="other">11</span> others
+      <span data-counter="other">12</span> others
     </footer>
   </aside>
 
