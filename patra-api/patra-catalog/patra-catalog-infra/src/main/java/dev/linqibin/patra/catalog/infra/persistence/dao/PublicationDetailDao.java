@@ -54,17 +54,18 @@ public interface PublicationDetailDao extends JpaRepository<PublicationEntity, L
 
   /// 按 publication_id 查询作者列表，按 author_order 升序。
   ///
+  /// 作者为文献快照（行内 `display_name`），不受 cat_author 软删/合并影响。
+  ///
   /// @param id 文献 ID
   /// @return 作者投影列表
   @Query(
       value =
           """
       SELECT pa.author_order AS "order", pa.is_first_author AS "first",
-        pa.is_corresponding_author AS "corresponding", au.display_name AS "name",
+        pa.is_corresponding_author AS "corresponding", pa.display_name AS "name",
         (SELECT aff.affiliation_string FROM cat_publication_author_affiliation aff
            WHERE aff.pub_author_id = pa.id ORDER BY aff.affiliation_order ASC, aff.id ASC LIMIT 1) AS "affiliation"
       FROM cat_publication_author pa
-      JOIN cat_author au ON au.id = pa.author_id AND au.deleted_at IS NULL
       WHERE pa.publication_id = :id
       ORDER BY pa.author_order ASC, pa.id ASC
       """,

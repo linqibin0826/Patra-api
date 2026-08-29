@@ -7,13 +7,16 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /// 作者-机构归属 JPA Repository。
 ///
 /// **职责**：
 ///
 /// - 管理 `PublicationAuthorAffiliationEntity` 的 CRUD 操作
-/// - 支持按文献-作者关联、出版物、作者等维度查询
+/// - 支持按文献-作者关联、出版物等维度查询
 /// - 支持消歧状态和标识符查询（用于批量消歧处理）
 ///
 /// @author linqibin
@@ -65,19 +68,17 @@ public interface PublicationAuthorAffiliationDao
   /// @param publicationId 出版物 ID
   void deleteAllByPublicationId(Long publicationId);
 
-  // ========== 按作者查询（冗余字段加速） ==========
-
-  /// 按作者 ID 查询所有机构归属。
+  /// 按出版物 ID 列表批量删除机构归属（重导替换语义用）。
   ///
-  /// @param authorId 作者 ID
-  /// @return 机构归属实体列表
-  List<PublicationAuthorAffiliationEntity> findAllByAuthorId(Long authorId);
-
-  /// 按作者 ID 列表批量查询机构归属。
+  /// 采用 bulk DML 而非派生删除：DELETE 立即下发，不进入 Hibernate 动作队列，
+  /// 从而避开「同一次 flush 内 INSERT 先于 DELETE」导致新行撞唯一约束的隐患。
+  /// 实体继承 `ValueObjectJpaEntity`（无 `@Version` / 无软删除），bulk DML 无副作用。
   ///
-  /// @param authorIds 作者 ID 列表
-  /// @return 机构归属实体列表
-  List<PublicationAuthorAffiliationEntity> findAllByAuthorIdIn(Collection<Long> authorIds);
+  /// @param publicationIds 出版物 ID 列表
+  @Modifying
+  @Query(
+      "DELETE FROM PublicationAuthorAffiliationEntity e WHERE e.publicationId IN :publicationIds")
+  void deleteAllByPublicationIdIn(@Param("publicationIds") Collection<Long> publicationIds);
 
   // ========== 消歧相关查询 ==========
 
@@ -125,11 +126,4 @@ public interface PublicationAuthorAffiliationDao
   /// @return 机构归属分页结果
   Page<PublicationAuthorAffiliationEntity> findByPublicationId(
       Long publicationId, Pageable pageable);
-
-  /// 按作者 ID 分页查询机构归属。
-  ///
-  /// @param authorId 作者 ID
-  /// @param pageable 分页参数
-  /// @return 机构归属分页结果
-  Page<PublicationAuthorAffiliationEntity> findByAuthorId(Long authorId, Pageable pageable);
 }

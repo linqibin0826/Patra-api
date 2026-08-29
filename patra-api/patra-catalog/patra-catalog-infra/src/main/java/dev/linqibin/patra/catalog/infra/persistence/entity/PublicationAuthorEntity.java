@@ -21,16 +21,19 @@ import tools.jackson.databind.JsonNode;
 /// **设计说明**：
 ///
 /// - 继承 `ValueObjectJpaEntity`，采用 DELETE/INSERT 模式管理
-/// - 管理文献与作者的多对多关系
+/// - 管理文献与作者的关联关系
+/// - 行内存储作者姓名快照（display_name/last_name/... /orcid），不依赖 `cat_author`
+/// - `author_id` 为可空软关联位，仅 ORCID 命中已消歧作者时填充
 /// - 记录作者顺序和角色信息
 /// - 机构归属信息由 `PublicationAuthorAffiliationEntity` 独立管理（支持多机构）
 ///
 /// **索引设计**：
 ///
-/// - `uk_pub_author`：出版物 ID + 作者 ID 唯一索引
-/// - `uk_author_order`：出版物 ID + 作者顺序唯一索引
-/// - `idx_publication`：出版物索引
-/// - `idx_author`：作者索引
+/// - `uk_pub_author`：出版物 ID + 作者 ID 部分唯一索引（仅 `author_id IS NOT NULL` 的行，
+///   由 Flyway 独占定义——JPA 无法表达部分索引）
+/// - `uk_author_order`：出版物 ID + 作者顺序唯一索引（其首列亦覆盖按出版物的查询，
+///   故不再单列出版物索引）
+/// - `idx_pub_author_author`：作者软关联索引
 /// - `idx_first_author`：第一作者索引
 /// - `idx_corresponding`：通讯作者索引
 ///
@@ -46,15 +49,11 @@ import tools.jackson.databind.JsonNode;
     name = "cat_publication_author",
     uniqueConstraints = {
       @UniqueConstraint(
-          name = "uk_pub_author",
-          columnNames = {"publication_id", "author_id"}),
-      @UniqueConstraint(
           name = "uk_author_order",
           columnNames = {"publication_id", "author_order"})
     },
     indexes = {
-      @Index(name = "idx_publication", columnList = "publication_id"),
-      @Index(name = "idx_author", columnList = "author_id"),
+      @Index(name = "idx_pub_author_author", columnList = "author_id"),
       @Index(name = "idx_first_author", columnList = "is_first_author"),
       @Index(name = "idx_corresponding", columnList = "is_corresponding_author")
     })
@@ -66,9 +65,39 @@ public class PublicationAuthorEntity extends ValueObjectJpaEntity {
   @Column(name = "publication_id", nullable = false)
   private Long publicationId;
 
-  /// 作者 ID（外键：cat_author.id）。
-  @Column(name = "author_id", nullable = false)
+  /// 作者 ID（外键：cat_author.id；软关联位——仅 ORCID 命中已消歧作者时填，其余为 null）。
+  @Column(name = "author_id")
   private Long authorId;
+
+  // ========== 行内姓名快照（文献视角的作者展示，不依赖 cat_author） ==========
+
+  /// 展示名（"LastName ForeName" 或集体作者名，恒非空）。
+  @Column(name = "display_name", nullable = false, length = 200)
+  private String displayName;
+
+  /// 姓氏（LastName）。
+  @Column(name = "last_name", length = 200)
+  private String lastName;
+
+  /// 名字（ForeName）。
+  @Column(name = "fore_name", length = 200)
+  private String foreName;
+
+  /// 首字母缩写（Initials）。
+  @Column(name = "initials", length = 20)
+  private String initials;
+
+  /// 后缀（Suffix，如 Jr、III）。
+  @Column(name = "suffix", length = 50)
+  private String suffix;
+
+  /// 集体作者名（CollectiveName；个人作者为 null）。
+  @Column(name = "collective_name", length = 500)
+  private String collectiveName;
+
+  /// 归一化 ORCID（存档位，便于未来重关联/审计；未提供或校验失败为 null）。
+  @Column(name = "orcid", length = 19)
+  private String orcid;
 
   // ========== 作者角色信息 ==========
 
@@ -103,20 +132,4 @@ public class PublicationAuthorEntity extends ValueObjectJpaEntity {
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "author_metadata", columnDefinition = "JSON")
   private JsonNode authorMetadata;
-
-  // ========== 便捷方法 ==========
-
-  /// 标记为第一作者。
-  public void markAsFirstAuthor() {
-    this.authorOrder = 1;
-    this.firstAuthor = true;
-  }
-
-  /// 标记为通讯作者。
-  ///
-  /// @param email 通讯邮箱
-  public void markAsCorresponding(String email) {
-    this.correspondingAuthor = true;
-    this.email = email;
-  }
 }

@@ -1,0 +1,2664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>v0.6 Catalog 作者与摘要数据链路修复 — 实现计划</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <!-- ENTRY TEMPLATE（注释保留供添加 task 时复制）:
+          <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
+          -->
+          <li data-task-status="done"><a href="#task-1">Task 1 — 作者侧 DDL 与 Entity 原子改造</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 摘要领域类型定型（section record + 两个 VO）</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 作者快照 VO</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — 聚合根携带作者快照</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — common-model 与 Parser 改造</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — Processor 摘要三态分流</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — Processor 作者快照构建</a></li>
+          <li data-task-status="done"><a href="#task-8">Task 8 — 摘要 Entity 类型化 + JpaMapper</a></li>
+          <li data-task-status="done"><a href="#task-9">Task 9 — ORCID 投影批查 DAO</a></li>
+          <li data-task-status="done"><a href="#task-10">Task 10 — 作者写链路 + 聚合恢复</a></li>
+          <li data-task-status="done"><a href="#task-11">Task 11 — 读端 SQL 与 parseSections</a></li>
+          <li data-task-status="done"><a href="#task-12">Task 12 — 摘要写读 round-trip IT</a></li>
+          <li data-task-status="done"><a href="#task-13">Task 13 — generation 参数全链</a></li>
+          <li data-task-status="done"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
+          <li data-task-status="done"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
+          <li data-task-status="done"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>v0.6 Catalog 作者与摘要数据链路修复 — 实现计划</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-28</span>
+        <span>🌿 feat/v0.6-catalog-authors-abstracts</span>
+        <span>📋 plan</span>
+        <span class="status-pill">draft</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>补齐 catalog 文献作者落库链路（从未实现）+ 修复摘要写读 schema（双重编码/读写不一致/非结构化丢弃），最终 mini 换库重建后文献详情页作者区与摘要区展示真实数据</dd>
+        <dt>架构</dt> <dd>作者「行内存名 + 可空 ORCID 软关联」：快照 VO 挂 PublicationAggregate（attachAuthors 惯用法），Repository 批量写 + chunk 级 ORCID 批查，绝不向 cat_author 新建行。摘要以 catalog-domain 共享 record PublicationAbstractSection 定型有序数组，Entity 类型化交全局 Jackson3JsonFormatMapper 单点序列化。数据重建走换库重建 runbook（rename 回滚锚 + allowlist 回填 + generation 参数重导）。</dd>
+        <dt>技术栈</dt> <dd>Java 25 / Spring Boot 4 / Spring Batch / Spring Data JPA / PostgreSQL 17 (JSONB) / Flyway / Testcontainers / Next.js 15 + Vitest（portal 一处）</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-08-28-v0.6-catalog-authors-abstracts-design.html">v0.6 Catalog 作者与摘要数据链路修复（第三版）</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>spec 全部范围（作者链路 + 摘要链路 + generation 参数 + Portal 一处 + runbook 文档）都在 patra-catalog 单服务边界内（外加 common-model 一个嵌套类型与 portal 两个文件），改动互相衔接成一条写读闭环——单 plan 覆盖，16 任务串行执行。换库重建的<strong>实操</strong>不在本 plan 内（runbook 是本 plan 的产物，实操在合并后按 runbook 另行执行）。</p>
+      </aside>
+      <aside class="callout warning">
+        <span class="title">执行前提（工作者必读）</span>
+        <p>① 分支 <code>feat/v0.6-catalog-authors-abstracts</code> 已就位（spec 已在其上）。② 后端验证命令统一从 <code>patra-api/</code> 目录跑 <code>./gradlew</code>；integrationTest 需本地 Docker（Testcontainers PG17）。③ <code>./gradlew check</code> <strong>不包含</strong> integrationTest——涉 IT 任务必须显式跑 <code>:patra-catalog:patra-catalog-infra:integrationTest</code>。④ portal 命令在 <code>patra-portal/</code> 下用 pnpm。⑤ 摘要 abstract_type 的落库值维持现状（<code>AbstractType.name()</code> 大写），不要改成小写 code——portal 契约按现值对齐。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>patra-api/patra-catalog/
+├── patra-catalog-infra/src/main/resources/db/migration/
+│   ├── V3__create_author.sql                     [modify] 作者关联表行内列/可空/部分唯一索引；affiliation 删 author_id
+│   └── V2__create_publication.sql                [modify] alternative_abstract 补 copyright 列
+├── patra-catalog-domain/.../model/vo/publication/
+│   ├── PublicationAbstractSection.java           [create] 共享 section record（label 可空）
+│   ├── PublicationAbstract.java                  [modify] Map→List、列表语义 API
+│   ├── PublicationAlternativeAbstract.java       [modify] Map→List + copyright 字段
+│   ├── PublicationAuthorSnapshot.java            [create] 作者快照 VO（displayName 派生）
+│   └── PublicationAuthorAffiliationSnapshot.java [create] 机构快照 VO
+├── patra-catalog-domain/.../model/aggregate/
+│   └── PublicationAggregate.java                 [modify] authors 字段 + attachAuthors
+├── patra-common/patra-common-model/.../CanonicalPublication.java  [modify] AlternativeAbstract 加 sections
+├── patra-catalog-infra/.../parser/
+│   ├── PubmedXmlElements.java                    [modify] Article.COPYRIGHT_INFORMATION 常量
+│   └── strategy/CanonicalPublicationParsingStrategy.java  [modify] 主摘要 copyright + alt sections 不拍平
+├── patra-catalog-infra/.../batch/publication/
+│   ├── PubmedArticleItemProcessor.java           [modify] 摘要三态分流 + buildAuthorSnapshots
+│   ├── PublicationImportResult.java              [modify] AlternativeAbstractData 加 sections
+│   ├── PublicationImportResultMapper.java        [modify] alt sections/copyright 映射
+│   ├── PublicationImportJobParams.java           [modify] generation 字段
+│   └── PublicationBatchAdapter.java              [modify] generation 透传
+├── patra-catalog-domain/.../vo/publication/PublicationImportParams.java  [modify] generation
+├── patra-catalog-app/.../baseline/command/PublicationBaselineImportCommand.java  [modify] generation
+├── patra-catalog-adapter/.../scheduler/job/PubmedBaselineImportScheduleJob.java  [modify] 参数解析扩展
+├── patra-catalog-infra/.../persistence/
+│   ├── entity/PublicationAuthorEntity.java       [modify] 行内列 + author_id 可空 + 删约束
+│   ├── entity/PublicationAuthorAffiliationEntity.java  [modify] 删 authorId
+│   ├── entity/PublicationAbstractEntity.java     [modify] structuredSections 类型化 jsonb
+│   ├── entity/PublicationAlternativeAbstractEntity.java  [modify] 类型化 + copyright
+│   ├── dao/PublicationAuthorDao.java             [create] 作者关联批量写 DAO
+│   ├── dao/PublicationAuthorAffiliationDao.java  [modify] 删 findAllByAuthorId* 系
+│   ├── dao/AuthorOrcidDao.java                   [modify] 投影批查
+│   ├── dao/OrcidAuthorIdView.java                [create] 轻量投影接口
+│   ├── dao/PublicationDetailDao.java             [modify] 作者 SQL 读行内名
+│   ├── dao/PortalFeedDao.java                    [modify] string_agg 读行内名
+│   └── converter/mapper/PublicationJpaMapper.java [modify] 删 mapToJson/jsonToMap + 作者映射
+├── patra-catalog-infra/.../adapter/
+│   ├── persistence/PublicationRepositoryAdapter.java  [modify] writeAuthorAssociations + loadAuthors
+│   └── read/PublicationDetailReadAdapter.java    [modify] parseSections 上下文日志
+└── patra-catalog-infra/src/integrationTest/
+    ├── .../persistence/PublicationAuthorAffiliationDaoIT.java  [modify] 去 authorId 用例
+    ├── .../persistence/AuthorOrcidDaoIT.java（如无则 create）  [modify/create] 投影批查用例
+    ├── .../adapter/persistence/PublicationAuthorRoundTripIT.java  [create] 作者聚合闭环
+    ├── .../adapter/persistence/PublicationAbstractRoundTripIT.java [create] 摘要断言矩阵
+    └── .../adapter/read/{PublicationDetailReadAdapterIT,PortalFeedReadAdapterIT}.java  [modify] 快照语义
+
+patra-portal/
+├── src/types/portal.ts                           [modify] AbstractSection.label 可空
+├── src/components/portal/paper-detail/AbstractBlock.tsx  [modify] 无 label 段渲染
+└── tests/components/portal/paper-detail/AbstractBlock.test.tsx  [modify] 混合摘要用例
+
+docs/patra/runbooks/v0.6-catalog-rebuild-runbook.md  [create] 换库重建十步手册
+patra-infra/scripts/v06-rebuild/
+├── export-reference-allowlist.sh                 [create] allowlist 导出 + 行数对照
+└── closed-loop-stats.py                          [create] 源数据闭环统计</pre>
+      </div>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- TASK TEMPLATE（注释保留供添加新 task 时复制）:
+      <article class="task" id="task-N" data-status="pending">
+        <header>
+          <h2>任务 N：[任务标题]</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>[exact/path/to/File.java]</code></dd>
+          </dl>
+        </header>
+        <ol class="steps">
+          <li class="step" data-status="pending"><strong>步骤 1：[描述]</strong></li>
+        </ol>
+      </article>
+      -->
+
+<article class="task" id="task-1" data-status="done">
+        <header>
+          <h2>任务 1：作者侧 DDL 与 Entity 原子改造（V3 + 两 Entity + affiliation DAO/IT 级联）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-api/patra-catalog/patra-catalog-infra/src/main/resources/db/migration/V3__create_author.sql</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../persistence/entity/PublicationAuthorEntity.java</code> + <code>PublicationAuthorAffiliationEntity.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../persistence/dao/PublicationAuthorAffiliationDao.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/integrationTest/.../persistence/PublicationAuthorAffiliationDaoIT.java</code>（重写）</dd>
+          </dl>
+        </header>
+        <p>作者侧 schema 是一个原子单元：DDL、Entity、DAO、IT 必须同任务改完，否则 <code>ddl-auto=validate</code> 与 Spring Data 派生方法校验会让所有 IT 红掉。本任务<strong>不改</strong>读端 SQL（任务 11）——现有详情/Feed IT 的数据构造助手仍设 authorId，保持绿。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：改 V3 的 cat_publication_author 表定义</strong>
+            <p>将表 4 整段替换为（行内列 + author_id 可空；删除表内 <code>uk_pub_author</code> 约束，改为表外部分唯一索引；保留 uk_author_order）：</p>
+            <pre><code class="lang-sql">CREATE TABLE cat_publication_author (
+    id                       BIGINT          NOT NULL,
+    publication_id           BIGINT          NOT NULL,
+    author_id                BIGINT          NULL,
+    author_order             INTEGER         NOT NULL DEFAULT 1,
+    display_name             VARCHAR(200)    NOT NULL,
+    last_name                VARCHAR(200)    NULL,
+    fore_name                VARCHAR(200)    NULL,
+    initials                 VARCHAR(20)     NULL,
+    suffix                   VARCHAR(50)     NULL,
+    collective_name          VARCHAR(500)    NULL,
+    orcid                    VARCHAR(19)     NULL,
+    is_first_author          BOOLEAN         NOT NULL DEFAULT false,
+    is_corresponding_author  BOOLEAN         NOT NULL DEFAULT false,
+    is_equal_contribution    BOOLEAN         NOT NULL DEFAULT false,
+    email                    VARCHAR(255)    NULL,
+    author_metadata          JSONB           NULL,
+
+    PRIMARY KEY (id),
+
+    CONSTRAINT uk_author_order UNIQUE (publication_id, author_order)
+);
+
+-- 软关联部分唯一索引：仅 author_id 非空时约束同篇不重复关联同一已消歧作者
+CREATE UNIQUE INDEX uk_pub_author ON cat_publication_author (publication_id, author_id)
+    WHERE author_id IS NOT NULL;
+
+CREATE INDEX idx_pub_author_author    ON cat_publication_author (author_id);
+CREATE INDEX idx_first_author         ON cat_publication_author (is_first_author);
+CREATE INDEX idx_corresponding        ON cat_publication_author (is_corresponding_author);</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：改 V3 的 cat_publication_author_affiliation 表定义</strong>
+            <p>删除 <code>author_id BIGINT NOT NULL</code> 列与 <code>CREATE INDEX idx_affil_author ...</code> 一行；其余列/索引原样保留。同步更新表 5 上方注释（删掉 author_id 冗余说明）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：改 PublicationAuthorEntity</strong>
+            <p>类级 <code>@Table</code>：删除 <code>uk_pub_author</code> 的 <code>@UniqueConstraint</code>（JPA 表达不了 partial index，Flyway 独占定义），保留 <code>uk_author_order</code>；indexes 原样。字段区改动：</p>
+            <pre><code class="lang-java">  /// 作者 ID（外键：cat_author.id；软关联位——仅 ORCID 命中已消歧作者时填，其余为 null）。
+  @Column(name = "author_id")
+  private Long authorId;
+
+  // ========== 行内姓名快照（文献视角的作者展示，不依赖 cat_author） ==========
+
+  /// 展示名（"LastName ForeName" 或集体作者名，恒非空）。
+  @Column(name = "display_name", nullable = false, length = 200)
+  private String displayName;
+
+  @Column(name = "last_name", length = 200)
+  private String lastName;
+
+  @Column(name = "fore_name", length = 200)
+  private String foreName;
+
+  @Column(name = "initials", length = 20)
+  private String initials;
+
+  @Column(name = "suffix", length = 50)
+  private String suffix;
+
+  /// 集体作者名（CollectiveName；个人作者为 null）。
+  @Column(name = "collective_name", length = 500)
+  private String collectiveName;
+
+  /// 归一化 ORCID（存档位，便于未来重关联/审计；未提供或校验失败为 null）。
+  @Column(name = "orcid", length = 19)
+  private String orcid;</code></pre>
+            <p>同时删除便捷方法 <code>markAsFirstAuthor()</code> / <code>markAsCorresponding(String)</code>（生产代码零引用，行为由写链路显式赋值），并把类 javadoc 的「索引设计」段更新为部分唯一索引说明。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：改 PublicationAuthorAffiliationEntity</strong>
+            <p>删除字段 <code>authorId</code>（连同其 javadoc）；<code>@Table.indexes</code> 中删除 <code>@Index(name = "idx_author", columnList = "author_id")</code>；类 javadoc 中删除 author_id 冗余说明与 idx_author 条目。其余字段（含 publicationId 冗余）不动。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：清理 PublicationAuthorAffiliationDao 的 authorId 派生方法</strong>
+            <p>删除以下方法（Entity 字段消失后 Spring Data 启动会抛 <code>PropertyReferenceException</code>）：<code>findAllByAuthorId</code>、<code>findAllByAuthorIdIn</code>、<code>findByAuthorId(Long, Pageable)</code>，及「按作者查询」分节注释。新增一个替换语义要用的批量删除（任务 10 消费）：</p>
+            <pre><code class="lang-java">  /// 按出版物 ID 批量删除（重导替换语义用）。
+  ///
+  /// @param publicationIds 出版物 ID 集合
+  void deleteAllByPublicationIdIn(Collection&lt;Long&gt; publicationIds);</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 6：重写 PublicationAuthorAffiliationDaoIT + 修编译波及</strong>
+            <p>① <code>createTestEntity</code> 助手删掉 <code>.authorId(authorId)</code> 一行、方法签名去掉 authorId 参数（调用点同步）；② 删除 <code>FindByAssociationIdTests.findAllByAuthorId_shouldReturnMatching</code> 用例；③ 新增用例验证 <code>deleteAllByPublicationIdIn</code>：两个 publicationId 各插 2 行，删其一，断言剩 2 行且全属另一 publicationId。④ 全仓 grep <code>setAuthorId</code> / <code>.authorId(</code> 在 affiliation 语境下的残留调用（<code>PublicationDetailReadAdapterIT.saveAffiliation</code>、<code>PortalFeedReadAdapterIT</code> 同名助手）：这些助手删掉 authorId 赋值行、签名收窄，但<strong>保留 savePublicationAuthor 对 cat_author 的写入与 authorId 赋值</strong>（读端 SQL 本任务未改，仍 join）。⑤ savePublicationAuthor 助手补 <code>pa.setDisplayName(displayName)</code>——displayName 列 NOT NULL，取现有 cat_author displayName 同值传入。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 7：跑作者侧 IT 验证</strong>
+            <p>运行：<code>cd patra-api &amp;&amp; ./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationAuthorAffiliationDaoIT" --tests "*PublicationDetailReadAdapterIT" --tests "*PortalFeedReadAdapterIT"</code></p>
+            <p>预期：全部通过（Flyway 建新 schema，Entity 与之匹配，读端 SQL 仍走 join 路径不受影响）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 8：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/resources/db/migration/V3__create_author.sql \
+  patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/entity/PublicationAuthorEntity.java \
+  patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/entity/PublicationAuthorAffiliationEntity.java \
+  patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/dao/PublicationAuthorAffiliationDao.java \
+  patra-api/patra-catalog/patra-catalog-infra/src/integrationTest
+git commit -m "feat(catalog): 作者关联表行内存名+可空软关联 DDL/Entity 改造（任务 1/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：摘要领域类型定型——PublicationAbstractSection + 两个 VO 重设计</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-domain/.../model/vo/publication/PublicationAbstractSection.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-domain/.../model/vo/publication/PublicationAbstract.java</code> + <code>PublicationAlternativeAbstract.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-domain/src/test/.../vo/publication/PublicationAbstractSectionTest.java</code>（新）+ 现有两 VO 单测改写</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 PublicationAbstractSection 失败测试</strong>
+            <p>新建 <code>patra-catalog-domain/src/test/java/dev/linqibin/patra/catalog/domain/model/vo/publication/PublicationAbstractSectionTest.java</code>：</p>
+            <pre><code class="lang-java">class PublicationAbstractSectionTest {
+
+  @Test
+  void of_labeledSection_shouldKeepLabel() {
+    var s = PublicationAbstractSection.of("METHODS", "some text");
+    assertThat(s.label()).isEqualTo("METHODS");
+    assertThat(s.isLabeled()).isTrue();
+  }
+
+  @Test
+  void of_blankLabel_shouldNormalizeToNull() {
+    assertThat(PublicationAbstractSection.of("  ", "t").label()).isNull();
+    assertThat(PublicationAbstractSection.of("", "t").isLabeled()).isFalse();
+    assertThat(PublicationAbstractSection.of(null, "t").label()).isNull();
+  }
+
+  @Test
+  void of_labelWithWhitespace_shouldTrim() {
+    assertThat(PublicationAbstractSection.of(" RESULTS ", "t").label()).isEqualTo("RESULTS");
+  }
+
+  @Test
+  void of_blankText_shouldThrow() {
+    assertThatThrownBy(() -&gt; PublicationAbstractSection.of("A", "  "))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行确认失败</strong>
+            <p>运行：<code>cd patra-api &amp;&amp; ./gradlew :patra-catalog:patra-catalog-domain:test --tests "*PublicationAbstractSectionTest"</code>，预期编译失败（类不存在）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：实现 PublicationAbstractSection</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.domain.model.vo.publication;
+
+import cn.hutool.core.lang.Assert;
+import java.io.Serial;
+import java.io.Serializable;
+
+/// 摘要段落值对象——主摘要 / 翻译摘要 / Entity 序列化 / 读模型共享的唯一 section 定义。
+///
+/// 存储形态为有序数组 `[{"label","text"}]`：保 section 顺序、容纳重复 label 与无 label 段。
+///
+/// @param label 段落标签（如 BACKGROUND / METHODS；无标签段为 null，空白串归一化为 null）
+/// @param text 段落内容（非空）
+/// @author linqibin
+/// @since 0.6.0
+public record PublicationAbstractSection(String label, String text) implements Serializable {
+
+  @Serial private static final long serialVersionUID = 1L;
+
+  /// 紧凑构造器：label 空白归一化为 null 并 trim，text 非空校验。
+  public PublicationAbstractSection {
+    label = (label == null || label.isBlank()) ? null : label.trim();
+    Assert.notBlank(text, "摘要段落内容不能为空");
+  }
+
+  /// 创建摘要段落。
+  ///
+  /// @param label 段落标签（可为 null / 空白）
+  /// @param text 段落内容
+  /// @return 段落值对象
+  public static PublicationAbstractSection of(String label, String text) {
+    return new PublicationAbstractSection(label, text);
+  }
+
+  /// 是否带标签段落（STRUCTURED 判型依据）。
+  ///
+  /// @return true 如果 label 非空
+  public boolean isLabeled() {
+    return label != null;
+  }
+}</code></pre>
+            <p>运行步骤 2 命令，预期 4 个测试通过。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：写 PublicationAbstract 新语义失败测试</strong>
+            <p>改写现有 <code>PublicationAbstractTest</code>（如无则新建），核心用例：</p>
+            <pre><code class="lang-java">  @Test
+  void ofBoth_shouldKeepSectionOrderAndDuplicateLabels() {
+    var sections = List.of(
+        PublicationAbstractSection.of("INTRO", "a"),
+        PublicationAbstractSection.of("METHODS", "b"),
+        PublicationAbstractSection.of("METHODS", "c"),
+        PublicationAbstractSection.of(null, "d"));
+    var abs = PublicationAbstract.ofBoth("plain", sections, "©X");
+    assertThat(abs.abstractType()).isEqualTo(AbstractType.STRUCTURED);
+    assertThat(abs.structuredSections()).hasSize(4);
+    assertThat(abs.structuredSections().get(2).text()).isEqualTo("c");
+    assertThat(abs.findSectionsByLabel("methods")).hasSize(2);
+    assertThat(abs.findSectionsByLabel("NONEXIST")).isEmpty();
+  }
+
+  @Test
+  void ofPlainText_shouldHaveEmptySectionsAndUnstructuredType() {
+    var abs = PublicationAbstract.ofPlainText("text only", "©");
+    assertThat(abs.structuredSections()).isEmpty();
+    assertThat(abs.abstractType()).isEqualTo(AbstractType.UNSTRUCTURED);
+    assertThat(abs.hasContent()).isTrue();
+  }
+
+  @Test
+  void compactConstructor_shouldInferTypeAndDefensiveCopy() {
+    var mutable = new ArrayList&lt;PublicationAbstractSection&gt;();
+    mutable.add(PublicationAbstractSection.of("A", "t"));
+    var abs = new PublicationAbstract(null, mutable, null, null);
+    mutable.clear();
+    assertThat(abs.structuredSections()).hasSize(1);
+    assertThat(abs.abstractType()).isEqualTo(AbstractType.STRUCTURED);
+  }
+
+  @Test
+  void getFullText_structured_shouldJoinSectionTexts() {
+    var abs = PublicationAbstract.ofStructured(
+        List.of(PublicationAbstractSection.of("A", "x"), PublicationAbstractSection.of(null, "y")), null);
+    assertThat(abs.getFullText()).isEqualTo("x y");
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：重设计 PublicationAbstract（Map→List、列表语义）</strong>
+            <p>record 组件改为 <code>List&lt;PublicationAbstractSection&gt; structuredSections</code>；紧凑构造器改：</p>
+            <pre><code class="lang-java">  public PublicationAbstract {
+    structuredSections =
+        structuredSections != null ? List.copyOf(structuredSections) : List.of();
+    if (abstractType == null) {
+      if (!structuredSections.isEmpty()) {
+        abstractType = AbstractType.STRUCTURED;
+      } else if (StrUtil.isNotBlank(plainText)) {
+        abstractType = AbstractType.UNSTRUCTURED;
+      } else {
+        abstractType = AbstractType.NONE;
+      }
+    }
+  }</code></pre>
+            <p>工厂方法签名同步（<code>ofStructured(List, String)</code> / <code>ofBoth(String, List, String)</code>；<code>ofPlainText</code> 两个重载不变）。<strong>删除</strong> Map 语义 API：<code>getSection</code> / <code>getSectionIgnoreCase</code> / <code>hasSection</code> / <code>getSectionNames</code>；替换为：</p>
+            <pre><code class="lang-java">  /// 按标签查段落（大小写不敏感），可返回多条（重复 label 是合法形态）。
+  ///
+  /// @param label 段落标签
+  /// @return 命中的段落列表（可能为空）
+  public List&lt;PublicationAbstractSection&gt; findSectionsByLabel(String label) {
+    if (label == null) {
+      return List.of();
+    }
+    String upper = label.toUpperCase(Locale.ROOT);
+    return structuredSections.stream()
+        .filter(s -&gt; s.label() != null &amp;&amp; s.label().toUpperCase(Locale.ROOT).equals(upper))
+        .toList();
+  }</code></pre>
+            <p><code>getSectionCount()</code> 改 <code>structuredSections.size()</code>；<code>hasContent()</code> 改 <code>StrUtil.isNotBlank(plainText) || !structuredSections.isEmpty()</code>；<code>getFullText()</code> 的结构化分支改 <code>structuredSections.stream().map(PublicationAbstractSection::text).collect(Collectors.joining(" "))</code>。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 6：PublicationAlternativeAbstract 同步改造</strong>
+            <p>① record 组件 <code>Map&lt;String, String&gt; structuredSections</code> → <code>List&lt;PublicationAbstractSection&gt; structuredSections</code>，紧凑构造器 <code>List.copyOf / List.of()</code>；② 新增组件 <code>String copyright</code>（放 structuredSections 之后；@Builder 生成，工厂方法 ofOfficial/ofProfessional/ofMachine 不用带 copyright）；③ <code>getSection(String)</code> 删除，加同款 <code>findSectionsByLabel</code>；<code>getFullText()</code> 同款改法。补两条单测：List 防御拷贝 + copyright 透传。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 7：编译波及清点（只改 domain 内）</strong>
+            <p>运行 <code>./gradlew :patra-catalog:patra-catalog-domain:compileJava :patra-catalog:patra-catalog-domain:test</code>。domain 内其他引用旧 Map API 的代码/测试就地改为列表语义。<strong>infra 层此时预期编译失败</strong>（Processor / JpaMapper 仍用 Map）——这是任务 6/8 的工作，本任务只保证 domain 模块绿。</p>
+            <p>预期：domain test 全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 8：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain
+git commit -m "feat(catalog): 摘要领域类型定型——共享 section record + 有序数组语义（任务 2/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：作者快照 VO（含 displayName 派生规则）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-domain/.../model/vo/publication/PublicationAuthorSnapshot.java</code> + <code>PublicationAuthorAffiliationSnapshot.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-domain/src/test/.../vo/publication/PublicationAuthorSnapshotTest.java</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试（displayName 派生 + 防御拷贝）</strong>
+            <pre><code class="lang-java">class PublicationAuthorSnapshotTest {
+
+  @Test
+  void deriveDisplayName_lastAndFore() {
+    assertThat(PublicationAuthorSnapshot.deriveDisplayName("Smith", "John", "J", null))
+        .isEqualTo("Smith John");
+  }
+
+  @Test
+  void deriveDisplayName_lastAndInitialsOnly() {
+    assertThat(PublicationAuthorSnapshot.deriveDisplayName("Smith", null, "JR", null))
+        .isEqualTo("Smith JR");
+  }
+
+  @Test
+  void deriveDisplayName_lastNameOnly() {
+    assertThat(PublicationAuthorSnapshot.deriveDisplayName("Smith", null, null, null))
+        .isEqualTo("Smith");
+  }
+
+  @Test
+  void deriveDisplayName_collectiveWins() {
+    assertThat(PublicationAuthorSnapshot.deriveDisplayName(null, null, null, "WHO Study Group"))
+        .isEqualTo("WHO Study Group");
+  }
+
+  @Test
+  void deriveDisplayName_allBlank_returnsNull() {
+    assertThat(PublicationAuthorSnapshot.deriveDisplayName(null, "  ", null, "")).isNull();
+  }
+
+  @Test
+  void deriveDisplayName_over200_truncated() {
+    String longName = "A".repeat(300);
+    assertThat(PublicationAuthorSnapshot.deriveDisplayName(longName, null, null, null)).hasSize(200);
+  }
+
+  @Test
+  void snapshot_defensiveCopyAndValidation() {
+    var affs = new ArrayList&lt;PublicationAuthorAffiliationSnapshot&gt;();
+    affs.add(PublicationAuthorAffiliationSnapshot.of(1, "Harvard"));
+    var snap = PublicationAuthorSnapshot.builder()
+        .order(1).lastName("Smith").displayName("Smith").firstAuthor(true)
+        .affiliations(affs).build();
+    affs.clear();
+    assertThat(snap.affiliations()).hasSize(1);
+    assertThatThrownBy(() -&gt; PublicationAuthorSnapshot.builder().order(1).displayName(" ").build())
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -&gt; PublicationAuthorAffiliationSnapshot.of(0, "X"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+}</code></pre>
+            <p>运行 <code>./gradlew :patra-catalog:patra-catalog-domain:test --tests "*PublicationAuthorSnapshotTest"</code>，预期编译失败。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：实现两个快照 VO</strong>
+            <pre><code class="lang-java">/// 作者-机构快照值对象（文献视角的机构原文，不做标准化）。
+///
+/// @param order 机构顺序（1 起连续）
+/// @param affiliationString 机构原文
+public record PublicationAuthorAffiliationSnapshot(int order, String affiliationString)
+    implements Serializable {
+
+  @Serial private static final long serialVersionUID = 1L;
+
+  public PublicationAuthorAffiliationSnapshot {
+    Assert.isTrue(order &gt;= 1, "机构顺序必须 &gt;= 1");
+    Assert.notBlank(affiliationString, "机构原文不能为空");
+  }
+
+  public static PublicationAuthorAffiliationSnapshot of(int order, String affiliationString) {
+    return new PublicationAuthorAffiliationSnapshot(order, affiliationString);
+  }
+}</code></pre>
+            <pre><code class="lang-java">/// 文献作者快照值对象——「行内存名 + 可空 ORCID 软关联」的领域表达。
+///
+/// 快照挂在 [PublicationAggregate] 上（唯一事实来源）；authorId 仅当 ORCID
+/// 命中 cat_author 已消歧作者时由 Repository 填充，绝不因导入新建作者。
+///
+/// @param order 作者顺序（1 起）
+/// @param lastName 姓（可空）
+/// @param foreName 名（可空）
+/// @param initials 缩写（可空）
+/// @param suffix 后缀（可空，不拼入 displayName）
+/// @param collectiveName 集体作者名（个人作者为 null）
+/// @param displayName 展示名（恒非空，由 deriveDisplayName 派生）
+/// @param orcid 归一化 ORCID（可空）
+/// @param authorId 软关联作者 ID（可空）
+/// @param firstAuthor 是否第一作者
+/// @param equalContribution 是否同等贡献
+/// @param affiliations 机构快照列表（有序）
+@Builder
+public record PublicationAuthorSnapshot(
+    int order,
+    String lastName,
+    String foreName,
+    String initials,
+    String suffix,
+    String collectiveName,
+    String displayName,
+    String orcid,
+    Long authorId,
+    boolean firstAuthor,
+    boolean equalContribution,
+    List&lt;PublicationAuthorAffiliationSnapshot&gt; affiliations)
+    implements Serializable {
+
+  @Serial private static final long serialVersionUID = 1L;
+
+  /// 展示名列宽上限（与 DDL display_name VARCHAR(200) 对齐）。
+  private static final int DISPLAY_NAME_MAX_LENGTH = 200;
+
+  /// 紧凑构造器：校验 + 防御性拷贝。
+  public PublicationAuthorSnapshot {
+    Assert.isTrue(order &gt;= 1, "作者顺序必须 &gt;= 1");
+    Assert.notBlank(displayName, "作者展示名不能为空");
+    affiliations = affiliations != null ? List.copyOf(affiliations) : List.of();
+  }
+
+  /// 派生展示名：集体名优先；否则 "LastName ForeName"，ForeName 缺则用 Initials，
+  /// 仅 LastName 则单独成名；全空返回 null（调用方据此跳过该作者）；超长按 200 截断。
+  ///
+  /// @param lastName 姓
+  /// @param foreName 名
+  /// @param initials 缩写
+  /// @param collectiveName 集体作者名
+  /// @return 展示名，或 null（无可用姓名）
+  public static String deriveDisplayName(
+      String lastName, String foreName, String initials, String collectiveName) {
+    String collective = StrUtil.trimToNull(collectiveName);
+    if (collective != null) {
+      return truncate(collective);
+    }
+    String last = StrUtil.trimToNull(lastName);
+    if (last == null) {
+      return null;
+    }
+    String fore = StrUtil.trimToNull(foreName);
+    if (fore != null) {
+      return truncate(last + " " + fore);
+    }
+    String init = StrUtil.trimToNull(initials);
+    if (init != null) {
+      return truncate(last + " " + init);
+    }
+    return truncate(last);
+  }
+
+  /// 按展示名列宽截断。
+  private static String truncate(String value) {
+    return value.length() &lt;= DISPLAY_NAME_MAX_LENGTH
+        ? value
+        : value.substring(0, DISPLAY_NAME_MAX_LENGTH);
+  }
+
+  /// 是否集体作者。
+  public boolean isCollective() {
+    return collectiveName != null;
+  }
+}</code></pre>
+            <p>运行步骤 1 命令，预期全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain
+git commit -m "feat(catalog): 作者/机构快照 VO 与 displayName 派生规则（任务 3/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：PublicationAggregate 携带作者快照</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-catalog-domain/.../model/aggregate/PublicationAggregate.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-domain/src/test/.../aggregate/PublicationAggregateTest.java</code>（追加用例）</dd>
+          </dl>
+        </header>
+        <p>沿用聚合现有 <code>attachAbstract</code> 惯用法（create 后挂载，不动 create/restore 的 21/22 参签名）；<code>attachAuthors</code> 为 public——导入路径与 Repository 恢复路径共用（现有 <code>syncAbstract</code> 的包私有形态跨模块调不到，属既有死代码，不效仿）。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试</strong>
+            <pre><code class="lang-java">  @Nested
+  class AuthorSnapshotTests {
+
+    @Test
+    void attachAuthors_shouldDefensiveCopyAndExpose() {
+      PublicationAggregate agg = createMinimalAggregate(); // 复用测试类现有构造助手
+      var authors = new ArrayList&lt;PublicationAuthorSnapshot&gt;();
+      authors.add(PublicationAuthorSnapshot.builder()
+          .order(1).lastName("Smith").displayName("Smith").firstAuthor(true).build());
+      agg.attachAuthors(authors);
+      authors.clear();
+      assertThat(agg.getAuthors()).hasSize(1);
+      assertThat(agg.getAuthors().getFirst().displayName()).isEqualTo("Smith");
+    }
+
+    @Test
+    void attachAuthors_null_shouldBecomeEmpty() {
+      PublicationAggregate agg = createMinimalAggregate();
+      agg.attachAuthors(null);
+      assertThat(agg.getAuthors()).isEmpty();
+    }
+
+    @Test
+    void newAggregate_shouldHaveEmptyAuthors() {
+      assertThat(createMinimalAggregate().getAuthors()).isEmpty();
+    }
+  }</code></pre>
+            <p>运行 <code>./gradlew :patra-catalog:patra-catalog-domain:test --tests "*PublicationAggregateTest"</code>，预期编译失败。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：实现聚合改动</strong>
+            <p>在「摘要（嵌入式值对象）」字段块之后新增字段与方法（构造器内不必赋值——字段声明处直接初始化）：</p>
+            <pre><code class="lang-java">  // ========== 作者快照（文献视角，独立表 cat_publication_author，属聚合边界内） ==========
+  /// 作者快照列表（唯一事实来源；空列表 = 无作者数据）。
+  private List&lt;PublicationAuthorSnapshot&gt; authors = List.of();
+
+  // ========== 作者管理 ==========
+
+  /// 挂载作者快照（导入构建与 Repository 恢复共用；整体替换语义）。
+  ///
+  /// @param authors 作者快照列表（null 视为清空）
+  public void attachAuthors(List&lt;PublicationAuthorSnapshot&gt; authors) {
+    this.authors = authors != null ? List.copyOf(authors) : List.of();
+  }
+
+  /// 是否携带作者快照。
+  ///
+  /// @return true 如果作者列表非空
+  public boolean hasAuthors() {
+    return !authors.isEmpty();
+  }</code></pre>
+            <p>（类上已有 <code>@Getter</code>，<code>getAuthors()</code> 自动生成。）运行步骤 1 命令，预期全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-domain
+git commit -m "feat(catalog): 聚合根携带作者快照 attachAuthors（任务 4/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+<article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：common-model 与 Parser 改造（主摘要 copyright + AlternativeAbstract sections 不拍平）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-api/patra-common/patra-common-model/.../CanonicalPublication.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../parser/PubmedXmlElements.java</code> + <code>parser/strategy/CanonicalPublicationParsingStrategy.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/test/.../parser/parser/strategy/CanonicalPublicationParsingStrategyTest.java</code>（追加用例）</dd>
+          </dl>
+        </header>
+        <p>Canonical 层已有带 label 的 <code>AbstractSection(label, category, content)</code>——主摘要结构无需改。本任务补三处：AlternativeAbstract 携带 sections（现被 <code>joinAbstractSections</code> 拍平丢 label）、主摘要 CopyrightInformation 解析（现完全不解析）、保留 text 拼接（<code>starter-provenance</code> 的 PubMed converter 也消费该类型，text 语义仍有效）。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试（Parser 三个新行为）</strong>
+            <p>在 <code>CanonicalPublicationParsingStrategyTest</code> 追加（fixture XML 内联字符串，参考该测试类现有构造方式）：</p>
+            <pre><code class="lang-java">  @Test
+  void parseAbstract_withCopyrightInformation_shouldCaptureCopyright() {
+    // fixture：&lt;Abstract&gt;&lt;AbstractText&gt;...&lt;/AbstractText&gt;
+    //          &lt;CopyrightInformation&gt;© 2026 Elsevier.&lt;/CopyrightInformation&gt;&lt;/Abstract&gt;
+    CanonicalPublication pub = parseSingle(xmlWithAbstractCopyright());
+    assertThat(pub.getAbstractContent().getCopyright()).isEqualTo("© 2026 Elsevier.");
+  }
+
+  @Test
+  void parseAbstract_mixedLabels_shouldKeepUnlabeledSections() {
+    // fixture：三段 AbstractText——有 Label、无 Label、有 Label
+    CanonicalPublication pub = parseSingle(xmlWithMixedAbstract());
+    var sections = pub.getAbstractContent().getSections();
+    assertThat(sections).hasSize(3);
+    assertThat(sections.get(1).getLabel()).isNull();
+    assertThat(sections.get(1).getContent()).isNotBlank();
+  }
+
+  @Test
+  void parseOtherAbstract_shouldCarryStructuredSections() {
+    // fixture：OtherAbstract 含两段带 Label 的 AbstractText
+    CanonicalPublication pub = parseSingle(xmlWithStructuredOtherAbstract());
+    var alt = pub.getAlternativeAbstracts().getFirst();
+    assertThat(alt.getSections()).hasSize(2);
+    assertThat(alt.getSections().getFirst().getLabel()).isEqualTo("OBJECTIVE");
+    assertThat(alt.getText()).isNotBlank(); // 拼接文本仍保留
+  }</code></pre>
+            <p>运行 <code>./gradlew :patra-catalog:patra-catalog-infra:test --tests "*CanonicalPublicationParsingStrategyTest"</code>，预期编译失败（<code>getSections()</code> 不存在）。注：此时 infra 主代码尚有任务 2 造成的 Map→List 编译错误——先做步骤 2/3 的实现，此步只为立契约。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：common-model 加 sections</strong>
+            <p><code>CanonicalPublication.AlternativeAbstract</code> 增加组件（放 <code>text</code> 之后）：</p>
+            <pre><code class="lang-java">    /// 结构化摘要段落列表（保 label 与顺序；text 为拼接便捷形态）。
+    List&lt;AbstractSection&gt; sections;</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：Parser 三处改动</strong>
+            <p>① <code>PubmedXmlElements.Article</code> 增加常量：</p>
+            <pre><code class="lang-java">    public static final String COPYRIGHT_INFORMATION = "CopyrightInformation";</code></pre>
+            <p>② <code>ParsedFields</code> 增加字段 <code>String abstractCopyright;</code>；<code>parseAbstract</code> 的事件循环改为 switch 形态（与 <code>parseOtherAbstract</code> 对齐）增加 case：</p>
+            <pre><code class="lang-java">          case PubmedXmlElements.Article.COPYRIGHT_INFORMATION -&gt;
+              fields.abstractCopyright =
+                  XmlParsingHelper.getElementTextWithMixedContent(reader).trim();</code></pre>
+            <p>③ <code>buildAbstract</code> 补 copyright：<code>return Abstract.builder().sections(sections).copyright(fields.abstractCopyright).build();</code>；④ <code>buildAlternativeAbstract</code> 补 sections 直传：</p>
+            <pre><code class="lang-java">    List&lt;AbstractSection&gt; sections =
+        parsed.sections.stream()
+            .map(s -&gt; AbstractSection.builder().label(s.label).content(s.content).build())
+            .toList();
+
+    return CanonicalPublication.AlternativeAbstract.builder()
+        .language(parsed.language)
+        .type(parsed.type)
+        .text(text)
+        .sections(sections)
+        .copyright(parsed.copyright)
+        .build();</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：运行验证（仅 parser 测试类）</strong>
+            <p>运行：<code>./gradlew :patra-common:patra-common-model:build :patra-catalog:patra-catalog-infra:test --tests "*CanonicalPublicationParsingStrategyTest"</code></p>
+            <p>预期：common-model 绿；parser 测试若因 infra 其他文件（Processor/JpaMapper 的 Map→List 波及）编译不过，属预期——本任务与任务 6/8 是同一编译单元的连续改造，此步先保证 parser 改动本身正确，整体编译在任务 8 末端闭合。若希望本任务独立绿，可将任务 6 的 Processor 摘要改造提前合入本次执行（工作者可自行合并任务 5+6 为一个提交序列，plan 状态分别标记）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-common/patra-common-model patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/parser \
+  patra-api/patra-catalog/patra-catalog-infra/src/test
+git commit -m "feat(catalog): Parser 主摘要 copyright + OtherAbstract sections 不拍平（任务 5/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：Processor 摘要三态分流 + plain_text 统一生成 + Alternative 数据链</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../batch/publication/PubmedArticleItemProcessor.java</code>（buildPublicationAbstract 重写）</dd>
+            <dt>修改</dt><dd><code>PublicationImportResult.java</code>（AlternativeAbstractData 加 sections）+ <code>PublicationImportResultMapper.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/test/.../batch/publication/</code> 下 Processor 与 Mapper 单测</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试（摘要三态判型 + plain_text 规则）</strong>
+            <p>Processor 现有测试类追加（或新建 <code>PubmedArticleItemProcessorAbstractTest</code>，用反射或包内可见性直测 <code>buildPublicationAbstract</code>——参照该测试类现有测法；若现有测法走 <code>process()</code> 全链 mock，则沿用）：</p>
+            <pre><code class="lang-java">  @Test
+  void buildAbstract_structured_shouldProduceSectionsAndJoinedPlainText() {
+    var canonical = canonicalWithAbstract(Abstract.builder()
+        .sections(List.of(
+            section("BACKGROUND", "bg."), section("METHODS", "m."), section(null, "tail.")))
+        .copyright("© X").build());
+    PublicationAbstract abs = invokeBuildAbstract(canonical);
+    assertThat(abs.abstractType()).isEqualTo(AbstractType.STRUCTURED);
+    assertThat(abs.structuredSections()).hasSize(3);
+    assertThat(abs.structuredSections().get(2).label()).isNull();
+    assertThat(abs.plainText()).isEqualTo("BACKGROUND: bg.\nMETHODS: m.\ntail.");
+    assertThat(abs.copyright()).isEqualTo("© X");
+  }
+
+  @Test
+  void buildAbstract_allUnlabeled_shouldBeUnstructuredWithNullSections() {
+    var canonical = canonicalWithAbstract(Abstract.builder()
+        .sections(List.of(section(null, "para one."), section(null, "para two."))).build());
+    PublicationAbstract abs = invokeBuildAbstract(canonical);
+    assertThat(abs.abstractType()).isEqualTo(AbstractType.UNSTRUCTURED);
+    assertThat(abs.structuredSections()).isEmpty();
+    assertThat(abs.plainText()).isEqualTo("para one.\npara two.");
+  }
+
+  @Test
+  void buildAbstract_blankLabelNormalizedBeforeTyping() {
+    var canonical = canonicalWithAbstract(Abstract.builder()
+        .sections(List.of(section("  ", "only."))).build());
+    PublicationAbstract abs = invokeBuildAbstract(canonical);
+    assertThat(abs.abstractType()).isEqualTo(AbstractType.UNSTRUCTURED);
+  }
+
+  @Test
+  void buildAbstract_noSectionsNoText_returnsNull() {
+    assertThat(invokeBuildAbstract(canonicalWithAbstract(Abstract.builder().build()))).isNull();
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：重写 buildPublicationAbstract</strong>
+            <pre><code class="lang-java">  /// 构建摘要信息（两形态一等公民）。
+  ///
+  /// 判型：≥1 个带 Label 段 → STRUCTURED（含混合，无 Label 段以 label=null 保位）；
+  /// 全部无 Label → UNSTRUCTURED（sections 置空，文本合并落 plainText）。
+  /// plainText 统一在此生成："LABEL: text" / 无 label 直接 text，段间 \n 连接。
+  ///
+  /// @param publication 规范化文献
+  /// @return 摘要值对象，无摘要返回 null
+  private PublicationAbstract buildPublicationAbstract(CanonicalPublication publication) {
+    Abstract abstractContent = publication.getAbstractContent();
+    if (abstractContent == null) {
+      return null;
+    }
+
+    String copyright = abstractContent.getCopyright();
+    List&lt;AbstractSection&gt; rawSections =
+        abstractContent.getSections() != null ? abstractContent.getSections() : List.of();
+    List&lt;PublicationAbstractSection&gt; sections =
+        rawSections.stream()
+            .filter(s -&gt; s.getContent() != null &amp;&amp; !s.getContent().isBlank())
+            .map(s -&gt; PublicationAbstractSection.of(s.getLabel(), s.getContent()))
+            .toList();
+
+    if (sections.isEmpty()) {
+      // 源侧无段落：退回 Canonical 层的 text（API 路径等其他来源可能只给 text）
+      String plainText = abstractContent.getText();
+      if (plainText != null &amp;&amp; !plainText.isBlank()) {
+        return PublicationAbstract.ofPlainText(plainText, copyright);
+      }
+      return null;
+    }
+
+    String plainText = joinSectionsAsPlainText(sections);
+    boolean structured = sections.stream().anyMatch(PublicationAbstractSection::isLabeled);
+    if (structured) {
+      return PublicationAbstract.ofBoth(plainText, sections, copyright);
+    }
+    // 全部无 Label：非结构化，sections 不入库（Entity 层置 null）
+    return PublicationAbstract.ofPlainText(plainText, copyright);
+  }
+
+  /// 段落拼接为纯文本（读端 plainText 的唯一生成点）。
+  private String joinSectionsAsPlainText(List&lt;PublicationAbstractSection&gt; sections) {
+    return sections.stream()
+        .map(s -&gt; s.isLabeled() ? s.label() + ": " + s.text() : s.text())
+        .collect(Collectors.joining("\n"));
+  }</code></pre>
+            <p>运行步骤 1 测试，预期全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：AlternativeAbstractData 加 sections + Mapper 映射补全</strong>
+            <p>① <code>PublicationImportResult.AlternativeAbstractData</code> 增加组件 <code>List&lt;PublicationAbstractSection&gt; sections</code>（放 plainText 之后），<code>of(...)</code> 加参、紧凑构造器 <code>List.copyOf / List.of()</code>；② <code>buildAlternativeAbstractData</code>：跳过条件从「text 空即跳过」改为「text 与 sections 均空才跳过」，并映射 sections：</p>
+            <pre><code class="lang-java">      List&lt;PublicationAbstractSection&gt; sections =
+          altAbstract.getSections() == null
+              ? List.of()
+              : altAbstract.getSections().stream()
+                  .filter(s -&gt; s.getContent() != null &amp;&amp; !s.getContent().isBlank())
+                  .map(s -&gt; PublicationAbstractSection.of(s.getLabel(), s.getContent()))
+                  .toList();
+      if ((altAbstract.getText() == null || altAbstract.getText().isBlank())
+          &amp;&amp; sections.isEmpty()) {
+        continue;
+      }</code></pre>
+            <p>③ <code>PublicationImportResultMapper.toAlternativeAbstract</code> 补两条缺失映射：<code>.structuredSections(data.sections())</code> 与 <code>.copyright(data.copyright())</code>（copyright 字段任务 2 已加到 VO）。④ <code>PublicationImportResultMapperTest</code> 补断言：sections 与 copyright 透传。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：运行验证</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:test --tests "*PubmedArticleItemProcessor*" --tests "*PublicationImportResultMapperTest" --tests "*CanonicalPublicationParsingStrategyTest"</code></p>
+            <p>预期：全绿（JpaMapper 的 Map→List 编译错误若仍在，先做任务 8 步骤 2 的最小 Entity/Mapper 改动使编译通过——两任务同编译单元，commit 分开）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/batch \
+  patra-api/patra-catalog/patra-catalog-infra/src/test
+git commit -m "feat(catalog): Processor 摘要三态分流与 plainText 统一生成（任务 6/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-7" data-status="done">
+        <header>
+          <h2>任务 7：Processor 作者快照构建（姓名规则 / ORCID 归一化 / attachAuthors）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../batch/publication/PubmedArticleItemProcessor.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/test/.../batch/publication/PubmedArticleItemProcessorAuthorTest.java</code>（新）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试</strong>
+            <pre><code class="lang-java">class PubmedArticleItemProcessorAuthorTest {
+  // 构造助手：author(...) 组装 CanonicalPublication.Author；invokeBuildAuthors(...) 调 Processor
+
+  @Test
+  void buildAuthors_orderFirstAndEqualContrib() {
+    var snaps = invokeBuildAuthors(List.of(
+        author("Smith", "John", null, null, null, true),
+        author("Doe", "Jane", null, null, null, null)));
+    assertThat(snaps).hasSize(2);
+    assertThat(snaps.get(0).order()).isEqualTo(1);
+    assertThat(snaps.get(0).firstAuthor()).isTrue();
+    assertThat(snaps.get(0).equalContribution()).isTrue();
+    assertThat(snaps.get(1).firstAuthor()).isFalse();
+    assertThat(snaps.get(1).displayName()).isEqualTo("Doe Jane");
+  }
+
+  @Test
+  void buildAuthors_collectiveAuthor() {
+    var snaps = invokeBuildAuthors(List.of(collectiveAuthor("WHO Study Group")));
+    assertThat(snaps.getFirst().isCollective()).isTrue();
+    assertThat(snaps.getFirst().displayName()).isEqualTo("WHO Study Group");
+    assertThat(snaps.getFirst().lastName()).isNull();
+  }
+
+  @Test
+  void buildAuthors_allBlankName_skippedButOrderContinuous() {
+    var snaps = invokeBuildAuthors(List.of(
+        author("Smith", null, null, null, null, null),
+        author("  ", "  ", null, null, null, null),   // 全空 → 跳过
+        author("Wang", null, null, null, null, null)));
+    assertThat(snaps).hasSize(2);
+    assertThat(snaps.get(1).order()).isEqualTo(2); // 顺序连续，不留洞
+    assertThat(snaps.get(1).displayName()).isEqualTo("Wang");
+  }
+
+  @Test
+  void buildAuthors_affiliationsOrderedFromOne() {
+    var snaps = invokeBuildAuthors(List.of(
+        authorWithAffiliations("Smith", List.of("Harvard", "MIT"))));
+    var affs = snaps.getFirst().affiliations();
+    assertThat(affs).hasSize(2);
+    assertThat(affs.get(0).order()).isEqualTo(1);
+    assertThat(affs.get(1).order()).isEqualTo(2);
+    assertThat(affs.get(1).affiliationString()).isEqualTo("MIT");
+  }
+
+  @Test
+  void normalizeOrcid_urlPrefixAndLowercaseX() {
+    assertThat(invokeNormalizeOrcid("https://orcid.org/0000-0002-1825-0097"))
+        .isEqualTo("0000-0002-1825-0097");
+    assertThat(invokeNormalizeOrcid("0000-0002-1694-233x")).isEqualTo("0000-0002-1694-233X");
+  }
+
+  @Test
+  void normalizeOrcid_invalidChecksumOrFormat_returnsNull() {
+    assertThat(invokeNormalizeOrcid("0000-0002-1825-0098")).isNull(); // 校验位错
+    assertThat(invokeNormalizeOrcid("not-an-orcid")).isNull();
+    assertThat(invokeNormalizeOrcid(null)).isNull();
+  }
+}</code></pre>
+            <p>（ORCID 样例 <code>0000-0002-1825-0097</code> 是 ORCID 官方文档示例，ISO 7064 校验位合法。）运行对应 test 命令确认编译失败。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：实现 buildAuthorSnapshots + normalizeOrcid</strong>
+            <p>Processor 新增（并在 <code>buildPublicationAggregate</code> 里 attach——见步骤 3）：</p>
+            <pre><code class="lang-java">  /// 构建作者快照列表（姓名规则见 PublicationAuthorSnapshot.deriveDisplayName）。
+  ///
+  /// 全部姓名字段与集体名均空的作者跳过（不落库），跳过后顺序保持连续。
+  /// ORCID 在此仅归一化存档；软关联 author_id 由 Repository 层 chunk 级批查填充。
+  ///
+  /// @param publication 规范化文献
+  /// @return 作者快照列表（可能为空，不为 null）
+  private List&lt;PublicationAuthorSnapshot&gt; buildAuthorSnapshots(CanonicalPublication publication) {
+    List&lt;Author&gt; authors = publication.getAuthors();
+    if (authors == null || authors.isEmpty()) {
+      return List.of();
+    }
+
+    List&lt;PublicationAuthorSnapshot&gt; snapshots = new ArrayList&lt;&gt;();
+    int order = 1;
+    for (Author author : authors) {
+      if (author == null) {
+        continue;
+      }
+      String lastName = StrUtil.trimToNull(author.getLastName());
+      String foreName = StrUtil.trimToNull(author.getForeName());
+      String initials = StrUtil.trimToNull(author.getInitials());
+      String suffix = StrUtil.trimToNull(author.getSuffix());
+      String collectiveName = StrUtil.trimToNull(author.getOrganizationName());
+      String displayName =
+          PublicationAuthorSnapshot.deriveDisplayName(lastName, foreName, initials, collectiveName);
+      if (displayName == null) {
+        log.debug("跳过无有效姓名的作者：importBatch={}", importBatch);
+        continue;
+      }
+
+      List&lt;PublicationAuthorAffiliationSnapshot&gt; affiliations =
+          buildAffiliationSnapshots(author);
+
+      snapshots.add(
+          PublicationAuthorSnapshot.builder()
+              .order(order)
+              .lastName(lastName)
+              .foreName(foreName)
+              .initials(initials)
+              .suffix(suffix)
+              .collectiveName(collectiveName)
+              .displayName(displayName)
+              .orcid(normalizeOrcid(extractOrcid(author)))
+              .firstAuthor(order == 1)
+              .equalContribution(Boolean.TRUE.equals(author.getEqualContribution()))
+              .affiliations(affiliations)
+              .build());
+      order++;
+    }
+    return snapshots;
+  }
+
+  /// 构建机构快照（保 XML 顺序，1 起连续编号）。
+  private List&lt;PublicationAuthorAffiliationSnapshot&gt; buildAffiliationSnapshots(Author author) {
+    if (author.getAffiliations() == null || author.getAffiliations().isEmpty()) {
+      return List.of();
+    }
+    List&lt;PublicationAuthorAffiliationSnapshot&gt; result = new ArrayList&lt;&gt;();
+    int affOrder = 1;
+    for (Affiliation affiliation : author.getAffiliations()) {
+      String name = affiliation != null ? StrUtil.trimToNull(affiliation.getName()) : null;
+      if (name == null) {
+        continue;
+      }
+      result.add(PublicationAuthorAffiliationSnapshot.of(affOrder++, name));
+    }
+    return result;
+  }
+
+  /// 提取作者 ORCID 原始值（identifiers 中 type=ORCID 的首个）。
+  private String extractOrcid(Author author) {
+    if (author.getIdentifiers() == null) {
+      return null;
+    }
+    return author.getIdentifiers().stream()
+        .filter(id -&gt; id.getType() == PublicationIdentifierType.ORCID)
+        .map(CanonicalPublication.Identifier::getValue)
+        .filter(v -&gt; v != null &amp;&amp; !v.isBlank())
+        .findFirst()
+        .orElse(null);
+  }
+
+  /// ORCID 归一化：去 URL 前缀 → 大写 → 格式 + ISO 7064 校验位校验，失败返回 null。
+  private String normalizeOrcid(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    String value = raw.trim();
+    value = StrUtil.removePrefixIgnoreCase(value, "https://orcid.org/");
+    value = StrUtil.removePrefixIgnoreCase(value, "http://orcid.org/");
+    value = value.toUpperCase(Locale.ROOT);
+    if (!Orcid.isValid(value)) {
+      return null;
+    }
+    Orcid orcid = Orcid.of(value);
+    return orcid.isChecksumValid() ? orcid.value() : null;
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：挂载到聚合</strong>
+            <p><code>buildPublicationAggregate</code> 中 <code>attachAbstract</code> 块之后追加：</p>
+            <pre><code class="lang-java">    // 补充作者快照（唯一事实来源挂聚合；author_id 软关联由 Repository 层填充）
+    List&lt;PublicationAuthorSnapshot&gt; authorSnapshots = buildAuthorSnapshots(publication);
+    if (!authorSnapshots.isEmpty()) {
+      aggregate.attachAuthors(authorSnapshots);
+    }</code></pre>
+            <p>运行步骤 1 全部测试，预期全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/batch \
+  patra-api/patra-catalog/patra-catalog-infra/src/test
+git commit -m "feat(catalog): Processor 作者快照构建与 ORCID 归一化（任务 7/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-8" data-status="done">
+        <header>
+          <h2>任务 8：摘要 Entity 类型化 + V2 copyright 列 + JpaMapper 去手工序列化</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>V2__create_publication.sql</code>（alternative_abstract 补 copyright 列）</dd>
+            <dt>修改</dt><dd><code>PublicationAbstractEntity.java</code> + <code>PublicationAlternativeAbstractEntity.java</code> + <code>PublicationJpaMapper.java</code></dd>
+            <dt>测试</dt><dd>JpaMapper 现有单测改写 + 编译全量闭合</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：V2 补列</strong>
+            <p><code>cat_publication_alternative_abstract</code> 的 <code>structured_sections JSONB NULL,</code> 之后加一行：</p>
+            <pre><code class="lang-sql">    copyright           VARCHAR(1000)   NULL,</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：两个摘要 Entity 类型化</strong>
+            <p><code>PublicationAbstractEntity</code>：</p>
+            <pre><code class="lang-java">  /// 结构化摘要段落（有序数组 [{"label","text"}]；纯文本摘要为 null）
+  @JdbcTypeCode(SqlTypes.JSON)
+  @Column(name = "structured_sections", columnDefinition = "jsonb")
+  private List&lt;PublicationAbstractSection&gt; structuredSections;</code></pre>
+            <p><code>PublicationAlternativeAbstractEntity</code> 同款改 <code>structuredSections</code>，并新增：</p>
+            <pre><code class="lang-java">  /// 版权信息
+  @Column(name = "copyright", length = 1000)
+  private String copyright;</code></pre>
+            <p>类 javadoc 中「JSON 对象」措辞同步改「有序数组」。（Jackson 3 FormatMapper 对 <code>List&lt;record&gt;</code> 走正常序列化——String 透传特例只对 String 目标类型生效，类型化后天然单点。）</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：JpaMapper 改造</strong>
+            <p>① <code>toAbstractEntity</code>：<code>entity.setStructuredSections(pubAbstract.structuredSections().isEmpty() ? null : pubAbstract.structuredSections());</code>（其余行不变）。② <code>toAbstract</code>：<code>.structuredSections(entity.getStructuredSections())</code>（VO 紧凑构造器兜 null→List.of()）。③ <code>toAlternativeAbstractEntity</code>：同款 sections 置换 + <code>entity.setCopyright(altAbstract.copyright());</code>；<code>toAlternativeAbstract</code>：<code>.structuredSections(entity.getStructuredSections())</code> + <code>.copyright(entity.getCopyright())</code>。④ <strong>删除</strong> <code>mapToJson</code> / <code>jsonToMap</code> 两个方法（静默吞异常源；<code>listToJson</code>/<code>jsonToList</code> 有其他消费者，保留）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：编译闭合 + 全模块单测</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:test :patra-catalog:patra-catalog-app:test :patra-catalog:patra-catalog-adapter:test</code></p>
+            <p>预期：任务 2 引发的 Map→List 编译波及至此全部闭合，全绿。任何残留引用点（如 API 路径 converter）就地改列表语义——改动如超出机械替换，记 Implementation Notes。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/resources/db/migration/V2__create_publication.sql \
+  patra-api/patra-catalog/patra-catalog-infra/src/main/java patra-api/patra-catalog/patra-catalog-infra/src/test
+git commit -m "feat(catalog): 摘要 Entity 类型化 jsonb + 删手工 JSON 序列化（任务 8/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+<article class="task" id="task-9" data-status="done">
+        <header>
+          <h2>任务 9：ORCID 轻量投影批查 DAO</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-infra/.../persistence/dao/OrcidAuthorIdView.java</code></dd>
+            <dt>修改</dt><dd><code>patra-catalog-infra/.../persistence/dao/AuthorOrcidDao.java</code></dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/integrationTest/.../AuthorOrcidDaoIT.java</code>（已有则追加，无则新建，套用 DaoIT 模板）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败 IT</strong>
+            <pre><code class="lang-java">  @Test
+  @DisplayName("批查投影：仅返回 ACTIVE 未删作者的 orcid→authorId")
+  void findAuthorIdsByOrcidIn_shouldOnlyHitActiveAuthors() {
+    Long activeId = saveAuthorWithOrcid("ACTIVE", null, "0000-0002-1825-0097");
+    saveAuthorWithOrcid("MERGED", null, "0000-0002-1694-233X");
+    saveAuthorWithOrcid("ACTIVE", Instant.now(), "0000-0001-5109-3700"); // 软删
+
+    List&lt;OrcidAuthorIdView&gt; views = dao.findAuthorIdsByOrcidIn(
+        List.of("0000-0002-1825-0097", "0000-0002-1694-233X",
+                "0000-0001-5109-3700", "0000-0003-0000-0000"));
+
+    assertThat(views).hasSize(1);
+    assertThat(views.getFirst().getOrcid()).isEqualTo("0000-0002-1825-0097");
+    assertThat(views.getFirst().getAuthorId()).isEqualTo(activeId);
+  }</code></pre>
+            <p>（saveAuthorWithOrcid 助手：persist AuthorEntity（status / deletedAt 按参）+ AuthorOrcidEntity 挂该 author——AuthorOrcidEntity 走 ManyToOne <code>author</code> 关联，构造时 set 关联实体，字段名以实际 Entity 为准。）运行 IT 确认编译失败。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：实现投影与查询</strong>
+            <p><code>OrcidAuthorIdView.java</code>（dao 包）：</p>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
+
+/// ORCID → 作者 ID 轻量投影（chunk 级批量软关联专用，避免加载完整 Author 聚合）。
+///
+/// @author linqibin
+/// @since 0.6.0
+public interface OrcidAuthorIdView {
+
+  /// ORCID 标识符。
+  String getOrcid();
+
+  /// 已消歧作者 ID。
+  Long getAuthorId();
+}</code></pre>
+            <p><code>AuthorOrcidDao</code> 新增：</p>
+            <pre><code class="lang-java">  /// 批量查询 orcid → authorId 投影（仅 ACTIVE 且未软删的作者可被软关联）。
+  ///
+  /// @param orcids 归一化 ORCID 集合
+  /// @return 命中的投影列表
+  @Query(
+      """
+      SELECT o.orcid AS orcid, a.id AS authorId
+      FROM AuthorOrcidEntity o JOIN o.author a
+      WHERE o.orcid IN :orcids AND a.status = 'ACTIVE' AND a.deletedAt IS NULL
+      """)
+  List&lt;OrcidAuthorIdView&gt; findAuthorIdsByOrcidIn(@Param("orcids") Collection&lt;String&gt; orcids);</code></pre>
+            <p>（AuthorEntity 的 status 若为枚举而非 String，JPQL 改 <code>a.status = dev.linqibin.patra.catalog.domain.model.enums.AuthorStatus.ACTIVE</code> 形态——以实际字段类型为准，IT 会裁决。）运行 IT，预期通过。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/main/java/dev/linqibin/patra/catalog/infra/persistence/dao \
+  patra-api/patra-catalog/patra-catalog-infra/src/integrationTest
+git commit -m "feat(catalog): ORCID 轻量投影批查 DAO（任务 9/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-10" data-status="done">
+        <header>
+          <h2>任务 10：作者写链路（writeAuthorAssociations）+ 聚合恢复 + 闭环 IT</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-infra/.../persistence/dao/PublicationAuthorDao.java</code></dd>
+            <dt>修改</dt><dd><code>PublicationRepositoryAdapter.java</code> + <code>PublicationJpaMapper.java</code>（作者映射）</dd>
+            <dt>测试</dt><dd><code>patra-catalog-infra/src/integrationTest/.../adapter/persistence/PublicationAuthorRoundTripIT.java</code>（新）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败 IT（作者聚合闭环）</strong>
+            <p>新建 <code>PublicationAuthorRoundTripIT</code>——测试基座沿用仓内现有 <code>PublicationRepositoryAdapter</code> 相关 IT 的注解组合（grep <code>PublicationRepositoryAdapter</code> 在 integrationTest 下的既有用法；如无先例则 <code>@DataJpaTest</code> + <code>@Import({PublicationRepositoryAdapterITConfig...})</code>，MapStruct 实现类用 <code>@ComponentScan</code> 或显式 Import 生成类 <code>PublicationJpaMapperImpl</code>）。用例：</p>
+            <pre><code class="lang-java">  @Test
+  @DisplayName("写入→findById 恢复：作者快照完整闭环（含机构与 ORCID 软关联）")
+  void writeAndRestore_authorSnapshots() {
+    Long knownAuthorId = saveActiveAuthorWithOrcid("0000-0002-1825-0097");
+
+    PublicationAggregate agg = buildAggregateWithVenue(); // 复用/新建构造助手
+    agg.attachAuthors(List.of(
+        PublicationAuthorSnapshot.builder()
+            .order(1).lastName("Smith").foreName("John").displayName("Smith John")
+            .orcid("0000-0002-1825-0097").firstAuthor(true)
+            .affiliations(List.of(
+                PublicationAuthorAffiliationSnapshot.of(1, "Harvard"),
+                PublicationAuthorAffiliationSnapshot.of(2, "MIT")))
+            .build(),
+        PublicationAuthorSnapshot.builder()
+            .order(2).collectiveName("WHO Group").displayName("WHO Group").build()));
+
+    adapter.insertAllWithAssociations(List.of(PublicationCompleteData.ofPublication(agg)));
+    em.flush();
+    em.clear();
+
+    PublicationAggregate restored = adapter.findById(agg.getId().value()).orElseThrow();
+    assertThat(restored.getAuthors()).hasSize(2);
+    var first = restored.getAuthors().getFirst();
+    assertThat(first.displayName()).isEqualTo("Smith John");
+    assertThat(first.authorId()).isEqualTo(knownAuthorId);   // ORCID 命中软关联
+    assertThat(first.affiliations()).hasSize(2);
+    assertThat(first.affiliations().get(1).affiliationString()).isEqualTo("MIT");
+    assertThat(restored.getAuthors().get(1).authorId()).isNull(); // 无 ORCID 留空
+    assertThat(restored.getAuthors().get(1).isCollective()).isTrue();
+  }
+
+  @Test
+  @DisplayName("重写同一文献：替换语义不撞唯一约束（幂等重导）")
+  void rewrite_samePublication_replaceSemantics() {
+    PublicationAggregate agg = buildAggregateWithVenue();
+    agg.attachAuthors(List.of(snapshot(1, "Smith")));
+    adapter.insertAllWithAssociations(List.of(PublicationCompleteData.ofPublication(agg)));
+
+    PublicationAggregate again = restoreSameIdWithAuthors(agg, List.of(snapshot(1, "Smith"), snapshot(2, "Doe")));
+    adapter.insertAllWithAssociations(List.of(PublicationCompleteData.ofPublication(again)));
+    // 预期不抛 DataIntegrityViolationException；行数为 2（旧行被替换）
+    assertThat(adapter.findById(agg.getId().value()).orElseThrow().getAuthors()).hasSize(2);
+  }</code></pre>
+            <p>注：第二个用例中 <code>insertAllWithAssociations</code> 会再次 insert 主表——若主表冲突先于作者逻辑，改为直接调用 adapter 上的作者写入私有链路不可行（私有），则将第二用例降级为「先手工 delete 主表行再整体重写」或对 writeAuthorAssociations 的 DELETE-first 行为用 SQL 断言旧作者行 id 已更换。以能证明「同 publication 重写不撞 uk_author_order」为准。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：PublicationAuthorDao</strong>
+            <pre><code class="lang-java">package dev.linqibin.patra.catalog.infra.persistence.dao;
+
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorEntity;
+import java.util.Collection;
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+/// 文献-作者关联 JPA Repository（批量写 + 恢复读）。
+///
+/// @author linqibin
+/// @since 0.6.0
+public interface PublicationAuthorDao extends JpaRepository&lt;PublicationAuthorEntity, Long&gt; {
+
+  /// 按出版物 ID 查作者行，按 author_order 升序（聚合恢复用）。
+  List&lt;PublicationAuthorEntity&gt; findAllByPublicationIdOrderByAuthorOrderAsc(Long publicationId);
+
+  /// 按出版物 ID 批量删除（重导替换语义用）。
+  void deleteAllByPublicationIdIn(Collection&lt;Long&gt; publicationIds);
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：JpaMapper 作者映射</strong>
+            <pre><code class="lang-java">  // ========== 作者快照转换 ==========
+
+  /// 作者快照 → JPA 实体（is_corresponding_author 恒 false：PubMed 无显式标记，不造假数据）。
+  ///
+  /// @param snapshot 作者快照
+  /// @param publicationId 文献 ID
+  /// @param resolvedAuthorId ORCID 软关联命中的作者 ID（未命中为 null）
+  /// @return JPA 实体（ID 由调用方预分配）
+  public PublicationAuthorEntity toAuthorEntity(
+      PublicationAuthorSnapshot snapshot, Long publicationId, Long resolvedAuthorId) {
+    return PublicationAuthorEntity.builder()
+        .publicationId(publicationId)
+        .authorId(resolvedAuthorId)
+        .authorOrder(snapshot.order())
+        .displayName(snapshot.displayName())
+        .lastName(snapshot.lastName())
+        .foreName(snapshot.foreName())
+        .initials(snapshot.initials())
+        .suffix(snapshot.suffix())
+        .collectiveName(snapshot.collectiveName())
+        .orcid(snapshot.orcid())
+        .firstAuthor(snapshot.firstAuthor())
+        .correspondingAuthor(false)
+        .equalContribution(snapshot.equalContribution())
+        .build();
+  }
+
+  /// JPA 实体 + 机构行 → 作者快照（聚合恢复用）。
+  ///
+  /// @param entity 作者关联实体
+  /// @param affiliations 该作者的机构行（按 affiliation_order 排序）
+  /// @return 作者快照
+  public PublicationAuthorSnapshot toAuthorSnapshot(
+      PublicationAuthorEntity entity, List&lt;PublicationAuthorAffiliationEntity&gt; affiliations) {
+    List&lt;PublicationAuthorAffiliationSnapshot&gt; affSnapshots =
+        affiliations.stream()
+            .sorted(Comparator.comparing(PublicationAuthorAffiliationEntity::getAffiliationOrder))
+            .map(a -&gt; PublicationAuthorAffiliationSnapshot.of(
+                a.getAffiliationOrder(), a.getAffiliationString()))
+            .toList();
+    return PublicationAuthorSnapshot.builder()
+        .order(entity.getAuthorOrder())
+        .lastName(entity.getLastName())
+        .foreName(entity.getForeName())
+        .initials(entity.getInitials())
+        .suffix(entity.getSuffix())
+        .collectiveName(entity.getCollectiveName())
+        .displayName(entity.getDisplayName())
+        .orcid(entity.getOrcid())
+        .authorId(entity.getAuthorId())
+        .firstAuthor(Boolean.TRUE.equals(entity.getFirstAuthor()))
+        .equalContribution(Boolean.TRUE.equals(entity.getEqualContribution()))
+        .affiliations(affSnapshots)
+        .build();
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：RepositoryAdapter 写链路</strong>
+            <p>① 注入三个 DAO：<code>PublicationAuthorDao publicationAuthorDao</code>、<code>PublicationAuthorAffiliationDao publicationAuthorAffiliationDao</code>、<code>AuthorOrcidDao authorOrcidDao</code>（加入「关联数据 DAO」块）。② <code>insertAllWithAssociations</code> 的关联写序列中（<code>writePersonalNameSubjectAssociations</code> 之后）加 <code>writeAuthorAssociations(data);</code>。③ 实现：</p>
+            <pre><code class="lang-java">  /// 写入作者关联数据（含机构）。
+  ///
+  /// 顺序保证：预分配作者行 ID → 构造机构行 pub_author_id → 作者行 flush → 机构行。
+  /// 替换语义：先按 publicationId 删旧行（幂等重导 / 断点续传不撞 uk_author_order）。
+  /// ORCID 软关联：chunk 级一次批查，绝不向 cat_author 新建行。
+  private void writeAuthorAssociations(List&lt;PublicationCompleteData&gt; data) {
+    List&lt;PublicationCompleteData&gt; withAuthors =
+        data.stream().filter(item -&gt; item.publication().hasAuthors()).toList();
+    if (withAuthors.isEmpty()) {
+      return;
+    }
+
+    // 替换语义：DELETE-first（机构行先删——其 pub_author_id 引用作者行）
+    List&lt;Long&gt; publicationIds =
+        withAuthors.stream().map(PublicationCompleteData::getPublicationId).toList();
+    publicationAuthorAffiliationDao.deleteAllByPublicationIdIn(publicationIds);
+    publicationAuthorDao.deleteAllByPublicationIdIn(publicationIds);
+
+    // chunk 级 ORCID 批查（一次 IN 查询）
+    Set&lt;String&gt; orcids =
+        withAuthors.stream()
+            .flatMap(item -&gt; item.publication().getAuthors().stream())
+            .map(PublicationAuthorSnapshot::orcid)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    Map&lt;String, Long&gt; orcidToAuthorId =
+        orcids.isEmpty()
+            ? Map.of()
+            : authorOrcidDao.findAuthorIdsByOrcidIn(orcids).stream()
+                .collect(
+                    Collectors.toMap(
+                        OrcidAuthorIdView::getOrcid, OrcidAuthorIdView::getAuthorId, (a, b) -&gt; a));
+
+    List&lt;PublicationAuthorEntity&gt; authorRows = new ArrayList&lt;&gt;();
+    List&lt;PublicationAuthorAffiliationEntity&gt; affiliationRows = new ArrayList&lt;&gt;();
+    for (PublicationCompleteData item : withAuthors) {
+      Long publicationId = item.getPublicationId();
+      for (PublicationAuthorSnapshot snapshot : item.publication().getAuthors()) {
+        Long resolvedAuthorId =
+            snapshot.orcid() != null ? orcidToAuthorId.get(snapshot.orcid()) : null;
+        PublicationAuthorEntity authorEntity =
+            jpaConverter.toAuthorEntity(snapshot, publicationId, resolvedAuthorId);
+        authorEntity.setId(SnowflakeIdGenerator.getId()); // 预分配：机构行引用 + clear() 安全
+        authorRows.add(authorEntity);
+
+        for (PublicationAuthorAffiliationSnapshot aff : snapshot.affiliations()) {
+          PublicationAuthorAffiliationEntity affEntity =
+              PublicationAuthorAffiliationEntity.builder()
+                  .id(SnowflakeIdGenerator.getId())
+                  .pubAuthorId(authorEntity.getId())
+                  .publicationId(publicationId)
+                  .affiliationOrder(aff.order())
+                  .affiliationString(aff.affiliationString())
+                  .disambiguationStatus(DisambiguationStatus.PENDING)
+                  .build();
+          affiliationRows.add(affEntity);
+        }
+      }
+    }
+
+    if (!authorRows.isEmpty()) {
+      batchSaveWithFlush(authorRows, publicationAuthorDao);
+      log.debug("写入 {} 条作者关联", authorRows.size());
+    }
+    if (!affiliationRows.isEmpty()) {
+      batchSaveWithFlush(affiliationRows, publicationAuthorAffiliationDao);
+      log.debug("写入 {} 条作者机构", affiliationRows.size());
+    }
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：findById / findByPmid 恢复作者</strong>
+            <pre><code class="lang-java">  @Override
+  public Optional&lt;PublicationAggregate&gt; findById(Long id) {
+    if (id == null) {
+      return Optional.empty();
+    }
+    return jpaRepository.findById(id).map(jpaConverter::toAggregate).map(this::loadAuthors);
+  }
+
+  @Override
+  public Optional&lt;PublicationAggregate&gt; findByPmid(String pmid) {
+    if (pmid == null || pmid.isBlank()) {
+      return Optional.empty();
+    }
+    return jpaRepository.findByPmid(pmid).map(jpaConverter::toAggregate).map(this::loadAuthors);
+  }
+
+  /// 加载作者快照到聚合（无作者时保持空列表）。
+  private PublicationAggregate loadAuthors(PublicationAggregate aggregate) {
+    Long id = aggregate.getId() != null ? aggregate.getId().value() : null;
+    if (id == null) {
+      return aggregate;
+    }
+    List&lt;PublicationAuthorEntity&gt; rows =
+        publicationAuthorDao.findAllByPublicationIdOrderByAuthorOrderAsc(id);
+    if (rows.isEmpty()) {
+      return aggregate;
+    }
+    Map&lt;Long, List&lt;PublicationAuthorAffiliationEntity&gt;&gt; affByPubAuthor =
+        publicationAuthorAffiliationDao
+            .findAllByPubAuthorIdIn(rows.stream().map(PublicationAuthorEntity::getId).toList())
+            .stream()
+            .collect(Collectors.groupingBy(PublicationAuthorAffiliationEntity::getPubAuthorId));
+    aggregate.attachAuthors(
+        rows.stream()
+            .map(e -&gt; jpaConverter.toAuthorSnapshot(
+                e, affByPubAuthor.getOrDefault(e.getId(), List.of())))
+            .toList());
+    return aggregate;
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 6：运行 IT 验证 + Commit</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationAuthorRoundTripIT" --tests "*PublicationAuthorAffiliationDaoIT"</code>，预期全绿。</p>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra
+git commit -m "feat(catalog): 作者写链路+ORCID软关联+聚合恢复闭环（任务 10/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-11" data-status="done">
+        <header>
+          <h2>任务 11：读端 SQL 改行内名 + parseSections 上下文日志</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>PublicationDetailDao.java</code> + <code>PortalFeedDao.java</code> + <code>PublicationDetailReadAdapter.java</code></dd>
+            <dt>测试</dt><dd><code>PublicationDetailReadAdapterIT.java</code> + <code>PortalFeedReadAdapterIT.java</code>（快照语义改写 + malformed 用例）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败 IT（快照语义）</strong>
+            <p>两个读端 IT 各加一条：</p>
+            <pre><code class="lang-java">  @Test
+  @DisplayName("作者名来自行内快照：cat_author 软删/合并不影响展示")
+  void authorName_fromInlineSnapshot_notAffectedBySoftDeletedAuthor() {
+    Long pubId = savePublication(saveVenue("X"), "T", "10.1/x", "99999999");
+    Long deletedAuthorId = saveSoftDeletedAuthor("Ghost Author"); // deleted_at 非空
+    savePublicationAuthor(pubId, deletedAuthorId, 1, true, false, "Snapshot Name");
+    em.flush(); em.clear();
+
+    var model = adapter.findById(pubId).orElseThrow();
+    assertThat(model.authors()).hasSize(1);
+    assertThat(model.authors().getFirst().name()).isEqualTo("Snapshot Name");
+  }
+
+  @Test
+  @DisplayName("malformed structured_sections：降级空数组，plainText 照常返回")
+  void malformedSectionsJson_degradesGracefully() {
+    Long pubId = savePublication(saveVenue("Y"), "T2", "10.1/y", "99999998");
+    saveAbstract(pubId, "STRUCTURED", "not-a-json-array", "plain fallback");
+    em.flush(); em.clear();
+
+    var model = adapter.findById(pubId).orElseThrow();
+    assertThat(model.abstractSections()).isEmpty();
+    assertThat(model.abstractPlainText()).isEqualTo("plain fallback");
+  }</code></pre>
+            <p>（savePublicationAuthor 助手加 displayName 尾参；saveAbstract 在 Entity 类型化后无法直塞坏 JSON——malformed 用例改用 <code>em.getEntityManager().createNativeQuery("UPDATE cat_publication_abstract SET structured_sections = to_jsonb('not-a-json-array'::text) WHERE publication_id = :id")</code> 注入坏形态，或 INSERT 原生 SQL。）</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：改两条 SQL</strong>
+            <p><code>PublicationDetailDao.findAuthorsByPublicationId</code>：</p>
+            <pre><code class="lang-sql">SELECT pa.author_order AS "order", pa.is_first_author AS "first",
+  pa.is_corresponding_author AS "corresponding", pa.display_name AS "name",
+  (SELECT aff.affiliation_string FROM cat_publication_author_affiliation aff
+     WHERE aff.pub_author_id = pa.id ORDER BY aff.affiliation_order ASC, aff.id ASC LIMIT 1) AS "affiliation"
+FROM cat_publication_author pa
+WHERE pa.publication_id = :id
+ORDER BY pa.author_order ASC, pa.id ASC</code></pre>
+            <p><code>PortalFeedDao.findFeedPage</code> 的 authorNames 子查询：</p>
+            <pre><code class="lang-sql">(SELECT string_agg(pa.display_name, E'\\x1f' ORDER BY pa.author_order)
+   FROM cat_publication_author pa
+   WHERE pa.publication_id = p.id) AS "authorNames",</code></pre>
+            <p>两处 javadoc 同步：删「已过滤软删 author」句，改为「作者为文献快照（行内 display_name），不受 cat_author 软删/合并影响」。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：parseSections 带上下文</strong>
+            <pre><code class="lang-java">  /// 解析结构化摘要 JSON（有序数组形态）。
+  ///
+  /// 解析失败降级为空列表并 error 记录（重建后数据格式可信，失败即 bug 必须响）；
+  /// 不打印摘要正文，仅记 id / 类型 / 异常。
+  private List&lt;AbstractSectionView&gt; parseSections(
+      long publicationId, String abstractType, String json) {
+    if (json == null || json.isBlank()) {
+      return List.of();
+    }
+    try {
+      return OBJECT_MAPPER.readValue(json, new TypeReference&lt;List&lt;AbstractSectionView&gt;&gt;() {});
+    } catch (Exception e) {
+      log.error(
+          "structured_sections 解析失败，降级空列表：publicationId={}, abstractType={}",
+          publicationId,
+          abstractType,
+          e);
+      return List.of();
+    }
+  }</code></pre>
+            <p>调用点改：<code>.abstractSections(parseSections(main.getId(), main.getAbstractType(), main.getStructuredSectionsJson()))</code>。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：IT 全量改写并验证</strong>
+            <p>两个读端 IT 的既有用例改造：① 数据助手 <code>savePublicationAuthor</code> 必须写 displayName（作者名断言以 displayName 为准）；② 原「过滤软删 author」类断言反转为快照语义（见步骤 1 用例）；③ 结构化摘要用例的 JSON 构造维持数组形态（本来就是数组，不变）。运行：</p>
+            <p><code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationDetailReadAdapterIT" --tests "*PortalFeedReadAdapterIT"</code>，预期全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra
+git commit -m "feat(catalog): 详情/Feed 作者读行内快照 + parseSections 上下文日志（任务 11/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-12" data-status="done">
+        <header>
+          <h2>任务 12：摘要写读 round-trip IT（断言矩阵）</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-catalog-infra/src/integrationTest/.../adapter/persistence/PublicationAbstractRoundTripIT.java</code></dd>
+          </dl>
+        </header>
+        <p>当初 schema 不一致漏网的根因是 IT 手造数组数据、从未走真实写路径——本 IT 用 <strong>RepositoryAdapter 真实写入 → 双读路径恢复</strong> 闭环，jsonb 形态用 native query 断言。测试基座与任务 10 的 RoundTripIT 相同。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写 IT（spec §6.3 断言矩阵全覆盖）</strong>
+            <pre><code class="lang-java">  @Test
+  @DisplayName("结构化摘要：jsonb array 落库、顺序/重复 label/无 label 段保持、双读路径恢复")
+  void structuredAbstract_fullMatrix() {
+    var sections = List.of(
+        PublicationAbstractSection.of("INTRODUCTION", "i."),
+        PublicationAbstractSection.of("METHODS", "m1."),
+        PublicationAbstractSection.of("METHODS", "m2."),
+        PublicationAbstractSection.of(null, "mixed tail."));
+    PublicationAggregate agg = buildAggregateWithVenue();
+    agg.attachAbstract(PublicationAbstract.ofBoth(
+        "INTRODUCTION: i.\nMETHODS: m1.\nMETHODS: m2.\nmixed tail.", sections, "© X"));
+
+    adapter.insertAllWithAssociations(List.of(PublicationCompleteData.ofPublication(agg)));
+    em.flush(); em.clear();
+    Long pubId = agg.getId().value();
+
+    // 1) jsonb 形态：array 且无外层 string
+    String jsonbType = (String) em.getEntityManager()
+        .createNativeQuery("SELECT jsonb_typeof(structured_sections) FROM cat_publication_abstract WHERE publication_id = :id")
+        .setParameter("id", pubId).getSingleResult();
+    assertThat(jsonbType).isEqualTo("array");
+
+    // 2) Entity→Domain 读路径（FormatMapper 反序列化）
+    // 通过 abstractDao 读 Entity 断言（注入 PublicationAbstractDao）
+    var entity = abstractDao.findAll().stream()
+        .filter(e -&gt; e.getPublicationId().equals(pubId)).findFirst().orElseThrow();
+    assertThat(entity.getStructuredSections()).hasSize(4);
+    assertThat(entity.getStructuredSections().get(2).label()).isEqualTo("METHODS");
+    assertThat(entity.getStructuredSections().get(3).label()).isNull();
+    assertThat(entity.getPlainText()).isEqualTo("INTRODUCTION: i.\nMETHODS: m1.\nMETHODS: m2.\nmixed tail.");
+    assertThat(entity.getCopyright()).isEqualTo("© X");
+
+    // 3) native ::text → ReadAdapter 读路径
+    var model = readAdapter.findById(pubId).orElseThrow();
+    assertThat(model.abstractSections()).hasSize(4);
+    assertThat(model.abstractSections().get(0).label()).isEqualTo("INTRODUCTION");
+    assertThat(model.abstractSections().get(3).label()).isNull();
+    assertThat(model.abstractPlainText()).isEqualTo(entity.getPlainText());
+  }
+
+  @Test
+  @DisplayName("纯文本摘要：structured_sections 为 SQL NULL，plainText 完整")
+  void plainAbstract_nullSections() {
+    PublicationAggregate agg = buildAggregateWithVenue();
+    agg.attachAbstract(PublicationAbstract.ofPlainText("just plain text.", null));
+    adapter.insertAllWithAssociations(List.of(PublicationCompleteData.ofPublication(agg)));
+    em.flush(); em.clear();
+
+    Object raw = em.getEntityManager()
+        .createNativeQuery("SELECT structured_sections FROM cat_publication_abstract WHERE publication_id = :id")
+        .setParameter("id", agg.getId().value()).getSingleResult();
+    assertThat(raw).isNull();
+    var model = readAdapter.findById(agg.getId().value()).orElseThrow();
+    assertThat(model.abstractSections()).isEmpty();
+    assertThat(model.abstractPlainText()).isEqualTo("just plain text.");
+  }
+
+  @Test
+  @DisplayName("AlternativeAbstract：sections/copyright 同款闭环")
+  void alternativeAbstract_roundTrip() {
+    PublicationAggregate agg = buildAggregateWithVenue();
+    var alt = PublicationAlternativeAbstract.builder()
+        .languageCode("zh").sourceType("publisher")
+        .plainText("目的: 摘要正文")
+        .structuredSections(List.of(PublicationAbstractSection.of("目的", "摘要正文")))
+        .copyright("© 中文版权")
+        .isOfficial(true)
+        .orderNum(1)
+        .build();
+    adapter.insertAllWithAssociations(List.of(
+        PublicationCompleteData.builder().publication(agg)
+            .alternativeAbstracts(List.of(alt)).build()));
+    em.flush(); em.clear();
+
+    String jsonbType = (String) em.getEntityManager()
+        .createNativeQuery("SELECT jsonb_typeof(structured_sections) FROM cat_publication_alternative_abstract WHERE publication_id = :id")
+        .setParameter("id", agg.getId().value()).getSingleResult();
+    assertThat(jsonbType).isEqualTo("array");
+
+    var entity = alternativeAbstractDao.findAll().stream()
+        .filter(e -&gt; e.getPublicationId().equals(agg.getId().value())).findFirst().orElseThrow();
+    assertThat(entity.getStructuredSections()).hasSize(1);
+    assertThat(entity.getStructuredSections().getFirst().label()).isEqualTo("目的");
+    assertThat(entity.getCopyright()).isEqualTo("© 中文版权");
+  }</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行验证 + Commit</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest --tests "*PublicationAbstractRoundTripIT"</code>，预期全绿。若 FormatMapper 对 <code>List&lt;record&gt;</code> 反序列化失败（泛型擦除路径），这是必须当场解决的阻断——检查 Entity 字段是否被 Hibernate 识别为参数化类型（必要时字段上补 <code>@JavaType</code> 或在 record 上确认无自定义序列化干扰），并记 Implementation Notes。</p>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog/patra-catalog-infra/src/integrationTest
+git commit -m "test(catalog): 摘要写读 round-trip IT 断言矩阵（任务 12/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+<article class="task" id="task-13" data-status="done">
+        <header>
+          <h2>任务 13：generation identifying 参数全链打通</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>PublicationImportParams.java</code>（domain）+ <code>PublicationBaselineImportCommand.java</code>（app）+ <code>PubmedBaselineImportScheduleJob.java</code>（adapter）+ <code>PublicationImportJobParams.java</code> + <code>PublicationBatchAdapter.java</code>（infra）</dd>
+            <dt>测试</dt><dd>adapter 层调度 Job 参数解析单测 + infra 层 BatchAdapter 单测（各自现有测试类追加）</dd>
+          </dl>
+        </header>
+        <p>底座已支持：<code>JobOperatorHelper.buildJobParameters</code> 对 null 字段显式跳过（<code>case null -&gt; 跳过</code>），且未列入 nonIdentifyingKeys 的字段默认 identifying——所以 <strong>generation 缺省 null = 现行为完全不变</strong>（断点续传语义保留），传值即生成新 JobInstance。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试</strong>
+            <p>① 调度 Job 测试类（现有 <code>PubmedBaselineImportScheduleJobTest</code> 或同级新建）追加参数解析用例：</p>
+            <pre><code class="lang-java">  @Test
+  void parseJobParam_withGeneration() {
+    // "fileIndex=1333,generation=v0.6" → fileIndex=1333, generation="v0.6"
+    var parsed = invokeParseJobParam("fileIndex=1333,generation=v0.6");
+    assertThat(parsed.fileIndex()).isEqualTo(1333);
+    assertThat(parsed.generation()).isEqualTo("v0.6");
+  }
+
+  @Test
+  void parseJobParam_withoutGeneration_isNull() {
+    var parsed = invokeParseJobParam("fileIndex=7");
+    assertThat(parsed.fileIndex()).isEqualTo(7);
+    assertThat(parsed.generation()).isNull();
+  }
+
+  @Test
+  void parseJobParam_malformedPair_throws() {
+    assertThatThrownBy(() -&gt; invokeParseJobParam("fileIndex=1,unknown=x"))
+        .isInstanceOf(IllegalArgumentException.class);
+  }</code></pre>
+            <p>② <code>PublicationBatchAdapter</code> 测试追加：传 generation 时 <code>PublicationImportJobParams.generation</code> 被赋值；不传时为 null。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：五处实现</strong>
+            <p>① domain <code>PublicationImportParams</code>：record 加第三组件 <code>String generation</code>（可空不校验，trim 空串归 null 在紧凑构造器做：<code>generation = (generation == null || generation.isBlank()) ? null : generation.trim();</code>）；保留 <code>of(baseUrl, fileIndex)</code> 两参重载（透传 null）+ 新增三参 <code>of(baseUrl, fileIndex, generation)</code>。② app <code>PublicationBaselineImportCommand</code>：同款加 <code>String generation</code> 组件与三参 <code>of</code>（保留两参重载）；Handler 中构造 Params 处透传。③ adapter 调度 Job：<code>parseFileIndex()</code> 重构为 <code>parseJobParam()</code> 返回小 record <code>ParsedJobParam(int fileIndex, String generation)</code>——按逗号分组、每组按 <code>=</code> 拆 key/value，仅认 <code>fileIndex</code>（必填）与 <code>generation</code>（可选），未知 key 抛 <code>IllegalArgumentException</code>；javadoc 参数格式更新为 <code>fileIndex=N[,generation=STR]</code>。④ infra <code>PublicationImportJobParams</code> 加字段：</p>
+            <pre><code class="lang-java">  /// 重导代次标识（identifying；null 时不进 JobParameters = 维持断点续传语义）。
+  ///
+  /// attempt 规则：同一库失败续跑沿用同值；回滚换库重来必须换新值
+  /// （如 v0.6-attempt2），否则从旧 checkpoint 续跑造成前半段缺失。
+  private String generation;</code></pre>
+            <p>⑤ <code>PublicationBatchAdapter.launchBaselineImport</code> 的 builder 加 <code>.generation(params.generation())</code>。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：运行验证 + Commit</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-adapter:test :patra-catalog:patra-catalog-infra:test :patra-catalog:patra-catalog-app:test :patra-catalog:patra-catalog-domain:test</code>，预期全绿。</p>
+            <pre><code class="lang-bash">git add patra-api/patra-catalog
+git commit -m "feat(catalog): baseline 导入 generation identifying 参数全链（任务 13/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-14" data-status="done">
+        <header>
+          <h2>任务 14：Portal 混合摘要最小适配</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/types/portal.ts</code> + <code>src/components/portal/paper-detail/AbstractBlock.tsx</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/paper-detail/AbstractBlock.test.tsx</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：写失败测试（混合摘要）</strong>
+            <p><code>AbstractBlock.test.tsx</code> 追加：</p>
+            <pre><code class="lang-tsx">  it("混合：无 label 段渲染正文且不渲染空标签槽", () =&gt; {
+    const { container } = render(
+      &lt;AbstractBlock
+        paper={{
+          ...base,
+          abstractSections: [
+            { label: "BACKGROUND", text: "bg text" },
+            { label: null, text: "unlabeled tail" },
+          ],
+        }}
+      /&gt;,
+    );
+    expect(screen.getByText("BACKGROUND")).toBeInTheDocument();
+    expect(screen.getByText("unlabeled tail")).toBeInTheDocument();
+    // 无 label 段不应产生标签列节点（grid 两列结构只出现一次）
+    expect(container.querySelectorAll(".grid").length).toBe(1);
+  });</code></pre>
+            <p>运行 <code>cd patra-portal &amp;&amp; pnpm test -- AbstractBlock</code>，预期类型错误/断言失败。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：types + 组件实现</strong>
+            <p><code>portal.ts</code>：</p>
+            <pre><code class="lang-ts">/** 结构化摘要段落；label 为 BACKGROUND / METHODS 等，混合摘要的无标签段为 null */
+export interface AbstractSection {
+  label: string | null;
+  text: string;
+}</code></pre>
+            <p><code>AbstractBlock.tsx</code> 的 sections 渲染循环改为：</p>
+            <pre><code class="lang-tsx">      {abstract.sections.map((s, i) =&gt; {
+        // 静态摘要段落列表（无状态、不重排），label 可能重复或为 null，用 index 复合键保唯一
+        const key = `${s.label ?? "unlabeled"}-${i}`;
+        if (s.label === null) {
+          return (
+            &lt;div key={key} className="border-t border-(--border-subtle) py-3.5 first:border-t-0"&gt;
+              &lt;p className="m-0 font-serif text-lg leading-relaxed text-ink-800"&gt;{s.text}&lt;/p&gt;
+            &lt;/div&gt;
+          );
+        }
+        return (
+          &lt;div
+            key={key}
+            className="grid grid-cols-[92px_1fr] gap-[18px] border-t border-(--border-subtle) py-3.5 first:border-t-0 max-[640px]:grid-cols-1 max-[640px]:gap-[5px]"
+          &gt;
+            &lt;div className="pt-1 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-clay-700"&gt;
+              {s.label}
+            &lt;/div&gt;
+            &lt;p className="m-0 font-serif text-lg leading-relaxed text-ink-800"&gt;{s.text}&lt;/p&gt;
+          &lt;/div&gt;
+        );
+      })}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：验证 + Commit</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code>，预期全绿（label 改可空若引发其他组件类型错误——如有直接消费 label 的地方——就地补空值分支）。</p>
+            <pre><code class="lang-bash">git add patra-portal/src/types/portal.ts patra-portal/src/components/portal/paper-detail/AbstractBlock.tsx patra-portal/tests
+git commit -m "feat(portal): 混合摘要无 label 段渲染适配（任务 14/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-15" data-status="done">
+        <header>
+          <h2>任务 15：换库重建 runbook 与配套脚本</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>docs/patra/runbooks/v0.6-catalog-rebuild-runbook.md</code></dd>
+            <dt>创建</dt><dd><code>patra-infra/scripts/v06-rebuild/export-reference-allowlist.sh</code> + <code>closed-loop-stats.py</code></dd>
+          </dl>
+        </header>
+        <p>纯文档/脚本任务（不动运行时代码，不实操）。runbook 按 spec §6.1 十步展开为可照抄执行的命令；allowlist 必须<strong>显式列表名</strong>。</p>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：生成 allowlist 表清单</strong>
+            <p>在 mini 上跑（只读查询）导出全部候选表名，人工核对后写进 runbook 与脚本：</p>
+            <pre><code class="lang-bash">ssh mini 'docker exec patra-postgres psql -U postgres -d patra_catalog -Atc "
+  SELECT table_name FROM information_schema.tables
+  WHERE table_schema = '\''public'\'' AND table_type = '\''BASE TABLE'\''
+  ORDER BY table_name;"'</code></pre>
+            <p>分类规则（在 runbook 中逐表标注 KEEP/DROP）：<code>cat_publication</code> 与所有 <code>cat_publication_*</code> → DROP（重导重建）；<code>flyway_schema_history</code> → DROP（新库自生成，<strong>绝不回填</strong>）；<code>cat_venue_publication_stats</code> → <strong>KEEP</strong>（296,600 行，baseline 不重建）；其余全部（venue 域 / ROR / MeSH / 评级 / cat_author 家族 / keyword 主表等）→ KEEP。注意 <code>cat_keyword</code>（关键词主表）属 KEEP 但 <code>cat_publication_keyword</code>（关联）属 DROP——重导会向 KEEP 表 upsert，允许。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：写 export-reference-allowlist.sh</strong>
+            <pre><code class="lang-bash">#!/usr/bin/env bash
+# v0.6 换库重建：参考域数据导出 + 恢复 + 行数对照（在 mini 上执行）
+# 用法: bash export-reference-allowlist.sh export|restore|verify
+set -euo pipefail
+
+PG="docker exec patra-postgres"
+PGI="docker exec -i patra-postgres"
+BACKUP_DB="patra_catalog_v05_backup"
+NEW_DB="patra_catalog"
+DUMP="/tmp/v06-reference-data.dump"
+
+# 显式 allowlist（步骤 1 生成后粘贴维护；绝不包含 flyway_schema_history / cat_publication*）
+TABLES=(
+  # === 由步骤 1 的分类结果逐行填入，示例： ===
+  # cat_venue
+  # cat_venue_instance
+  # cat_author
+  # ...
+)
+
+TABLE_ARGS=(); for t in "${TABLES[@]}"; do TABLE_ARGS+=(-t "public.${t}"); done
+
+case "${1:?用法: export|restore|verify}" in
+  export)
+    ${PG} pg_dump -U postgres -d "${BACKUP_DB}" -Fc --data-only "${TABLE_ARGS[@]}" -f "${DUMP}"
+    ${PG} sh -c "ls -lh ${DUMP} &amp;&amp; sha256sum ${DUMP}"
+    ${PG} pg_restore --list "${DUMP}" | head -20   # 归档可读性验证
+    ;;
+  restore)
+    # 前提：目标表必须为空（Flyway 刚建完 schema）
+    for t in "${TABLES[@]}"; do
+      n=$(${PG} psql -U postgres -d "${NEW_DB}" -Atc "SELECT count(*) FROM ${t}")
+      [ "${n}" = "0" ] || { echo "目标表非空: ${t}=${n}，拒绝恢复" &gt;&amp;2; exit 1; }
+    done
+    ${PG} pg_restore -U postgres -d "${NEW_DB}" --single-transaction --data-only "${DUMP}"
+    ;;
+  verify)
+    fail=0
+    for t in "${TABLES[@]}"; do
+      a=$(${PG} psql -U postgres -d "${BACKUP_DB}" -Atc "SELECT count(*) FROM ${t}")
+      b=$(${PG} psql -U postgres -d "${NEW_DB}" -Atc "SELECT count(*) FROM ${t}")
+      if [ "${a}" != "${b}" ]; then echo "行数不一致: ${t} backup=${a} new=${b}"; fail=1;
+      else echo "OK ${t}: ${a}"; fi
+    done
+    exit "${fail}"
+    ;;
+esac</code></pre>
+            <p>（bash 3.2 兼容：变量一律 <code>${VAR}</code> 花括号形态——中文注释紧邻变量的历史坑。）</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：写 closed-loop-stats.py</strong>
+            <p>源数据闭环统计：读 <code>pubmed26n1333.xml.gz</code>，输出与库内核对的四组数（口径 = 成功导入 PMID 集合）：</p>
+            <pre><code class="lang-python">#!/usr/bin/env python3
+"""v0.6 验收：源 XML 统计（与库内数字闭环核对）。
+
+用法: python3 closed-loop-stats.py pubmed26n1333.xml.gz imported_pmids.txt
+  imported_pmids.txt 由库导出: SELECT pmid FROM cat_publication;
+输出: 基准集内 含摘要文献数 / 有效作者数 / 含ORCID作者数 / 姓名全空跳过数
+"""
+import gzip, sys
+import xml.etree.ElementTree as ET
+
+def text_of(el):
+    return "".join(el.itertext()).strip() if el is not None else ""
+
+def main(xml_gz: str, pmids_file: str) -&gt; None:
+    imported = set(line.strip() for line in open(pmids_file) if line.strip())
+    with_abstract = valid_authors = with_orcid = skipped_authors = 0
+    with gzip.open(xml_gz) as f:
+        for _, art in ET.iterparse(f, events=("end",)):
+            if art.tag != "PubmedArticle":
+                continue
+            pmid = text_of(art.find(".//MedlineCitation/PMID"))
+            if pmid in imported:
+                abst = art.find(".//Article/Abstract")
+                if abst is not None and any(text_of(t) for t in abst.findall("AbstractText")):
+                    with_abstract += 1
+                for au in art.findall(".//AuthorList/Author"):
+                    last = text_of(au.find("LastName"))
+                    coll = text_of(au.find("CollectiveName"))
+                    if not last and not coll:
+                        skipped_authors += 1
+                        continue
+                    valid_authors += 1
+                    for ident in au.findall("Identifier"):
+                        if ident.get("Source") == "ORCID" and text_of(ident):
+                            with_orcid += 1
+                            break
+            art.clear()
+    print(f"基准集文献数(imported_pmids): {len(imported)}")
+    print(f"含摘要文献数(应=库内摘要行数): {with_abstract}")
+    print(f"有效作者数(应=cat_publication_author行数): {valid_authors}")
+    print(f"含ORCID作者数(对照归一化通过/命中报告): {with_orcid}")
+    print(f"姓名全空跳过作者数: {skipped_authors}")
+
+if __name__ == "__main__":
+    main(sys.argv[1], sys.argv[2])</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：写 runbook 文档</strong>
+            <p><code>docs/patra/runbooks/v0.6-catalog-rebuild-runbook.md</code> 章节结构（每步给可照抄命令）：</p>
+            <pre><code class="lang-markdown"># v0.6 patra_catalog 换库重建 runbook
+
+前置检查：NCBI 文件 HEAD 探测（curl -sI .../pubmed26n1333.xml.gz | head -1 应 200）；
+mini 磁盘余量；当前运行镜像 tag 记录（docker inspect patra-catalog --format '{{.Config.Image}}'）。
+
+1. 物理备份保险：pg_dump -Fc patra_catalog + SHA-256 + pg_restore --list 验证
+2. CD 隔离（合并 PR 之前）：gh workflow disable cd.yml；记录旧镜像 tag
+3. 合并 v0.6 PR → mini 手工构建不可变 tag（docker build ... -t patra-catalog:v0.6-&lt;sha&gt;），不启动
+4. 停机：docker stop patra-catalog；确认无连接（pg_stat_activity）
+5. 换库：ALTER DATABASE patra_catalog RENAME TO patra_catalog_v05_backup; CREATE DATABASE patra_catalog;
+6. Flyway 先行：以新镜像启动 → 看日志 Flyway 全量成功 → 核对 flyway_schema_history → 再停 catalog
+7. 离线回填：export-reference-allowlist.sh export → restore → verify（逐表行数一致才继续）
+8. 启动与重导：启动 catalog → XXL 触发 pubmedBaselineImportJob 参数 fileIndex=1333,generation=v0.6
+   （同库失败续跑沿用 generation=v0.6；回滚重来换 v0.6-attempt2）
+9. 验收：closed-loop-stats.py 四组数核对 + ORCID 报告 SQL + 结构完整性 SQL
+   （author_order 连续/首作者唯一/affiliation 无孤儿且 order 连续/display_name 无空）
+   + curl 三态抽查 + portal 人工确认
+10. 收尾：gh workflow enable cd.yml；backup 保留观察期后删
+    回滚（任一步失败）：停 catalog → patra_catalog → patra_catalog_v06_failed_&lt;ts&gt;
+    → patra_catalog_v05_backup → patra_catalog → 用记录的旧镜像 tag 启动 → 验证</code></pre>
+            <p>验收 SQL 附录（写进 runbook）：</p>
+            <pre><code class="lang-sql">-- 结构完整性
+SELECT count(*) FROM cat_publication_author pa
+  WHERE pa.display_name IS NULL OR pa.display_name = '';           -- 应 0
+SELECT publication_id FROM cat_publication_author
+  GROUP BY publication_id
+  HAVING count(*) FILTER (WHERE is_first_author) &lt;&gt; 1;             -- 应 0 行
+SELECT publication_id FROM cat_publication_author
+  GROUP BY publication_id
+  HAVING max(author_order) &lt;&gt; count(*);                            -- 顺序连续，应 0 行
+SELECT count(*) FROM cat_publication_author_affiliation aff
+  LEFT JOIN cat_publication_author pa ON pa.id = aff.pub_author_id
+  WHERE pa.id IS NULL;                                             -- 孤儿，应 0
+-- ORCID 报告
+SELECT count(*) FILTER (WHERE orcid IS NOT NULL)        AS orcid_normalized,
+       count(*) FILTER (WHERE author_id IS NOT NULL)    AS orcid_linked,
+       count(*) FILTER (WHERE orcid IS NOT NULL AND author_id IS NULL) AS orcid_unlinked
+FROM cat_publication_author;
+-- 摘要形态
+SELECT jsonb_typeof(structured_sections), count(*)
+FROM cat_publication_abstract GROUP BY 1;                          -- 只应有 array 与 NULL</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add docs/patra/runbooks patra-infra/scripts/v06-rebuild
+git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计脚本（任务 15/16）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-16" data-status="done">
+        <header>
+          <h2>任务 16：全栈门控收尾</h2>
+          <dl class="files">
+            <dt>测试</dt><dd>全仓门控（无新文件）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：后端全栈门控</strong>
+            <p>运行：<code>cd patra-api &amp;&amp; ./gradlew check</code></p>
+            <p>预期：BUILD SUCCESSFUL（含全部单测 + convention 架构约束；<strong>不含 IT</strong>）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：catalog IT 显式门控</strong>
+            <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest</code></p>
+            <p>预期：全部 IT 通过（含本 plan 新增三个 RoundTrip/投影 IT 与改写的读端/DAO IT）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：portal 门控</strong>
+            <p>运行：<code>cd patra-portal &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code>，预期全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：plan 状态终检</strong>
+            <p>核对本 plan HTML：全部 article/step data-status=done、TOC 同步、notes-panel counter 与实际 entry 一致；spec Done 判定第 1 条（门控双命令）在本任务闭合，第 2-5 条（mini 重建验收）属合并后 runbook 实操，不阻塞本 plan 完成。随后按 <code>patra:finishing-a-development-branch</code> 走 PR 流程。</p>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec 全章节→任务映射核对：§3.1 DDL+级联→T1；§3.2 生命周期→T3/T4/T10；§3.3 姓名规则→T3/T7；§3.4 ORCID→T7/T9/T10；§3.5 写读→T10/T11；§4.1 类型边界→T2/T5/T8；§4.2 分流+copyright→T5/T6/T8；§4.3 Alternative 全链→T2/T5/T6/T8/T12；§4.4 读端→T11；§5 Portal→T14；§6.1 runbook→T15；§6.2 generation→T13；§6.3 测试矩阵→T10/T12 及各任务 TDD 步骤；§6.4 验收脚本→T15；Done 第 1 条→T16（第 2-5 条属合并后 runbook 实操，已在 T16 步骤 4 说明）。无遗漏。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>无「待定/TODO/后续实现/类似任务 N」占位；全部代码步骤附完整代码块或精确的修改点描述（before/after 定位）。两处刻意的运行时裁决点已显式写明裁决方式：T9 的 AuthorEntity.status 字段类型（IT 裁决）、T10 的 IT 基座选择（grep 既有先例）。所有 FILL 注释已替换。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p>跨任务契约核验：<code>PublicationAbstractSection.of(label, text)</code>（T2 定义，T5/T6/T8/T12 消费）；<code>ofBoth(String, List, String)</code>（T2 签名 = T6/T12 调用）；<code>attachAuthors</code>（T4 定义 = T7/T10 调用）；<code>PublicationAuthorSnapshot</code> builder 字段（T3 = T7/T10/T12 一致）；<code>deleteAllByPublicationIdIn</code>（T1 affiliation DAO + T10 author DAO 各自声明）；<code>parseSections(long, String, String)</code>（T11 签名 = 调用点）；<code>of(baseUrl, fileIndex, generation)</code> 三参链（T13 五处一致）。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>16 个 <code>article.task</code>（task-1…task-16）唯一 id + 初始 <code>data-status="pending"</code>；全部 <code>li.step</code> 初始 pending；左栏 toc-tasks 16 条与中栏一一对应（初始 data-task-status 一致）；meta 含目标/架构/技术栈/关联 spec 四项；head 两个 link（spec-theme + plan-extras）、无 inline style 块。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+
+      <li class="note" data-type="other" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 写「从 patra-api/ 目录跑 ./gradlew」，实际 gradlew 在仓库根，且 Gradle project path 为 <code>:patra-api:patra-catalog:patra-catalog-infra</code>（非 <code>:patra-catalog:...</code>）。后续任务命令统一按此修正。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>savePublicationAuthor 助手原签名只收 authorId 拿不到姓名，为满足 display_name NOT NULL 给它加 <code>String displayName</code> 参数，调用点显式传与 saveAuthor 一致的名字。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>plan 步骤 6④ 假设 PortalFeedReadAdapterIT 有 affiliation 同名助手，实际没有；改为在其两处 <code>PublicationAuthorEntity.builder()</code>（saveAuthors / saveAuthorWithDeletedFlag）补 <code>.displayName(...)</code>。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>V3 表 4 表头「idx_publication 被 uk_pub_author 首列覆盖」注释随部分索引化失效，改述为「被 uk_author_order 首列覆盖」。Entity @Index 名与 DDL 索引名不一致属既有状况（validate 不校验索引），按 plan「indexes 原样」未动。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>PublicationAuthorAffiliationDao 类 javadoc 的「支持按…作者…维度查询」删去「作者」——对应派生方法已删，javadoc 同步。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T17:32">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T17:32">08-28 17:32</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>pre-commit 含 spotless，spotlessApply 重排了新增用例与助手签名换行；格式化后 IT 重跑仍全绿（39 用例 0 失败）。另：PublicationDetailReadAdapterIT.shouldReturnAuthorsInOrder 的 pubAuthorId2 是既有未使用变量，不在本任务范围，未清理。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T17:55">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T17:55">08-28 17:55</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>质量审查指出 uk_pub_author 唯一部分索引会被「同篇重复 ORCID → 同 resolvedAuthorId」阻断重导（整批回滚）。裁决：不改 DDL（spec 定唯一索引），在任务 10 写链路补去重不变量——同篇同 resolvedAuthorId 仅 author_order 最小行保留 authorId，其余置 null，并加 IT 覆盖「同篇两作者同 ORCID」。派生 delete 非 bulk DML 的性能提示也留任务 10 压测裁决。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T18:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T18:20">08-28 18:20</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>plan 步骤 4 给 4 个用例，实际写 6 个：补 getSectionCount/isStructured 与 hasContent/NONE 判型两条——被改动方法原本无覆盖，属 TDD 缺口补齐。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T18:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T18:20">08-28 18:20</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>两 VO 类级 javadoc 使用示例引用了已删除的 Map API（Map.of / getSection），plan 未提——已同步改为 List.of(PublicationAbstractSection.of(...)) 与 findSectionsByLabel，并给 copyright 补 @param。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T18:20">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T18:20">08-28 18:20</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>两个既有 VO 的 @since 保持 0.1.0（仅新建的 PublicationAbstractSection 标 0.6.0）。infra 编译失败面已确认为 6 处 2 文件（PubmedArticleItemProcessor:377,379 + PublicationJpaMapper:292,309,445,471），归任务 6/8 闭合。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T19:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T19:05">08-28 19:05</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>质量审查驱动的三处超 plan 加固：① 判型推断三分支补 builder 路径测试（JpaMapper 读路径 abstractType=null 生产可达）；② findSectionsByLabel 入参 trim+大小写不敏感（写侧已 trim 的对称）；③ ofStructured 两重载加 Assert.notEmpty 快速失败（工厂名承诺 STRUCTURED）。builder/ofBoth 刻意不加约束——builder 须保留读侧重建自由（历史数据 STRUCTURED 但 sections 为 null 时不能抛）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T19:05">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T19:05">08-28 19:05</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>小尾巴：PublicationAlternativeAbstract.findSectionsByLabel 的 trim 行为无独立断言（实现已同步改），任务 6/8 顺手补一条带空白入参的断言。hasCopyright 按 YAGNI 裁决不做（全仓零调用方）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T19:35">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T19:35">08-28 19:35</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>测试类与用例补中文 @DisplayName（对齐同包 PublicationAbstractSectionTest 风格），断言逻辑与 plan 给定一致。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T19:35">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T19:35">08-28 19:35</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>javadoc 中 PublicationAggregate 引用用反引号而非 [链接]（跨包未 import，链接会解析失败）；truncate 私有方法按「所有访问级别都要 javadoc」补了 @param/@return。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T20:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T20:10">08-28 20:10</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>质量审查驱动的四项超 plan 加固（plan 步骤 1/2 代码块为修复前形态，以实现为准）：① collectiveWins 测试改真竞争者（同时给 lastName 与 collectiveName）；② 紧凑构造器 collectiveName trimToNull（isCollective 空白语义自洽）；③ displayName ≤200 上限收进紧凑构造器（超长抛 IAE，不再静默拖到 PG）——<strong>任务 4/7/10 注意：手工 build 快照的 displayName 必须走 deriveDisplayName（输出恒 ≤200）</strong>；④ truncate 加 .strip() 消尾随空格（199A+" "+50B 截断点恰为空格 → 结果 199 字符，测试已锁）。残留一行边界测试（derive 产出的 200 字符可被构造器接受）挂任务 4 顺带补。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T20:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T20:40">08-28 20:40</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>plan 假设 PublicationAggregateTest 已存在可复用 createMinimalAggregate 助手——实际不存在（domain 仅 Venue/Mesh/Author/Organization 四个聚合测试）。新建该测试类并自写助手（PUBMED + VenueId/VenueInstanceId=1 + title + year=2024，其余 null），风格对齐 VenueAggregateTest。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-28T20:40">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T20:40">08-28 20:40</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>三条聚合测试中两条（防御拷贝 isTrue / 新聚合 isFalse）补了 hasAuthors() 断言（plan 片段只测 getAuthors），让新增方法自身有覆盖；null→空用例未带该断言。任务 3 遗留的 200 字符边界测试已随本任务补入 PublicationAuthorSnapshotTest。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-28T21:15">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T21:15">08-28 21:15</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>质量审查判可合并，三条 Minor 延后：① attachAuthors「二次挂载整体替换」缺测试守护——挂任务 7 顺带补（防止改成 addAll 语义不被发现）；② 作者 order 列表级唯一性不变量留任务 7 决策（当下加是无消费者的推测校验）；③ 任务 10 注意「恢复即变更」的 delete+insert 写放大在换库重建场景无害、增量同步需显式决策。已核对：聚合无 dirty 标记状态机，attachAuthors 不调 trackChildAdded 与持久化风格一致。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T22:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T22:00">08-28 22:00</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>parser 测试被任务 2 遗留编译面阻塞（预期），实现者未止步于「代码就位」：用隔离 javac（单独编译 infra/parser 包 + scratch main）以相同 fixture 完成三条新行为的运行时验证 + 4 组回归（含 sub/sup 内联、未知子元素 skip），全 PASS。JUnit 版本待任务 6 闭合编译面后随模块跑。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T22:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T22:00">08-28 22:00</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>parseAbstract switch 化顺带引入 default → skipElement（原 if/else 对未知子元素不消费）——plan 指定 switch 形态的必然结果，属行为变更，已用专门回归用例覆盖（未知子元素不污染解析）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T22:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T22:00">08-28 22:00</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>AlternativeAbstract 原本已有 copyright 字段，plan 担心的遗漏不存在；starter-provenance 无 CanonicalPublication.AlternativeAbstract 消费点（grep 确认），sections 为纯增量可选字段。commit subject 因 commitlint subject-case 改为中文开头。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-28T22:55">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T22:55">08-28 22:55</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>质量审查驱动的三处收口：① CanonicalPublication.AlternativeAbstract.sections javadoc 声明可空契约（starter-provenance 路径不填充，<strong>任务 6 消费方必须判空</strong>）；② ParsingStrategy 加 blankToNull helper——主摘要与 alt 两处 copyright 空白归 null（含空元素/自闭合形态，反向用例证实不误伤「空白+内联标签」内容）；③ copyright 用例补 sections 断言 + 顺序前置用例 + 空白→null 用例（隔离运行 66/66 绿）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-28T22:55">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-28T22:55">08-28 22:55</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>遗留动作：任务 8 编译闭合后必须补跑官方 <code>:patra-api:patra-catalog:patra-catalog-infra:test --tests "*CanonicalPublicationParsingStrategyTest"</code>（当前 5 个新用例只被隔离 javac 验证过）。环境观察：gradle 多任务首跑偶发无因 BUILD FAILED、重跑即绿，疑似 configuration cache 抖动——CI 同类失败先怀疑这个。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-28T23:40">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-28T23:40">08-28 23:40</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>plan 建议反射直测 buildPublicationAbstract，实际沿用 Processor 测试类既有测法——process() 全链路 + Mockito stub，断言取 result.publication().getPublicationAbstract()。另补 plan 外 2 用例：空白段落被过滤、无段落有 text 时回退纯文本。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-28T23:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-28T23:40">08-28 23:40</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>顺手修 2 处任务 2 波及的既有测试：should_map_structured_abstract 的 getSection() 断言改 findSectionsByLabel + plainText 拼接断言；Mapper 测试 4 处 AlternativeAbstractData.of() 调用点补参。commit subject 因 commitlint subject-case 去掉英文首词。</p>
+      </li>
+
+      <li class="note" data-type="tradeoff" data-time="2026-08-28T23:40">
+        <header>
+          <span class="note-type">TRADEOFF</span>
+          <time datetime="2026-08-28T23:40">08-28 23:40</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>① AlternativeAbstractData 既存违规（@Builder + of() 并存）随加参变成 6 参 of()——按 plan 只加参未收敛，任务 8 决策是否删 of()。② JpaMapper 最小垫片（mapToJson→sectionsToJson 机械改名）留工作区未提交——commit bbea24967 单独 checkout 时 infra 主源编译不过，属 plan 安排的中间态，任务 8 正式闭合。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T00:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T00:20">08-29 00:20</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>质量审查抓到 plan 覆盖缺口并已修：翻译摘要 plainText 原直接透传 Canonical text（parser 空格拼接丢 label 形态），与主摘要 "LABEL: text\n" 不一致。修为 <code>sections.isEmpty() ? text : joinSectionsAsPlainText(sections)</code>——「唯一生成点」不变式在主/alt 两链路成立，且 plainText 恒非空白（跳过条件先行拦截）。补 text+sections 并存与段落全滤两用例（三态分流 7、process() 42 全绿）。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-29T01:10">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T01:10">08-29 01:10</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>测法沿任务 6 先例：并入 PubmedArticleItemProcessorTest 的 @Nested（process() 全链路断言 getAuthors()）而非 plan 的独立类+反射——额外覆盖「已挂载到聚合」。两条遗留裁决落实：作者 order 唯一性由 Processor 保证（成功 add 后才 order++，连续无洞有用例）、聚合不加不变量；domain 补「二次 attach 整体替换」用例。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T01:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T01:10">08-29 01:10</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>normalizeOrcid 未用 hutool：改用文件已静态导入的 commons StringUtils.trimToNull；URL 前缀剥离用大写常量列表且<strong>必须先 toUpperCase 再剥前缀</strong>——Orcid VO 正则只收大写 X 且其内部 toUpperCase 发生在校验后，小写 x 会先被 isValid 拒掉。extractOrcid 复用既有 (List&lt;Identifier&gt;) 重载（investigator 路径共用），未新写。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T01:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T01:10">08-29 01:10</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>buildAffiliationSnapshots 对空白机构原文跳过（VO 构造器 notBlank 会抛异常中断整批导入），跳过后 affOrder 仍连续——测试加了中间空白项断言 1、2 编号。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T02:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T02:00">08-29 02:00</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>质量审查驱动加固：① PublicationAuthorAffiliationSnapshot 紧凑构造器加 2000 截断（affiliation_string 是唯一无上游约束的无界字段，超长会整篇被 skip 丢弃；与 displayName truncate 同构，截断而非抛异常）；② normalizeOrcid javadoc 顺序改正（先大写再剥前缀是硬约束）；③ 测试补强 4 处（非 ORCID 标识符过滤、invalid 拆分断言、集体作者缺省、initials/suffix 透传锁"不拼名"语义）。<strong>挂任务 10 小尾巴</strong>：truncate 的 notBlank 早于 strip 有病态输入缺口（&gt;2000 前导空白→空串），修法 affiliationString.strip() 前置一行；investigator 路径 ORCID 未归一化（两种形态并存）留任务 10 后决策。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T03:05">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T03:05">08-29 03:05</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>plan 说不动 IT 源集，但 Entity 类型化后 PublicationDetailReadAdapterIT.saveAbstract(String) 编译断裂——做最小机械适配（形参换 List&lt;PublicationAbstractSection&gt;、JSON 字面量换构造列表），断言语义未动。另：plan 假设「JpaMapper 现有单测改写」，实际不存在该测试类——新建 PublicationJpaMapperTest（6 用例：List 原样落 Entity、空列表→SQL NULL、null→空列表、alt sections+copyright 双向，不断言 JSON 字符串）。任务 6 的 JpaMapper 垫片被本 commit 完全取代，删 sectionsToJson/jsonToSections；listToJson/jsonToList 保留（metadata 消费）。AlternativeAbstractData.of() 按裁决删除（6 处调用点改 builder）。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T03:05">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T03:05">08-29 03:05</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p>三模块 2262 测试中 2 条失败为 LetPubProxyConnectivityTest 外网连通（letpub.com.cn 无响应；shell 带 PROXY_AUTH_* 环境变量才会被执行），与改动零交集。顺带发现 PublicationImportResult 另有多个 record 存在 @Builder+of() 并存既存违规（KeywordData 等）——超本 plan 范围未动，留待独立清理。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-29T03:40">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T03:40">08-29 03:40</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>任务 8 质量审查两条<strong>任务 12 硬性前置</strong>：① @DataJpaTest 切片没拉 starter-jpa 的 HibernatePropertiesCustomizer，IT 实际跑在 Hibernate 内置 Jackson 2 上（与生产的 Jackson3JsonFormatMapper 不同链路、严格性相反）——round-trip IT 必须显式 @Import 该 customizer（或在 IT 基座统一注入 JSON_FORMAT_MAPPER），否则证不到生产行为；② jsonb_typeof='array' 断言强度不够（多余属性也满足），须补 jsonb_object_keys 断言 key 恰为 {label,text}。另提醒任务 16/收尾：合并后、runbook 执行前 CD 不得把 catalog 推 mini（Flyway validateOnMigrate 会让服务起不来）——runbook 步骤 2 的 CD 隔离顺序必须先行。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T04:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T04:30">08-29 04:30</time>
+          <a href="#task-8">§ Task 8</a>
+        </header>
+        <p><strong>Critical 修复</strong>：PublicationAbstractSection.isLabeled() 被 Jackson 拾取为 bean 属性，把 "labeled" 写进 jsonb——读端严格 Jackson 2 反序列化 AbstractSectionView 会静默降级空列表（v0.5 症状类复现）。重命名为 hasLabel()（javadoc 写明刻意避开 bean getter 形态防回退；4 调用点零残留；未用 @JsonIgnore 保 domain 零 Jackson 依赖）。补两条 wire format 回归锚：生产同款 Jackson3JsonFormatMapper 精确串断言 + 严格 Jackson 2 读端路径复刻（反向验证会红）。PublicationDetailReadAdapterIT 10/10 复绿。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T05:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T05:10">08-29 05:10</time>
+          <a href="#task-9">§ Task 9</a>
+        </header>
+        <p>JPQL 删去 plan 写的 <code>AND a.deletedAt IS NULL</code>——SoftDeletableJpaEntity 用 Hibernate 原生 @SoftDelete（表级注解，无 Java 字段可引用，写了直接语义解析错）；Hibernate 对 cat_author 的表引用（含 JOIN 侧）自动追加 deleted_at IS NULL。IT 用「ACTIVE+已软删」数据实证 JOIN 侧过滤生效，方法 javadoc 已写明防误补。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T05:10">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T05:10">08-29 05:10</time>
+          <a href="#task-9">§ Task 9</a>
+        </header>
+        <p>IT 助手用 JdbcTemplate 直插而非 persist Entity——AuthorEntity 的 orcids 子集合 cascade=ALL+orphanRemoval，走 em.remove 软删会级联硬删 ORCID 子行、把测试变成假命题；软删靠 SQL UPDATE deleted_at（同包 PublicationDaoTopByVenueIT 先例）。额外补空入参用例。IT 落 dao 包（不套用 PublicationAuthorAffiliationDaoIT——其目录与 package 不一致属既有问题未动）。任务 10 接口提示：未命中 ORCID 不产生行，写链路收成 Map 后缺失即保持 NULL。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T06:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T06:00">08-29 06:00</time>
+          <a href="#task-9">§ Task 9</a>
+        </header>
+        <p>质量审查收口：DAO javadoc 固化契约（单次规模有界/未命中不产生行/uk_orcid 至多一行）；ORCID_ABSENT 样例改校验位合法值；空入参用例命名收敛；IT setUp 补清父表（原生 DELETE 绕 @SoftDelete 改写）。<strong>任务 10 义务</strong>：ORCID 收成后按 5000/片分片调用再合并 Map（PG 绑定参数 65535 悬崖）；(a,b)-&gt;a merge 承接多片。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T07:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T07:30">08-29 07:30</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>writeAuthorAssociations 在删旧行后加 entityManager.flush()（plan 代码没有）——Hibernate 同次 flush 内 INSERT 先于 DELETE，不显式 flush 新作者行会撞 uk_author_order（IT 用例 2 跑出的真实报错）。修法与本类既有 replace*Batch 方法一致。三条累积义务全部落实：同篇去重（usedAuthorIds，order 最小行保留）、ORCID 5000 分片批查、affiliation 先整串 strip 再截断（domain 测试红→绿）。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T07:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T07:30">08-29 07:30</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>替换语义 IT 采用 plan 备选预案（先手工删主表行再整体重写）——insertAll 的 mapper 忽略 version → isNew 判新建 → 同 id 二次写主表必 PK 冲突先于作者逻辑，plan 主案不可行已实证。findByDoi/findByPmidOrDoi 未挂 loadAuthors（严格按 plan 只改 findById/findByPmid；一致性属独立决策点）。新 IT 目录与 package 一致，未复制旧 IT 的目录/包漂移问题。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T08:50">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T08:50">08-29 08:50</time>
+          <a href="#task-10">§ Task 10</a>
+        </header>
+        <p>质量审查驱动的三组改造：① 6 处 toAggregate 全挂 loadAuthors（含 findByDoi/findByPmidOrDoi/两个 venue list finder），port javadoc 写死「完整重建聚合、getAuthors 空即确无作者」契约；② 两 DAO deleteAllByPublicationIdIn 改 @Modifying bulk DML——DELETE 立即下发，flush 定序隐患被消除而非绕开（显式 flush 及注释删除，删旧行范围取 data 全集使替换语义无条件成立）；③ IT 补强（机构删除断言真实化、作者行 id 更换、双作者机构归属、initials/suffix/equalContribution 双向映射）。裁定：venue list finder 零生产调用方，2N 查询不加批量重载（无界列表未来正确形态是随分页签名长出）；port javadoc 成本提示 2 行留作可选尾巴。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T09:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T09:45">08-29 09:45</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>读端 mapper 统一（任务 8 审查建议落地）：PublicationDetailReadAdapter 的裸 Jackson 2 ObjectMapper 改为构造注入 Jackson 3 Bean（对齐 OpenAlexSourcesClient 等既有注入先例），消除写 Jackson 3 / 读 Jackson 2 双 mapper 形态漂移根因；Detail IT @Import 补 JacksonAutoConfiguration（切片默认无该 bean，仓内先例同款）。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T09:45">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T09:45">08-29 09:45</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>软删注入用原生 query（Feed IT 既有先例，仓内无 JdbcTemplate 用法）；Feed 快照断言比 plan 模板强——cat_author 名故意写 "Renamed D." 而快照写 "Snapshot D."，同时证明不过滤软删与名字取行内列。malformed 用例 abstract_type 用大写 STRUCTURED（对齐落库值）；旧用例的小写 "structured" 属既有测试数据未动。助手对 cat_author 写入按最小改动保留（authorId 软关联位仍填）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T10:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T10:40">08-29 10:40</time>
+          <a href="#task-11">§ Task 11</a>
+        </header>
+        <p>质量审查收口：① 「与写端同源」注释改事实表述（两个 Jackson 3 实例配置不共享，wire format 由 key 集合断言钉死）；② 任务 8 的严格读端锚随读端切宽松 Jackson 3 而失效——改为读端同款宽松还原锚，拦截未知属性的职责显式归 key 集合断言（hasLabel javadoc 措辞同步）；③ Detail 快照用例 author_id 改 NULL（生产主形态，护栏覆盖反而更大——任何 JOIN cat_author 复活即红）；④ saveSoftDeletedAuthor 删除（Detail SQL 已不引用 cat_author 无鉴别力，软删回归集中 Feed 侧 Renamed/Snapshot 用例，两侧各守一个失效模式）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T11:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T11:30">08-29 11:30</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>P1 落实：@Import starter-jpa 的 HibernatePropertiesCustomizer + 新增常驻用例断言 SessionFactory 的 JsonFormatMapper isInstanceOf Jackson3JsonFormatMapper（谁删 Import 就红）。反证实验坐实：默认切片走 Hibernate 内置 Jackson 2 的 JacksonJsonFormatMapper；且反证时其余用例仍绿——两代 Jackson 对本 wire format 恰好同构，<strong>只靠 wire format/key 集合断言不足以证 P1，实例类型断言是必要关卡</strong>（已写进测试类 javadoc）。P2 的 jsonb_object_keys 断言主表与 alt 表都做了。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T11:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T11:30">08-29 11:30</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>SQL NULL 断言改 `structured_sections IS NULL`（避开 native NULL 标量 getSingleResult 不确定性）+ Entity 侧断言 null 而非 []；翻译摘要只做 jsonb+Entity 闭环——Detail 读 SQL 不读 alt 表，无读路径可断言。plan 预警的 List&lt;record&gt; 泛型擦除阻断未发生，零生产代码改动。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T12:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T12:20">08-29 12:20</time>
+          <a href="#task-12">§ Task 12</a>
+        </header>
+        <p>质量审查收口：alt 三字段断言（translationType 枚举→列契约全仓唯一覆盖点，String 断言 "OFFICIAL"）；abstract_type 端到端双侧断言（Entity/读模型各一——失败定位切开写歪/读歪）；两路径 tuple 全矩阵（锁顺序+值+总数）；elementKeysOf 子查询形态防无关行毒化；structuredSectionsIsNull 助手同族集中。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T12:20">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T12:20">08-29 12:20</time>
+          <a href="#task-16">§ Task 16</a>
+        </header>
+        <p><strong>独立收尾事项</strong>（不阻塞本 plan，合并后另行处理）：PublicationAbstractRoundTripIT 是全仓唯一 @Import HibernatePropertiesCustomizer 的测试——catalog 另外约 20 个 @DataJpaTest 切片（含 ingest/registry）仍跑在 Hibernate 内置 Jackson 2 FormatMapper 上，而带 SqlTypes.JSON 的 Entity 有 19 个。建议把该 @Import 上提到 CatalogITBootstrap 一处修好全 catalog 切片（该 customizer 还改 batch_size/ALLOW_METADATA_ON_BOOT 等，需跑全量 IT 验证）。</p>
+      </li>
+      <li class="note" data-type="decision" data-time="2026-08-29T13:20">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T13:20">08-29 13:20</time>
+          <a href="#task-13">§ Task 13</a>
+        </header>
+        <p>调度 Job 参数解析测试沿现场测法（XxlJobContext + execute() + ArgumentCaptor 捕 Command 断言，parseJobParam 保持 private）而非 plan 的反射 invoke；executeImport(int) 直接扩签名为 (int, String) 不加重载；ParsedJobParam 用规范构造器（Job 内部 package-private 载体，单产出单消费）。JobOperatorHelper 两前提源码确认：case null 跳过（206-208 行）+ identifying 缺省 true（未覆写 getNonIdentifyingKeys）——generation 缺省时 JobParameters 与改动前逐字节相同。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T13:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T13:20">08-29 13:20</time>
+          <a href="#task-13">§ Task 13</a>
+        </header>
+        <p>PublicationBaselineImportCommand 层也做空白→null 归一化（plan 只对 domain 明确）——Command record 紧凑构造器是自身契约唯一入口，不归一会让空白串存活到 domain 才清洗。domain 补 3 条归一化测试（TDD 要求行为先有失败覆盖）。CommandTest 8 处构造调用补 , null 属组件数 2→3 的必然连带。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T14:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T14:20">08-29 14:20</time>
+          <a href="#task-13">§ Task 13</a>
+        </header>
+        <p>质量审查收口：① javadoc 写明「generation 只解除 JobInstance 复用限制、不具备重导能力——非空库重跑被 Writer 按 PMID/DOI 全量跳过、SUCCESS 但零数据变化」（复核确认整体替换路径不会被触发，陈述成立）；「重导代次标识」9 处统一「代次标识」；② 重复 key 用 seenKeys 原始 key 记账 fail-fast（优于「判非 null」——generation 空白归 null 后重复会漏网）；③ 错误消息引号回显；④ Command 归一化补 characterization 测试；⑤ 两参 of 定位语义默认。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T14:20">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T14:20">08-29 14:20</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>任务 15 runbook 提醒（任务 13 审查产出）：generation 不改变 importBatch 值——重建后数据行仍标 baseline-pubmed26n1333，不携带代次信息，<strong>验收 SQL 不要按代次筛数据</strong>。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-29T15:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T15:00">08-29 15:00</time>
+          <a href="#task-14">§ Task 14</a>
+        </header>
+        <p>label 可空的波及面 grep 确认仅 AbstractBlock 一处直接消费点（publication-derive.ts 只做类型透传未解构 .label）；plan 预期的「其他组件类型错误就地补分支」未发生。按约束未跑 pnpm build（防污染可能在跑的 next dev）。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-29T15:40">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T15:40">08-29 15:40</time>
+          <a href="#task-14">§ Task 14</a>
+        </header>
+        <p>质量审查判可合并，留三条非阻塞尾巴：① 混合摘要桌面端 null 段正文顶格与 grid 段 110px 偏移的左边缘跳动——<strong>换库重建后拿真实混合摘要上屏实检再定</strong>（零冲突改法 pl-[110px] 已记录）；② `=== null` 可换 `== null` 防御（后端 wire 契约经复核确为 label:null，当前非 bug）；③ 任务 16 顺手项：后端 PortalPublicationDetailResponse javadoc 补 label 可空说明、PublicationDetailView.test 的 fixture abstractType 小写改大写（portal 无消费点，仅误导）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T17:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T17:00">08-29 17:00</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>plan 骨架四处调整：① 删死变量 PGI；② 验收 SQL 补强十项（affiliation_order 连续、冗余列一致、孤儿反查、jsonb_object_keys、ORCID 正则/软关联反查、abstract_type 一致性、alt jsonb、Batch generation 确认）；③ 闭环脚本加「命中数≠基准集」stderr WARN（防混入其他 baseline PMID 静默失真）；④ 回滚/验收命令拆成逐条 ssh 形态——plan 直译会在 zsh→ssh→sh→psql 四层转义里必炸。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T17:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T17:00">08-29 17:00</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>mini 实测环境事实（已入 runbook）：patra_catalog 56 表 = KEEP 33 / DROP 23；基线行数 cat_publication 18,807、abstract 5,114、author 0、venue_publication_stats 296,600、flyway 7 条（V1-V7）；XXL jobGroup=3 jobId=10；镜像 ghcr.io/linqibin0826/patra-catalog、手工构建对齐 cd.yml（bootJar + service.Dockerfile APP_PORT=6300）；catalog 迁移无 FK 无 serial → --data-only 任意序恢复可行。runbook 9.7 把混合摘要桌面对齐列为本次必做人工实检项。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T19:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T19:30">08-29 19:30</time>
+          <a href="#task-15">§ Task 15</a>
+        </header>
+        <p>SRE 审查两轮返修（3 Critical + 8 Important + 10 Minor + 6 复核项全落）。要点：① <strong>构建目录改 runner workspace</strong>——~/Projects/patra 是 sparse checkout 无 patra-api（照抄必炸），--dry-run 实证可行；连带发现第二必炸点：非交互 ssh 无 JAVA_HOME，须先 source runner .env（含代理）；② rename 窗口原子块（ALLOW_CONNECTIONS false + terminate + pg_sleep(2) + rename 单 psql 会话）+ 回滚 datallowconn 复位 + MacBook 不跑 catalog 硬前置；③ 兜底 dump 改宿主留存 + docker cp 回灌 + 双向 sha256；④ portal-cd 与手工构建抢 runner workspace——加 3.1.5 等待步；⑤ 对账口径改「可解释偏差内」（DUP_PMIDS 用 XML 解析同口径量出，grep 会把 CommentsCorrections 计入虚高）；⑥ 断点续做表（附录 B）、分期清理、psql 交互入口防 zsh 历史展开等。</p>
+      </li>
+      <li class="note" data-type="other" data-time="2026-08-29T20:30">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T20:30">08-29 20:30</time>
+          <a href="#task-16">§ Task 16</a>
+        </header>
+        <p>三道门控结果：① ./gradlew check 用 --continue 证明全仓 487 task 仅 1 个 FAILED、失败面恰为 LetPub 外网豁免 2 条（shell 带 PROXY_AUTH_* 才执行；已另行 unset 环境变量复跑验证真全绿口径）；② catalog IT 351/0/0（4 skipped 为 LetPub 手动 IT），三个新 RoundTrip/投影 IT 均在册；③ portal lint/typecheck/283 tests 全绿。顺手修 2 处（响应 javadoc label 可空说明 + fixture abstractType 大写）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T21:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T21:40">08-29 21:40</time>
+          <a href="#task-16">§ Task 16</a>
+        </header>
+        <p>最终整体审查（门控独立复跑全过、跨任务契约零断层、无 Critical）判「修完再合」，唯一代码收口已落：PublicationAuthorSnapshot.collectiveName 补 500 列宽截断（本分支不变量的漏网字段——displayName 截 200、affiliationString 截 2000 而它没截；truncate 改带 maxLength 参数单一方法；独立 commit 7b8808d9d，15/15 测试绿）。unset PROXY_AUTH_* 后 ./gradlew check 真全绿（487 tasks BUILD SUCCESSFUL）确证 LetPub 豁免口径。终审的 Minor 全部归档为合并后事项（AbstractType 双套编码统一、作者深层字段读端暴露、作者侧 ORCID 归一化对齐、Canonical 第二套 plainText 公式等——均为既有或规格边界外）。</p>
+      </li>
+    </ol>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">11</span> decisions /
+      <span data-counter="change">31</span> changes /
+      <span data-counter="tradeoff">1</span> tradeoffs /
+      <span data-counter="other">16</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>

@@ -77,6 +77,7 @@ public class PublicationBatchAdapter implements PublicationBatchPort {
         PublicationImportJobParams.builder()
             .downloadUrl(downloadUrl)
             .importBatch(importBatch)
+            .generation(params.generation())
             .build();
 
     // 不添加时间戳，相同参数的 Job 只执行一次（支持断点续传）

@@ -21,6 +21,8 @@ import dev.linqibin.patra.catalog.domain.model.enums.VersionType;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.LanguageInfo;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAlternativeAbstract;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorAffiliationSnapshot;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationDate;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationId;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationIdentifier;
@@ -30,14 +32,16 @@ import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueInstanceId;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAbstractEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAlternativeAbstractEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorAffiliationEntity;
+import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationAuthorEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationDateEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationIdentifierEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationMetadataEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.PublicationOaLocationEntity;
 import dev.linqibin.patra.common.enums.ProvenanceCode;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
@@ -289,7 +293,8 @@ public abstract class PublicationJpaMapper {
     PublicationAbstractEntity entity = new PublicationAbstractEntity();
     entity.setPublicationId(publicationId);
     entity.setPlainText(pubAbstract.plainText());
-    entity.setStructuredSections(mapToJson(pubAbstract.structuredSections()));
+    entity.setStructuredSections(
+        pubAbstract.structuredSections().isEmpty() ? null : pubAbstract.structuredSections());
     entity.setCopyright(pubAbstract.copyright());
     entity.setAbstractType(
         pubAbstract.abstractType() != null ? pubAbstract.abstractType().name() : null);
@@ -306,7 +311,7 @@ public abstract class PublicationJpaMapper {
     }
     return PublicationAbstract.builder()
         .plainText(entity.getPlainText())
-        .structuredSections(jsonToMap(entity.getStructuredSections()))
+        .structuredSections(entity.getStructuredSections())
         .copyright(entity.getCopyright())
         .abstractType(stringToAbstractType(entity.getAbstractType()))
         .build();
@@ -442,7 +447,9 @@ public abstract class PublicationJpaMapper {
     entity.setSourceType(altAbstract.sourceType());
     entity.setLanguageName(altAbstract.languageName());
     entity.setPlainText(altAbstract.plainText());
-    entity.setStructuredSections(mapToJson(altAbstract.structuredSections()));
+    entity.setStructuredSections(
+        altAbstract.structuredSections().isEmpty() ? null : altAbstract.structuredSections());
+    entity.setCopyright(altAbstract.copyright());
     entity.setTranslationType(
         altAbstract.translationType() != null ? altAbstract.translationType().name() : null);
     entity.setTranslator(altAbstract.translator());
@@ -468,7 +475,8 @@ public abstract class PublicationJpaMapper {
         .sourceType(entity.getSourceType())
         .languageName(entity.getLanguageName())
         .plainText(entity.getPlainText())
-        .structuredSections(jsonToMap(entity.getStructuredSections()))
+        .structuredSections(entity.getStructuredSections())
+        .copyright(entity.getCopyright())
         .translationType(stringToTranslationType(entity.getTranslationType()))
         .translator(entity.getTranslator())
         .translationDate(entity.getTranslationDate())
@@ -540,6 +548,77 @@ public abstract class PublicationJpaMapper {
         .build();
   }
 
+  // ========== 作者转换 ==========
+
+  /// 将作者快照转换为 JPA 实体。
+  ///
+  /// `is_corresponding_author` 恒为 false：PubMed 不提供显式通讯作者标记，
+  /// 不据启发式规则伪造该语义字段。
+  ///
+  /// @param snapshot 作者快照
+  /// @param publicationId 文献 ID
+  /// @param resolvedAuthorId ORCID 命中的已消歧作者 ID（未命中或同篇去重后为 null）
+  /// @return JPA 实体
+  public PublicationAuthorEntity toAuthorEntity(
+      PublicationAuthorSnapshot snapshot, Long publicationId, Long resolvedAuthorId) {
+    if (snapshot == null) {
+      return null;
+    }
+    return PublicationAuthorEntity.builder()
+        .publicationId(publicationId)
+        .authorId(resolvedAuthorId)
+        .authorOrder(snapshot.order())
+        .displayName(snapshot.displayName())
+        .lastName(snapshot.lastName())
+        .foreName(snapshot.foreName())
+        .initials(snapshot.initials())
+        .suffix(snapshot.suffix())
+        .collectiveName(snapshot.collectiveName())
+        .orcid(snapshot.orcid())
+        .firstAuthor(snapshot.firstAuthor())
+        .correspondingAuthor(false)
+        .equalContribution(snapshot.equalContribution())
+        .build();
+  }
+
+  /// 将 JPA 实体及其机构行转换为作者快照（聚合恢复用）。
+  ///
+  /// @param entity 作者关联实体
+  /// @param affiliations 该作者的机构行（顺序不限，方法内按 `affiliation_order` 升序重排）
+  /// @return 作者快照
+  public PublicationAuthorSnapshot toAuthorSnapshot(
+      PublicationAuthorEntity entity, List<PublicationAuthorAffiliationEntity> affiliations) {
+    if (entity == null) {
+      return null;
+    }
+    List<PublicationAuthorAffiliationSnapshot> affiliationSnapshots =
+        affiliations == null
+            ? List.of()
+            : affiliations.stream()
+                .sorted(
+                    Comparator.comparing(PublicationAuthorAffiliationEntity::getAffiliationOrder))
+                .map(
+                    affiliation ->
+                        PublicationAuthorAffiliationSnapshot.of(
+                            affiliation.getAffiliationOrder(), affiliation.getAffiliationString()))
+                .toList();
+
+    return PublicationAuthorSnapshot.builder()
+        .order(entity.getAuthorOrder())
+        .lastName(entity.getLastName())
+        .foreName(entity.getForeName())
+        .initials(entity.getInitials())
+        .suffix(entity.getSuffix())
+        .collectiveName(entity.getCollectiveName())
+        .displayName(entity.getDisplayName())
+        .orcid(entity.getOrcid())
+        .authorId(entity.getAuthorId())
+        .firstAuthor(Boolean.TRUE.equals(entity.getFirstAuthor()))
+        .equalContribution(Boolean.TRUE.equals(entity.getEqualContribution()))
+        .affiliations(affiliationSnapshots)
+        .build();
+  }
+
   // ========== 新增枚举转换方法 ==========
 
   /// 将 String 转换为 AbstractType 枚举。
@@ -593,32 +672,6 @@ public abstract class PublicationJpaMapper {
   }
 
   // ========== JSON 转换辅助方法 ==========
-
-  /// 将 Map 转换为 JSON 字符串。
-  private String mapToJson(Map<String, String> map) {
-    if (map == null || map.isEmpty()) {
-      return null;
-    }
-    try {
-      return objectMapper.writeValueAsString(map);
-    } catch (JsonProcessingException e) {
-      log.warn("Map 转 JSON 失败: {}", e.getMessage());
-      return null;
-    }
-  }
-
-  /// 将 JSON 字符串转换为 Map。
-  private Map<String, String> jsonToMap(String json) {
-    if (StrUtil.isBlank(json)) {
-      return Map.of();
-    }
-    try {
-      return objectMapper.readValue(json, new TypeReference<>() {});
-    } catch (JsonProcessingException e) {
-      log.warn("JSON 转 Map 失败: {}", e.getMessage());
-      return Map.of();
-    }
-  }
 
   /// 将 List 转换为 JSON 字符串。
   private String listToJson(List<String> list) {

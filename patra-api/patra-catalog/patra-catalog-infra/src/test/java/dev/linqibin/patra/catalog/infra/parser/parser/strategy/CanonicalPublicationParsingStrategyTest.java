@@ -932,6 +932,131 @@ class CanonicalPublicationParsingStrategyTest {
           result.getAbstractContent().getSections().get(0).getContent());
       assertEquals("CONCLUSIONS", result.getAbstractContent().getSections().get(3).getLabel());
     }
+
+    @Test
+    @DisplayName("应解析主摘要的 CopyrightInformation")
+    void parseAbstract_withCopyrightInformation_shouldCaptureCopyright() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation>
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+                <Abstract>
+                  <AbstractText>Abstract body.</AbstractText>
+                  <CopyrightInformation>© 2026 Elsevier.</CopyrightInformation>
+                </Abstract>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      assertNotNull(result.getAbstractContent());
+      assertThat(result.getAbstractContent().getCopyright()).isEqualTo("© 2026 Elsevier.");
+      // CopyrightInformation 作为兄弟元素存在时，AbstractText 仍应被正常捕获
+      assertThat(result.getAbstractContent().getSections()).hasSize(1);
+      assertThat(result.getAbstractContent().getSections().getFirst().getContent())
+          .isEqualTo("Abstract body.");
+    }
+
+    @Test
+    @DisplayName("CopyrightInformation 位于 AbstractText 之前也应正确解析")
+    void parseAbstract_copyrightBeforeAbstractText_shouldCaptureBoth() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation>
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+                <Abstract>
+                  <CopyrightInformation>© 2026 Elsevier.</CopyrightInformation>
+                  <AbstractText>Abstract body.</AbstractText>
+                </Abstract>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      assertThat(result.getAbstractContent().getCopyright()).isEqualTo("© 2026 Elsevier.");
+      assertThat(result.getAbstractContent().getSections()).hasSize(1);
+      assertThat(result.getAbstractContent().getSections().getFirst().getContent())
+          .isEqualTo("Abstract body.");
+    }
+
+    @Test
+    @DisplayName("空白 CopyrightInformation 应归一为 null")
+    void parseAbstract_blankCopyrightInformation_shouldBeNull() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation>
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+                <Abstract>
+                  <AbstractText>Abstract body.</AbstractText>
+                  <CopyrightInformation>   </CopyrightInformation>
+                </Abstract>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      assertNull(result.getAbstractContent().getCopyright());
+    }
+
+    @Test
+    @DisplayName("混合 Label 的摘要应保留无 Label 段落及顺序")
+    void parseAbstract_mixedLabels_shouldKeepUnlabeledSections() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation>
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+                <Abstract>
+                  <AbstractText Label="BACKGROUND">Background content here.</AbstractText>
+                  <AbstractText>Unlabeled content here.</AbstractText>
+                  <AbstractText Label="CONCLUSIONS">Conclusions content here.</AbstractText>
+                </Abstract>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      var sections = result.getAbstractContent().getSections();
+      assertThat(sections).hasSize(3);
+      assertThat(sections.get(1).getLabel()).isNull();
+      assertThat(sections.get(1).getContent()).isEqualTo("Unlabeled content here.");
+      assertThat(sections.get(2).getLabel()).isEqualTo("CONCLUSIONS");
+    }
   }
 
   // ========== MeSH 主题词解析测试 ==========
@@ -1632,6 +1757,40 @@ class CanonicalPublicationParsingStrategyTest {
       assertThat(altAbstract.getLanguage()).isEqualTo("chi");
       // 结构化摘要应拼接成完整文本
       assertThat(altAbstract.getText()).contains("背景内容", "方法内容", "结果内容");
+    }
+
+    @Test
+    @DisplayName("结构化 OtherAbstract 应保留段落 label 与顺序（不拍平）")
+    void parseOtherAbstract_shouldCarryStructuredSections() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation>
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+              <OtherAbstract Language="chi" Type="Publisher">
+                <AbstractText Label="OBJECTIVE">目的内容。</AbstractText>
+                <AbstractText Label="METHODS">方法内容。</AbstractText>
+              </OtherAbstract>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      var altAbstract = result.getAlternativeAbstracts().getFirst();
+      assertThat(altAbstract.getSections()).hasSize(2);
+      assertThat(altAbstract.getSections().getFirst().getLabel()).isEqualTo("OBJECTIVE");
+      assertThat(altAbstract.getSections().getFirst().getContent()).isEqualTo("目的内容。");
+      assertThat(altAbstract.getSections().get(1).getLabel()).isEqualTo("METHODS");
+      // 拼接文本仍保留
+      assertThat(altAbstract.getText()).isNotBlank();
     }
 
     @Test

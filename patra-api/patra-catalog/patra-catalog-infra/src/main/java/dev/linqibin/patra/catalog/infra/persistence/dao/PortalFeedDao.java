@@ -15,7 +15,7 @@ public interface PortalFeedDao extends JpaRepository<PublicationEntity, Long> {
   /// 作者用 `string_agg(... ORDER BY author_order)` 单元分隔符拼接；
   /// 类型用相关子查询取 `type_order` 最小；排序按 `:sortMode`（RECENT/CITED）。
   /// `Pageable` 仅携带分页，排序内嵌 SQL。
-  /// 作者列表已过滤软删 author（被合并/作废的不展示）。
+  /// 作者为文献快照（行内 `display_name`），不受 cat_author 软删/合并影响。
   @Query(
       value =
           """
@@ -32,11 +32,9 @@ public interface PortalFeedDao extends JpaRepository<PublicationEntity, Long> {
                WHERE pt.publication_id = p.id
                ORDER BY pt.type_order ASC NULLS LAST, pt.id ASC
                LIMIT 1) AS "studyType",
-            (SELECT string_agg(a.display_name, E'\\x1f' ORDER BY pa.author_order)
+            (SELECT string_agg(pa.display_name, E'\\x1f' ORDER BY pa.author_order)
                FROM cat_publication_author pa
-               JOIN cat_author a ON a.id = pa.author_id
-               WHERE pa.publication_id = p.id
-                 AND a.deleted_at IS NULL) AS "authorNames",
+               WHERE pa.publication_id = p.id) AS "authorNames",
             p.last_synced_at AS "lastSyncedAt"
           FROM cat_publication p
           LEFT JOIN cat_venue v ON v.id = p.venue_id

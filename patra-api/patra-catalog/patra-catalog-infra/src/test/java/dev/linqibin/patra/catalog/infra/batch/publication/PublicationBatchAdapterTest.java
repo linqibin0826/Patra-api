@@ -127,6 +127,42 @@ class PublicationBatchAdapterTest {
     }
 
     @Test
+    @DisplayName("应该把 generation 透传到 Job 参数")
+    void should_pass_generation_to_job_params() {
+      // given
+      PublicationImportParams params = PublicationImportParams.of(BASE_URL, FILE_INDEX, "v0.6");
+      when(jobOperatorHelper.launch(eq(pubmedBaselineImportJob), any(), eq(false)))
+          .thenReturn(EXPECTED_EXECUTION_ID);
+
+      // when
+      adapter.launchBaselineImport(params);
+
+      // then
+      verify(jobOperatorHelper)
+          .launch(eq(pubmedBaselineImportJob), jobParamsCaptor.capture(), eq(false));
+
+      assertThat(jobParamsCaptor.getValue().getGeneration()).isEqualTo("v0.6");
+    }
+
+    @Test
+    @DisplayName("未指定 generation 时 Job 参数应为 null")
+    void should_leave_generation_null_when_absent() {
+      // given
+      PublicationImportParams params = PublicationImportParams.of(BASE_URL, FILE_INDEX);
+      when(jobOperatorHelper.launch(eq(pubmedBaselineImportJob), any(), eq(false)))
+          .thenReturn(EXPECTED_EXECUTION_ID);
+
+      // when
+      adapter.launchBaselineImport(params);
+
+      // then
+      verify(jobOperatorHelper)
+          .launch(eq(pubmedBaselineImportJob), jobParamsCaptor.capture(), eq(false));
+
+      assertThat(jobParamsCaptor.getValue().getGeneration()).isNull();
+    }
+
+    @Test
     @DisplayName("应该使用不添加时间戳的模式（支持断点续传）")
     void should_use_no_timestamp_mode_for_restart() {
       // given

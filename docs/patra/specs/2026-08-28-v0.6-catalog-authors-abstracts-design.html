@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>v0.6 Catalog 作者与摘要数据链路修复</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#authors">作者落库链路</a></li>
+      <li><a href="#abstracts">摘要写读链路</a></li>
+      <li><a href="#portal">Portal 最小改动</a></li>
+      <li><a href="#rebuild">数据重建与验证</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>v0.6 Catalog 作者与摘要数据链路修复</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-28</span>
+        <span>🌿 feat/v0.6-catalog-authors-abstracts</span>
+        <span>👤 linqibin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>v0.6 以后端为主、Portal 一处最小改动：① 补齐从未实现的文献作者落库三层，作者采用「行内存名 + 可空 ORCID 软关联」——快照类型挂在聚合上（唯一事实来源、DELETE/INSERT 替换语义），绝不向 cat_author 新建行，机构表删除冗余 author_id 并级联清理其 DAO / IT；② 摘要以 catalog-domain 的共享类型 <code>PublicationAbstractSection</code> 定型有序数组（Canonical 层用自身 section 类型、Processor 处映射，避免反向依赖），非结构化与混合摘要不再丢弃，plain_text 由 Processor 统一生成，AlternativeAbstract 全链路对称，Portal 对 <code>label=null</code> 做最小渲染适配；③ 数据重建走「换库重建」maintenance runbook：pg_dump 物理备份保险 → CD 以 <code>gh workflow disable cd.yml</code> 显式隔离 → 旧库 rename 回滚锚 → 新库 Flyway 重建 → 显式 allowlist 回填参考数据（排除 flyway_schema_history）→ 以 generation identifying 参数重导 baseline，回滚为三库名交换 + 旧镜像 tag 复位，验收走「成功导入 PMID 集合」口径的源数据闭环。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>mini 生产库 patra_catalog 现有 18,807 篇文献（2026-05-31 由 XXL-Job <code>pubmedBaselineImportJob</code> 从 NCBI 下载 <code>pubmed26n1333.xml.gz</code> 单文件导入；该次 Batch 统计 read=30000 / write=18815 / filter=11185——filter 主要为期刊未命中被丢弃），portal 文献详情页（v0.5 / PAP-45）的作者区与摘要区均为空。排查确认两条链路的缺陷：</p>
+      <p><strong>作者：从未实现。</strong>Parser（<code>CanonicalPublicationParsingStrategy.parseAuthorList</code>）完整解析了 <code>&lt;AuthorList&gt;</code>（姓名 / ORCID / 机构 / EqualContrib），但 <code>PubmedArticleItemProcessor</code> 无 <code>buildAuthorData()</code>、<code>PublicationItemWriter</code> 无作者分支、<code>PublicationAuthorDao</code> 类不存在——数据解析进内存后无声丢弃。<code>cat_publication_author</code> 0 行；<code>cat_author</code> 的 49.7 万行来自另一条独立链路（<code>authorImportJob</code> 导入 PubMed Computed Authors 全局作者库，dev 配置限 50 万条），与文献无行级关联。项目自带的 <code>pubmed-parsing-gap-analysis.md</code> 早已将此标为 🔴 高优先级缺口；详情页读端 SQL 已写好 <code>FROM cat_publication_author</code> 在等数据。</p>
+      <p><strong>摘要：四层缺陷叠加。</strong>① 写端把 sections 序列化为对象 <code>{"LABEL":"text"}</code>，读端 <code>parseSections</code> 期望数组 <code>[{label,text}]</code>——schema 从未对齐，解析失败被 catch 吞掉返回空数组（读空的主因）；② 存量 5,114 行摘要全部是双重编码的 JSON 字符串（commons <code>Jackson3JsonFormatMapper</code> String 透传修复前，手工 Jackson 2 序列化的字符串又被 Hibernate 二次序列化）；③ 批量路径从不生成 <code>plain_text</code>（API 路径的对照实现 <code>PubmedPublicationConverter.extractAbstract</code> 是正确的）；④ 无 Label 的非结构化摘要（PubMed 的大多数）被整条丢弃不落库——这是 27% 覆盖率（5,114/18,807）的主因，也解释了表内 100% 是 STRUCTURED。</p>
+      <p><strong>关键环境事实（约束重建方案）。</strong>patra_catalog 库内除文献外还承载大量非本次目标的业务数据：15,434 期刊、120,445 ROR 机构、31,110 MeSH Descriptor + 324,016 SCR + 约百万 Entry Term、71,339 Scopus 评级及 JCR / CAS / LetPub 等富化数据、296,600 行 <code>cat_venue_publication_stats</code>（baseline 导入不重建）——这些来自各自独立的导入 Job，重放代价高。且文献导入依赖期刊先在库：<code>PubmedArticleItemProcessor</code> 查不到 venue 时直接丢弃该篇。三条硬约束：两个 Batch Job 均 <code>addTimestamp=false</code>，同参数重跑抛 <code>JobInstanceAlreadyCompleteException</code>；改 V3 后新镜像对旧库启动必因 Flyway checksum 不一致失败；<code>cd.yml</code> 会在 main 的 <code>patra-api/**</code> 变化后自动 build + deploy——不隔离 CD，合并即自动撞旧库。重建必须按 maintenance runbook 编排。</p>
+      <p><strong>前端现状。</strong>portal <code>AuthorList</code> / <code>AbstractBlock</code> 组件 v0.5 已就绪，empty / plain / structured 三态渲染齐备；但 TS 类型 <code>label: string</code> 且 <code>AbstractBlock</code> 无条件渲染 92px 标签列——混合摘要的 <code>label=null</code> 段需要一处最小适配（见 §5）。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>作者落库三层实现 + 聚合快照类型与生命周期（create / restore / 替换语义 / 恢复读取）</li>
+            <li><code>cat_publication_author</code> DDL 改造（行内存名 + author_id 可空 + 部分唯一索引）；affiliation 表删冗余 <code>author_id</code> 并级联清理 DAO / IT（直接改 V3 baseline）</li>
+            <li>ORCID 归一化协议 + 轻量投影批量查询 DAO 契约（仅关联 ACTIVE 未删除作者）</li>
+            <li>共享领域类型 <code>PublicationAbstractSection</code>（catalog-domain）+ Canonical 层自身 section 类型与映射边界；Entity 字段类型化（删手工 <code>mapToJson</code> / <code>jsonToMap</code>，JSONB 注解统一）</li>
+            <li>非结构化 / 混合摘要落库 + Processor 统一生成 plain_text；主摘要与 AlternativeAbstract 的 Copyright 闭环</li>
+            <li><code>cat_publication_alternative_abstract</code> 全链路对称改造（common-model→Parser→Domain→Entity→IT）</li>
+            <li>详情 + Feed 读端 SQL 改读行内作者名；<code>parseSections</code> 带上下文 fail-loud</li>
+            <li>Portal 最小改动：<code>label: string | null</code> 类型 + <code>AbstractBlock</code> 无 label 段渲染适配 + 组件测试</li>
+            <li><code>pubmedBaselineImportJob</code> 新增 <code>generation</code> identifying 参数（全调用链 + attempt 规则）</li>
+            <li>mini「换库重建」maintenance runbook：物理备份保险 + CD 显式隔离 + allowlist 回填 + 三库名交换回滚 + 源数据闭环验收</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>Computed Authors PMID 证据关联消歧（<code>author_id</code> 回填留白，schema 已预留）</li>
+            <li>作者检索 / 作者详情页</li>
+            <li>Portal 除 §5 最小改动外的其他前端变更</li>
+            <li>AI 速读（<code>aiSummary</code> 维持留空）</li>
+            <li>扩大导入数据量（仍为单文件 pubmed26n1333，对齐现状）</li>
+            <li>重放期刊 / ROR / MeSH / 评级等参考域导入 Job（数据经 allowlist 回填，不重放）</li>
+            <li>CD 流水线常态化改造（本次用 <code>gh workflow disable</code> 显式隔离，不给 cd.yml 加 maintenance 模式）</li>
+            <li><code>authors_complete</code> 标志改造——其语义是「PubMed 声明作者列表完整」，与 patra 是否落库无关，保持原样，仅此文档澄清语义</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="authors">
+      <h2>3. 作者落库链路</h2>
+      <h3>3.1 DDL（直接改 V3__create_author.sql）</h3>
+      <ul>
+        <li><code>cat_publication_author</code>：<code>author_id</code> 改 <code>NULL</code>（软关联位）；新增行内列 <code>display_name VARCHAR(200) NOT NULL</code>、<code>last_name</code>、<code>fore_name</code>、<code>initials</code>、<code>suffix</code>、<code>collective_name</code>、<code>orcid VARCHAR(19)</code>（归一化后的 ORCID 存档）。</li>
+        <li>唯一性：Flyway 用<strong>部分唯一索引</strong> <code>CREATE UNIQUE INDEX ... ON cat_publication_author (publication_id, author_id) WHERE author_id IS NOT NULL</code>；<strong>Entity 删除对应 <code>@UniqueConstraint</code></strong>（JPA 注解表达不了 partial index），仅保留 <code>uk_author_order (publication_id, author_order)</code>。</li>
+        <li><code>cat_publication_author_affiliation</code>：<strong>删除冗余 <code>author_id</code> 列</strong>及其索引 <code>idx_author</code>（读端本就按 <code>pub_author_id</code> 查机构）。<strong>级联清理</strong>：<code>PublicationAuthorAffiliationDao</code> 删除 / 重写全部 <code>findAllByAuthorId*</code> 派生方法（否则 Spring Data 启动抛 <code>PropertyReferenceException</code>）、Entity 删字段与过时 JavaDoc、<code>PublicationAuthorAffiliationDaoIT</code> 重写依赖 authorId 的用例、详情 / Feed IT 的机构测试数据构造同步更新。</li>
+        <li><code>affiliation_order</code>：每位作者的多个机构从 1 连续编号、保持 XML 顺序（Entity 默认值不可依赖，显式赋值，否则撞 <code>UNIQUE(pub_author_id, affiliation_order)</code>）。</li>
+      </ul>
+      <h3>3.2 聚合快照类型与生命周期</h3>
+      <ul>
+        <li>domain 新增 VO：<code>PublicationAuthorSnapshot</code>（order / 姓名各字段 / display_name / orcid / authorId 可空 / 标记位 / affiliations 列表）与 <code>PublicationAuthorAffiliationSnapshot</code>（order / affiliation_string）。</li>
+        <li><code>PublicationAggregate</code> 的 <code>create / restore</code> 增加作者快照参数，紧凑构造防御性拷贝（<code>List.copyOf</code>）；作者快照是<strong>唯一事实来源</strong>，<code>PublicationImportResult</code> / <code>PublicationCompleteData</code> 透传聚合引用不存副本。</li>
+        <li>Repository 生命周期闭环：<code>findById / findByPmid</code> 恢复聚合时加载作者 + 机构快照；已存在聚合再次保存时作者采用<strong>整体替换语义（DELETE 后 INSERT）</strong>；写入→恢复的聚合 round-trip IT 覆盖。</li>
+      </ul>
+      <h3>3.3 姓名快照规则</h3>
+      <ul>
+        <li>所有姓名字段先 <code>trimToNull</code>；全部姓名字段与 CollectiveName 均为空 → 该作者跳过不落库，跳过数纳入验收报告。</li>
+        <li><code>display_name</code> 生成："LastName ForeName"；ForeName 缺则 "LastName Initials"；仅 LastName 则单独成名；集体作者取 CollectiveName。超长按 200 截断；落库值不允许 NULL / 空白。</li>
+        <li>集体作者：<code>collective_name</code> 存原文，姓名各列为空；<code>ValidYN="N"</code> 照存不过滤；suffix 存独立列不拼入 display_name。</li>
+      </ul>
+      <h3>3.4 ORCID 归一化与软关联</h3>
+      <ul>
+        <li>归一化流水线：去 <code>https://orcid.org/</code> 等 URL 前缀 → <strong>转大写</strong> → 标准 <code>XXXX-XXXX-XXXX-XXX[0-9X]</code> 格式校验 + ISO 7064 校验位校验 → 失败视为无 ORCID（orcid 列与 author_id 均留空）。</li>
+        <li>DAO 契约：新增轻量投影 <code>interface OrcidAuthorIdView { String getOrcid(); Long getAuthorId(); }</code> 与 <code>AuthorOrcidDao.findAuthorIdsByOrcidIn(Collection&lt;String&gt;)</code>——禁止复用会加载完整 Author + variants + orcids 的查询；查询条件限定作者 <code>status = ACTIVE</code> 且未软删（不关联 MERGED / INACTIVE / deleted）。</li>
+        <li>执行约束：每个 chunk 恰好一次批查（收集本批全部归一化 ORCID → 一次 IN → 内存回填）；禁止 Processor 逐作者查库。</li>
+        <li><strong>绝不向 <code>cat_author</code> 新建行</strong>；ORCID 原始数 / 归一化通过数 / 命中数 / 未命中数 / 非法数全部纳入验收报告。</li>
+      </ul>
+      <h3>3.5 写链路与读端</h3>
+      <ul>
+        <li><strong>Processor</strong>：<code>buildAuthorData()</code> 按 §3.3 规则产出快照——<code>author_order</code> 从 1 递增、<code>is_first_author</code> = (order==1)、<code>is_equal_contribution</code> 取 XML <code>EqualContrib</code>、<code>is_corresponding_author</code> 恒 false（PubMed XML 无显式标记，不造假数据）。</li>
+        <li><strong>父子 ID 与写入顺序</strong>：应用层预分配 <code>PublicationAuthorEntity.id</code> → 构造 affiliation 行 <code>pub_author_id</code> → 先批量写 + flush 作者行 → 再批量写机构行（沿用 <code>batchSaveWithFlush</code>）。</li>
+        <li><strong>读端（详情 + Feed）</strong>：<code>PublicationDetailDao.findAuthorsByPublicationId</code> 与 <code>PortalFeedDao</code> 作者查询都改读行内 <code>pa.display_name</code>、去 <code>JOIN cat_author</code>。<strong>语义变化</strong>：作者展示为文献快照，不再受 <code>cat_author</code> 的 soft delete / MERGED / INACTIVE 影响——相关现有 IT 按新语义改写。API 响应字段结构不变。</li>
+      </ul>
+    </section>
+
+    <section id="abstracts">
+      <h2>4. 摘要写读链路（两种形态一等公民）</h2>
+      <h3>4.1 类型边界与 schema 定型</h3>
+      <ul>
+        <li><strong>模块边界</strong>：<code>CanonicalPublication</code> 在 <code>patra-common-model</code>，不得反向依赖 catalog-domain。Canonical 层使用自身的 <code>CanonicalPublication.AbstractSection</code>（含 AlternativeAbstract 的 sections 不再拍平）；<strong>Processor 是唯一映射点</strong>：Canonical AbstractSection → catalog-domain <code>PublicationAbstractSection</code>；Processor 之后（主摘要 / AlternativeAbstract / Entity / ReadModel）统一使用 <code>record PublicationAbstractSection(String label, String text)</code>（label 可空）。</li>
+        <li><code>structured_sections</code> 定为<strong>有序数组</strong> <code>[{"label","text"}]</code>：保序、容纳重复 label 与无 label 段；纯文本摘要（无任何 section）统一存 <strong>SQL NULL</strong>（不是 <code>[]</code>）。</li>
+        <li>Domain VO <code>PublicationAbstract.structuredSections</code> 从 <code>Map&lt;String,String&gt;</code> 改 <code>List&lt;PublicationAbstractSection&gt;</code>；Map 语义 API（<code>getSection</code> / <code>getSectionNames</code> / <code>containsKey</code>）重设计为列表语义（按 label 查询返回 <code>List</code>）。</li>
+        <li>Entity 字段改 <code>List&lt;PublicationAbstractSection&gt;</code> + <code>@JdbcTypeCode(SqlTypes.JSON)</code>，交全局 <code>Jackson3JsonFormatMapper</code> 单点序列化；删除 <code>mapToJson</code> / <code>jsonToMap</code>；<strong>JSONB 注解统一</strong>：<code>columnDefinition</code> 统一为 <code>"jsonb"</code>（与 Flyway 一致），主 / 替代摘要两个 Entity 都改。</li>
+      </ul>
+      <h3>4.2 写端分流（含混合形态）</h3>
+      <ul>
+        <li><strong>Label 规范化先行</strong>：<code>Label=""</code> 或空白先规范化为 null。<strong>判型</strong>：≥1 个 section 满足 <code>label != null &amp;&amp; !label.isBlank()</code> → <code>STRUCTURED</code>；否则 → <code>UNSTRUCTURED</code>（枚举已存在）。</li>
+        <li><strong>STRUCTURED</strong>（含混合）：全部 section 按源顺序入数组，无 label 段以 <code>label=null</code> 保位置不丢内容；同时生成 <code>plain_text</code> → <code>ofBoth</code>。</li>
+        <li><strong>UNSTRUCTURED</strong>：文本按段落合并落 <code>plain_text</code>，sections 为 null → <code>ofPlainText</code>。不再丢弃。</li>
+        <li><strong>plain_text 统一由 Processor 生成</strong>：有 label 段 = "LABEL: text"、无 label 段 = text，段间 <code>\n</code> 连接。</li>
+        <li><strong>Copyright 闭环</strong>：主摘要 Parser 补解析 <code>CopyrightInformation</code> 落 <code>copyright</code> 列（列已存在）；AlternativeAbstract 的 copyright 打通——注意其列属 <code>V2__create_publication.sql</code>，缺列则改 V2。</li>
+      </ul>
+      <h3>4.3 AlternativeAbstract 全链路对称</h3>
+      <p>展开为：<code>patra-common-model/CanonicalPublication.java</code>（AlternativeAbstract 携带 sections 结构）→ Parser 不拍平 → <code>AlternativeAbstractData</code> / <code>PublicationImportResultMapper</code> 同步 → <code>PublicationAlternativeAbstract</code> VO 与 Entity 类型化 → Parser / Processor 单测 + 独立写读 round-trip IT。存储与主摘要共用 <code>PublicationAbstractSection</code> 数组 schema。</p>
+      <h3>4.4 读端</h3>
+      <p>读写共享同一 record 定义，数组直接反序列化。<code>parseSections</code> 签名改为携带上下文：<code>parseSections(long publicationId, String abstractType, String json)</code>——解析失败 <code>log.error</code> 记 publicationId + abstractType + 完整异常对象（不打印摘要正文），仍返回空数组保详情页可用；配套测试：malformed JSON → sections 降级为空、plainText 照常返回、日志可定位。</p>
+    </section>
+
+    <section id="portal">
+      <h2>5. Portal 最小改动（混合摘要渲染）</h2>
+      <ul>
+        <li>TS 类型：<code>AbstractSection.label</code> 从 <code>string</code> 改 <code>string | null</code>（<code>src/types/portal.ts</code>）。</li>
+        <li><code>AbstractBlock</code>：<code>label=null</code> 的段不渲染 92px 标签列节点，正文跨满整行（桌面与移动一致）；有 label 段渲染不变。</li>
+        <li>测试：混合摘要（有 / 无 label 段交错）组件测试；重建后浏览器人工验收纳入 Done。</li>
+        <li>除此之外 Portal 零改动（作者区 / Feed 契约不变）。</li>
+      </ul>
+    </section>
+
+    <section id="rebuild">
+      <h2>6. 数据重建与验证</h2>
+      <h3>6.1 换库重建 runbook（mini，维护窗口执行，非常规 CD）</h3>
+      <ol>
+        <li><strong>物理备份保险</strong>：<code>pg_dump -Fc patra_catalog</code> 落盘（custom archive），记录大小与 SHA-256，<code>pg_restore --list</code> 验证归档可读。rename 只是同 volume 回滚锚，此备份是独立保险。</li>
+        <li><strong>CD 隔离</strong>：合并 v0.6 PR <em>之前</em>执行 <code>gh workflow disable cd.yml</code>（backend CD 整体停用；learn / portal CD 不受影响）。合并后 CD 不会自动构建部署。记录当前运行中的旧镜像 tag（回滚复位用）。</li>
+        <li><strong>构建不部署</strong>：mini 上从合并后的 main 手工 <code>docker build</code> 出 catalog 新镜像并打<strong>不可变 tag</strong>（如 <code>catalog:v0.6-&lt;sha&gt;</code>），不启动。</li>
+        <li><strong>停机</strong>：停 catalog 容器，确认 patra_catalog 无活跃连接（catalog 停止即无 XXL executor 注册，恢复期 Job 不会触发）。</li>
+        <li><strong>换库</strong>：<code>ALTER DATABASE patra_catalog RENAME TO patra_catalog_v05_backup</code> → <code>CREATE DATABASE patra_catalog</code>。</li>
+        <li><strong>Flyway 先行</strong>：以新镜像启动 catalog，仅让 Flyway 全量跑完（含改过的 V3，新库自生成全新 history / checksum）→ 核对 <code>flyway_schema_history</code> → <strong>再次停止 catalog</strong>。</li>
+        <li><strong>离线回填参考数据</strong>：pg_dump（custom archive，--data-only）按<strong>显式 allowlist</strong> 从 backup 导出参考表 → <code>pg_restore --single-transaction</code> 恢复进新库。约束：allowlist 在实现计划阶段逐表落名（原则：<code>cat_publication*</code> 全排除、<strong><code>flyway_schema_history</code> 必须排除</strong>、<code>cat_venue_publication_stats</code> 明确保留——296,600 行 baseline 不重建）；恢复前目标表必须为空；恢复后逐表行数与 backup 一致才允许进入下一步。</li>
+        <li><strong>启动与重导</strong>：启动 catalog（新镜像）→ <code>pubmedBaselineImportJob</code>（fileIndex=1333）以 <code>generation</code> 参数启动（规则见 §6.2；<code>authorImportJob</code> 无需重跑——cat_author 家族已回填）。patra_batch 元数据库不动。</li>
+        <li><strong>验收</strong>：按 §6.4 指标核对；portal 页面人工确认。</li>
+        <li><strong>收尾 / 回滚</strong>：验收通过 → <code>gh workflow enable cd.yml</code>，backup 库保留观察期后删除。任一步失败 → 回滚交换（三库名，避免重名冲突）：停 catalog → <code>patra_catalog → patra_catalog_v06_failed_&lt;timestamp&gt;</code> → <code>patra_catalog_v05_backup → patra_catalog</code> → 以第 2 步记录的旧镜像 tag 启动 → 验证旧镜像 + 旧库正常 → 排查后再战。</li>
+      </ol>
+      <h3>6.2 generation 参数（调用链与 attempt 规则）</h3>
+      <ul>
+        <li>调用链全打通：XXL-Job 参数解析 → <code>PublicationBaselineImportCommand</code> → <code>PublicationImportParams</code> → <code>PublicationBatchPort</code> → <code>PublicationImportJobParams.generation</code>（identifying）→ Job 启动。缺省不传 = 现行为不变（断点续传语义保留）。</li>
+        <li>attempt 规则：<strong>同一新库</strong>导入失败后续跑 → 沿用同一 generation（利用断点续传）；<strong>回滚后重新从空库再战</strong> → 必须换新 generation（如 <code>v0.6-attempt2</code>），否则会从旧 checkpoint 续跑造成前半段数据缺失。禁止把 generation 写死在代码里。</li>
+      </ul>
+      <h3>6.3 测试策略</h3>
+      <ul>
+        <li><strong>单测</strong>：摘要判型三态（纯文本 / 结构化 / 混合，含 Label 空串规范化）与 plain_text 生成；<code>buildAuthorData</code>（普通 / 集体作者、EqualContrib、order 递增、姓名规则各分支、全空跳过）；ORCID 归一化（前缀 / 大写 / 校验位 / 非法值）。</li>
+        <li><strong>写读 round-trip IT（真实链路闭环）</strong>——断言矩阵：
+          <ul>
+            <li>落库后 <code>jsonb_typeof(structured_sections) = 'array'</code>，无外层 JSON string；</li>
+            <li>section 顺序保持；重复 Label 两条都在；混合摘要 <code>label=null</code> 段保留；</li>
+            <li><code>plain_text</code> 精确一致；纯文本摘要 <code>structured_sections IS NULL</code>；</li>
+            <li>主摘要与 AlternativeAbstract 两条链路分别覆盖；</li>
+            <li>双读路径都能恢复：Entity→Domain（FormatMapper）与 native <code>::text</code>→ReadAdapter（<code>parseSections</code>）；malformed JSON 降级 + 日志可定位；</li>
+            <li>作者：写入→<code>findById</code> 恢复聚合快照完整（round-trip）；详情 / Feed SQL 读出行内名；order 连续；ORCID 命中行 author_id 非空；两机构作者的 affiliation_order 从 1 连续且无孤儿；Feed 快照不受 cat_author soft delete / MERGED 影响（新语义 IT）。</li>
+          </ul>
+        </li>
+      </ul>
+      <h3>6.4 验收指标（源数据闭环，「成功导入 PMID 集合」口径）</h3>
+      <ul>
+        <li>基准集合 = 本次成功写入的 PMID 集合（Batch write 计数对账，filter 丢弃的期刊未命中篇不计入）。对同一份 <code>pubmed26n1333.xml.gz</code> 跑统计脚本核对：基准集合内含 AbstractText 的文献数 = 库内有摘要文献数；基准集合内通过姓名规则的 Author 数 = <code>cat_publication_author</code> 行数（姓名全空跳过数单独列）。</li>
+        <li>ORCID 报告：源含 ORCID 作者数 / 归一化通过数 / 非法数 / 软关联命中数 / 未命中数，逐项列出。</li>
+        <li>结构完整性：每篇 author_order 连续且唯一、有作者的文献恰好一位 first author、display_name 无 NULL / 空白；affiliation 无孤儿且每作者 order 从 1 连续；Batch skip count = 0。</li>
+        <li>curl 详情端点抽查：结构化篇 sections+plainText 双非空、非结构化篇 plainText 非空且 sections 为 null、混合篇无 label 段保留、作者列表非空且序正确。</li>
+        <li>portal 文献详情页与首页 Feed 人工确认：作者与摘要（含混合形态渲染）真实数据。</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>7. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：换库重建（物理备份 + rename 回滚锚 + allowlist 回填 + 单 Job 重导）</h3>
+        <p>patra_catalog 同库承载期刊 / ROR / MeSH / 评级等大量非目标数据，且文献导入依赖期刊先在库。重建采用：pg_dump 物理备份保险 → 旧库 rename 为回滚锚 → 新库 Flyway 重建最终形态 schema → 显式 allowlist 离线回填参考数据（排除 flyway_schema_history，新库 history 自生成）→ 仅重导 baseline 文献。回滚为三库名交换 + 记录在案的旧镜像 tag 复位。</p>
+        <p class="alternatives"><strong>备选 A：</strong>drop 整库 + 只重导 author 与 baseline — 否决：清空 v0.5 期刊业务与全部参考数据，期刊为空时文献导入全数丢弃（初稿方案，评审捕获）。<br>
+        <strong>备选 B：</strong>drop 整库 + 全量重放所有导入 Job — 否决：源文件重下体量巨大且 <code>cat_venue_publication_stats</code> 等无 Job 可重建。<br>
+        <strong>备选 C：</strong>保留原库 + 存量迁移脚本 — 否决：活库上 schema 变更 + 数据修复双重迁移，违反绿地原则且复杂度最高。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：CD 隔离用 gh workflow disable，不改 cd.yml</h3>
+        <p><code>cd.yml</code> 在 main 的 <code>patra-api/**</code> 变化后自动 build + deploy，合并 v0.6 即自动把新镜像怼到旧库触发 Flyway 失败循环。隔离机制：合并前 <code>gh workflow disable cd.yml</code>，换库完成验收后 <code>enable</code> 恢复；新镜像由 mini 手工构建不可变 tag。一次性维护动作，不为此给流水线加常态化 maintenance 模式。</p>
+        <p class="alternatives"><strong>备选 A：</strong>cd.yml 增加 build-only / maintenance 输入模式 — 否决：为一次性场景增加流水线复杂度（YAGNI）。<br>
+        <strong>备选 B：</strong>PR commit 上预构建镜像、换库后合并 — 否决：镜像与合并后 main 的 SHA 脱钩，溯源混乱。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：作者「行内存名 + 可空 ORCID 软关联」；快照挂聚合、affiliation 删冗余 author_id</h3>
+        <p>关联表直接存展示名（详情页 100% 有作者、读端不依赖 join），<code>author_id</code> 可空、仅 ORCID 命中 ACTIVE 未删作者时填，绝不因导文献向 <code>cat_author</code> 新建行。快照 VO 挂在 <code>PublicationAggregate</code> 上（唯一事实来源，DELETE/INSERT 替换语义，restore 完整恢复）。机构表删除 NOT NULL 的冗余 <code>author_id</code> 列并级联清理 DAO / IT。作者展示语义变为文献快照，不受作者库后续合并 / 停用影响。</p>
+        <p class="alternatives"><strong>备选 A：</strong>ORCID 匹配 + 未命中新建 cat_author — 否决：作者库被无法消歧的重复行淹没，检索废掉（用户明确否决）。<br>
+        <strong>备选 B：</strong>Computed Authors PMID 证据精确关联 — 否决（本版）：独立大项目体量；schema 已留回填位。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：section 类型分层——Canonical 层自持，catalog-domain 共享 record，Processor 唯一映射点</h3>
+        <p><code>CanonicalPublication</code>（patra-common-model）用自身 <code>AbstractSection</code> 携带结构（含 AlternativeAbstract 不拍平）；catalog 侧统一用 <code>PublicationAbstractSection(label, text)</code>（label 可空），Processor 做单点映射——避免 common-model 反向依赖 catalog-domain 的循环。数组保序、容纳重复与无 label 段；Entity 类型化 + <code>columnDefinition="jsonb"</code> 统一，由全局 FormatMapper 单点序列化。</p>
+        <p class="alternatives"><strong>备选 A：</strong>共享 record 放 common-model 全局复用 — 否决：把 catalog 的读写 schema 上提为跨服务契约，扩散耦合面。<br>
+        <strong>备选 B：</strong>保持 String 字段 + 集中手工 codec — 否决：双轨序列化，静默吞异常隐患仍在。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 5：直接改 V3（及 V2 的 alternative copyright 列），不新增 ALTER migration</h3>
+        <p>换库重建使 Flyway 在新库从零重跑，checksum 天然干净；绿地原则下 schema 按最终形态维护单一版本。配套约束：新镜像绝不能对旧库启动（runbook CD 隔离 + 构建不部署两步固化）。</p>
+        <p class="alternatives"><strong>备选：</strong>新增 V-next ALTER migration — 否决：为一次性重建保留演化台账没有价值。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 6：is_corresponding_author 恒 false</h3>
+        <p>PubMed XML 无通讯作者显式标记，不做启发式推断、不造假数据；列保留，等未来更可靠数据源。</p>
+        <p class="alternatives"><strong>备选：</strong>从 affiliation / email 启发式识别 — 否决：准确率无保障，错标比不标更误导。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 7：Batch 重导解锁用 generation identifying 参数（含 attempt 规则）</h3>
+        <p>Job <code>addTimestamp=false</code>，同参数重跑抛 <code>JobInstanceAlreadyCompleteException</code>。为 <code>pubmedBaselineImportJob</code> 增加可选 <code>generation</code> identifying 参数并打通 XXL→Command→Params→Port→JobParams 全链；同库失败续跑沿用同值（断点续传），换库重来必须换新值（避免旧 checkpoint 丢前半段）。</p>
+        <p class="alternatives"><strong>备选 A：</strong>定向删 patra_batch 元数据 — 否决：手工动共享元数据库，每次重导重来一遍。<br>
+        <strong>备选 B：</strong>新建 patra_batch_v06 — 否决：整库分裂，运维面翻倍。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>8. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>allowlist 回填漏表 / 漏行，或误拷 flyway_schema_history 带回旧 checksum</td>
+            <td><span class="pill high">high</span></td>
+            <td>allowlist 在计划阶段逐表落名并盲核（含 flyway_schema_history 显式排除项）；恢复前目标表为空、恢复后逐表行数对照通过才放行；--single-transaction 保原子</td>
+          </tr>
+          <tr>
+            <td>CD 隔离遗漏或恢复时机错误，新镜像自动撞旧库 / 旧镜像覆盖新库</td>
+            <td><span class="pill high">high</span></td>
+            <td>disable cd.yml 是 runbook 第 2 步（合并前）、enable 是验收后最后一步；旧镜像 tag 在隔离时记录在案</td>
+          </tr>
+          <tr>
+            <td>回滚交换执行错误（重名冲突 / 镜像与库不配套）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>三库名交换步骤固化进 runbook（失败库先改名带时间戳）；镜像 tag 与库版本配对记录；pg_dump 物理备份兜底</td>
+          </tr>
+          <tr>
+            <td>NCBI baseline 目录年度轮换导致 pubmed26n1333.xml.gz 下线</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>重建前 HEAD 探测；下线则改用当年对应文件（数据集变化可接受，目标是修链路）</td>
+          </tr>
+          <tr>
+            <td>generation 使用错误（换库重来沿用旧值导致旧 checkpoint 续跑缺数据）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>attempt 规则写进 runbook 与 JavaDoc；验收第一项就是总行数对账，缺前半段立刻暴露</td>
+          </tr>
+          <tr>
+            <td>affiliation DAO 派生方法清理遗漏，Spring Data 启动抛 PropertyReferenceException</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>清单显式列出 DAO / IT 级联项；启动冒烟（contextLoads）+ check 门控在合并前暴露</td>
+          </tr>
+          <tr>
+            <td>VO Map→List 与聚合改动波及面（API 路径 converter 等调用方）</td>
+            <td><span class="pill low">low</span></td>
+            <td>编译期全量暴露即修；check + integrationTest 双门控兜底</td>
+          </tr>
+          <tr>
+            <td>作者行数量级（10 万+ 行）拖慢导入</td>
+            <td><span class="pill low">low</span></td>
+            <td>batchSaveWithFlush 批量写（keyword 7.5 万行同模式无压力）；离线 Job 时长非敏感</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>9. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><code>patra-catalog-infra/.../db/migration/V3__create_author.sql</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>author 关联表行内列 + author_id 可空 + 部分唯一索引；affiliation 删 author_id 列与 idx_author</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><code>patra-catalog-infra/.../db/migration/V2__create_publication.sql</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>alternative_abstract 补 copyright 列（如缺）</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><code>patra-common-model/.../CanonicalPublication.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>Canonical 层 AbstractSection 结构；AlternativeAbstract 携带 sections 不拍平</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><code>patra-catalog-domain/.../vo/publication/PublicationAbstractSection.java</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>catalog 侧共享 section record（label 可空）</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><code>patra-catalog-domain/.../vo/publication/PublicationAbstract.java + PublicationAlternativeAbstract.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>Map→List、列表语义 API、copyright 打通</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><code>patra-catalog-domain/.../vo/publication/PublicationAuthorSnapshot.java + PublicationAuthorAffiliationSnapshot.java</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>作者 / 机构快照 VO（防御性拷贝）</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><code>patra-catalog-domain/.../aggregate/PublicationAggregate.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>create / restore 携带作者快照；唯一事实来源</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td><code>patra-catalog-infra/.../parser/strategy/CanonicalPublicationParsingStrategy.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>混合结构保留、Label 空串规范化、CopyrightInformation 解析、AlternativeAbstract sections</td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td><code>patra-catalog-infra/.../batch/publication/PubmedArticleItemProcessor.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>buildAuthorData()（姓名规则 / 全空跳过）；摘要判型三态 + plain_text 统一生成；Canonical→Domain section 映射点</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td><code>patra-catalog-infra/.../batch/publication/PublicationImportResult / PublicationCompleteData / PublicationImportResultMapper</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>透传聚合作者引用；AlternativeAbstractData 携带 sections</td>
+          </tr>
+          <tr>
+            <td>11</td>
+            <td><code>patra-catalog-infra/.../persistence/dao/PublicationAuthorDao.java</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>作者关联表批量写 DAO</td>
+          </tr>
+          <tr>
+            <td>12</td>
+            <td><code>patra-catalog-infra/.../persistence/dao/PublicationAuthorAffiliationDao.java + 对应 DaoIT</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>删除 / 重写 findAllByAuthorId* 派生方法与依赖 IT（防 PropertyReferenceException）</td>
+          </tr>
+          <tr>
+            <td>13</td>
+            <td><code>patra-catalog-infra/.../persistence/dao/AuthorOrcidDao.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>新增 OrcidAuthorIdView 投影 + findAuthorIdsByOrcidIn（限 ACTIVE 未删）</td>
+          </tr>
+          <tr>
+            <td>14</td>
+            <td><code>patra-catalog-infra/.../persistence/entity/PublicationAuthorEntity / PublicationAuthorAffiliationEntity / PublicationAbstractEntity / PublicationAlternativeAbstractEntity</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>行内列 + 删 @UniqueConstraint；affiliation 去 authorId；摘要字段类型化 + columnDefinition="jsonb"</td>
+          </tr>
+          <tr>
+            <td>15</td>
+            <td><code>patra-catalog-infra/.../converter/mapper/PublicationJpaMapper.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>删 mapToJson / jsonToMap；快照 VO↔Entity 映射；类型化摘要映射</td>
+          </tr>
+          <tr>
+            <td>16</td>
+            <td><code>patra-catalog-infra/.../adapter/persistence/PublicationRepositoryAdapter.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>writeAuthorAssociations（预分配 ID→作者 flush→机构，affiliation_order 显式）+ chunk 级 ORCID 批查 + findById/findByPmid 恢复快照 + 替换语义</td>
+          </tr>
+          <tr>
+            <td>17</td>
+            <td><code>patra-catalog-infra/.../persistence/dao/PublicationDetailDao.java + PortalFeedDao.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>详情与 Feed 作者查询改读行内 display_name，去 JOIN cat_author（快照语义，相关 IT 改写）</td>
+          </tr>
+          <tr>
+            <td>18</td>
+            <td><code>patra-catalog-infra/.../adapter/read/PublicationDetailReadAdapter.java</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>parseSections(publicationId, abstractType, json) 上下文日志；对齐共享 record</td>
+          </tr>
+          <tr>
+            <td>19</td>
+            <td><code>patra-catalog-infra/.../batch/publication/PublicationBatchAdapter.java + Command / Params / Port / Handler 链</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>generation identifying 参数全链打通（XXL→Command→Params→Port→JobParams）</td>
+          </tr>
+          <tr>
+            <td>20</td>
+            <td><code>patra-portal/src/types/portal.ts + src/components/portal/paper-detail/AbstractBlock.tsx + 组件测试</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>label: string | null；无 label 段不渲染标签列、正文跨行；混合摘要组件测试</td>
+          </tr>
+          <tr>
+            <td>21</td>
+            <td><code>patra-catalog-infra/src/integrationTest/...（round-trip IT：主摘要 / AlternativeAbstract / 作者聚合）</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>按 §6.3 断言矩阵的真实链路闭环 IT（含 malformed JSON 降级、Feed 快照新语义）</td>
+          </tr>
+          <tr>
+            <td>22</td>
+            <td><code>docs/patra/...（换库重建 maintenance runbook + allowlist + 统计对账脚本）</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>§6.1 十步手册 + 显式表 allowlist + 行数对照与源数据闭环统计脚本 + 回滚交换流程（实现计划阶段成文）</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>注：路径为主干示意，实现计划（writing-plans）阶段展开到精确文件与代码级步骤。</p>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li><code>./gradlew check</code> 通过，且<strong>显式执行 <code>:patra-catalog:patra-catalog-infra:integrationTest</code> 通过</strong>（check 不含 integrationTest，必须单列）；portal 侧 lint / typecheck / 组件测试通过</li>
+        <li>mini 换库重建完成：物理备份存档可读；allowlist 回填逐表行数对照一致；重导后 §6.4 源数据闭环指标全部达成（成功导入 PMID 口径）</li>
+        <li>curl 详情端点抽查：结构化 / 非结构化 / 混合三态断言通过、作者列表非空且序正确</li>
+        <li>portal 文献详情页与首页 Feed 人工确认：作者与摘要（含混合形态无 label 段渲染）真实数据</li>
+        <li>回滚锚 patra_catalog_v05_backup 与物理备份在验收通过前完整保留；cd.yml 验收后恢复 enable</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>

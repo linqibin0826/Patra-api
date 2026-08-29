@@ -1,5 +1,6 @@
 package dev.linqibin.patra.catalog.infra.persistence.entity;
 
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
 import dev.linqibin.starter.jpa.entity.ValueObjectJpaEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -7,6 +8,7 @@ import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDate;
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -73,10 +75,14 @@ public class PublicationAlternativeAbstractEntity extends ValueObjectJpaEntity {
   @Column(name = "plain_text", columnDefinition = "TEXT")
   private String plainText;
 
-  /// 结构化摘要段落（JSON 对象）
+  /// 结构化摘要段落（有序数组 `[{"label","text"}]`；纯文本摘要为 null）
   @JdbcTypeCode(SqlTypes.JSON)
-  @Column(name = "structured_sections", columnDefinition = "JSON")
-  private String structuredSections;
+  @Column(name = "structured_sections", columnDefinition = "jsonb")
+  private List<PublicationAbstractSection> structuredSections;
+
+  /// 版权信息
+  @Column(name = "copyright", length = 1000)
+  private String copyright;
 
   /// 翻译类型：Official/Professional/Machine/Community
   @Column(name = "translation_type", length = 50)

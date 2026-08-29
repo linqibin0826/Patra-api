@@ -67,7 +67,7 @@ class PubmedBaselineImportScheduleJobTest {
           .thenReturn(mockResult(fileIndex));
 
       // when
-      scheduleJob.executeImport(fileIndex);
+      scheduleJob.executeImport(fileIndex, null);
 
       // then
       verify(commandBus).handle(commandCaptor.capture());
@@ -87,7 +87,7 @@ class PubmedBaselineImportScheduleJobTest {
           .thenReturn(mockResult(1));
 
       // when
-      job.executeImport(1);
+      job.executeImport(1, null);
 
       // then
       verify(commandBus).handle(commandCaptor.capture());
@@ -147,6 +147,22 @@ class PubmedBaselineImportScheduleJobTest {
     }
 
     @Test
+    @DisplayName("fileIndex 小于 1 时应该标记任务失败")
+    void should_fail_when_file_index_below_lower_bound() {
+      // given
+      XxlJobContext context = new XxlJobContext(1L, "fileIndex=0", "", 0, 0);
+      XxlJobContext.setXxlJobContext(context);
+
+      // when
+      scheduleJob.execute();
+
+      // then
+      assertThat(context.getHandleCode()).isEqualTo(XxlJobContext.HANDLE_CODE_FAIL);
+      assertThat(context.getHandleMsg()).contains("参数错误");
+      assertThat(context.getHandleMsg()).contains("fileIndex 必须 >= 1");
+    }
+
+    @Test
     @DisplayName("参数正确时应该成功执行导入")
     void should_succeed_when_parameter_valid() {
       // given
@@ -160,6 +176,76 @@ class PubmedBaselineImportScheduleJobTest {
 
       // then
       assertThat(context.getHandleCode()).isEqualTo(XxlJobContext.HANDLE_CODE_SUCCESS);
+    }
+
+    @Test
+    @DisplayName("携带 generation 参数时应该解析并透传")
+    void should_parse_generation_when_present() {
+      // given
+      XxlJobContext context = new XxlJobContext(1L, "fileIndex=1333,generation=v0.6", "", 0, 0);
+      XxlJobContext.setXxlJobContext(context);
+      when(commandBus.handle(any(PublicationBaselineImportCommand.class)))
+          .thenReturn(mockResult(1333));
+
+      // when
+      scheduleJob.execute();
+
+      // then
+      verify(commandBus).handle(commandCaptor.capture());
+      PublicationBaselineImportCommand captured = commandCaptor.getValue();
+      assertThat(captured.fileIndex()).isEqualTo(1333);
+      assertThat(captured.generation()).isEqualTo("v0.6");
+    }
+
+    @Test
+    @DisplayName("不带 generation 参数时应该为 null")
+    void should_leave_generation_null_when_absent() {
+      // given
+      XxlJobContext context = new XxlJobContext(1L, "fileIndex=7", "", 0, 0);
+      XxlJobContext.setXxlJobContext(context);
+      when(commandBus.handle(any(PublicationBaselineImportCommand.class)))
+          .thenReturn(mockResult(7));
+
+      // when
+      scheduleJob.execute();
+
+      // then
+      verify(commandBus).handle(commandCaptor.capture());
+      PublicationBaselineImportCommand captured = commandCaptor.getValue();
+      assertThat(captured.fileIndex()).isEqualTo(7);
+      assertThat(captured.generation()).isNull();
+    }
+
+    @Test
+    @DisplayName("出现未知参数 key 时应该标记任务失败")
+    void should_fail_when_unknown_param_key() {
+      // given
+      XxlJobContext context = new XxlJobContext(1L, "fileIndex=1,unknown=x", "", 0, 0);
+      XxlJobContext.setXxlJobContext(context);
+
+      // when
+      scheduleJob.execute();
+
+      // then
+      assertThat(context.getHandleCode()).isEqualTo(XxlJobContext.HANDLE_CODE_FAIL);
+      assertThat(context.getHandleMsg()).contains("参数错误");
+      assertThat(context.getHandleMsg()).contains("unknown");
+    }
+
+    @Test
+    @DisplayName("重复参数 key 时应该标记任务失败")
+    void should_fail_when_duplicate_param_key() {
+      // given
+      XxlJobContext context = new XxlJobContext(1L, "fileIndex=1,fileIndex=2", "", 0, 0);
+      XxlJobContext.setXxlJobContext(context);
+
+      // when
+      scheduleJob.execute();
+
+      // then
+      assertThat(context.getHandleCode()).isEqualTo(XxlJobContext.HANDLE_CODE_FAIL);
+      assertThat(context.getHandleMsg()).contains("参数错误");
+      assertThat(context.getHandleMsg()).contains("fileIndex");
     }
 
     @Test

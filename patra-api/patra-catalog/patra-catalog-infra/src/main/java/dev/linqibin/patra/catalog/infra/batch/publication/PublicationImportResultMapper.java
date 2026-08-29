@@ -200,6 +200,8 @@ public class PublicationImportResultMapper {
         .sourceType(data.abstractType())
         .translationType(translationType)
         .plainText(data.plainText())
+        .structuredSections(data.sections())
+        .copyright(data.copyright())
         .isOfficial(isOfficial)
         .orderNum(data.abstractOrder())
         .build();

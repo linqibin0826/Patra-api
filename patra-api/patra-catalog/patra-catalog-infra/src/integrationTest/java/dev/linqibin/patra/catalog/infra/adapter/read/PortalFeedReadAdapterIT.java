@@ -140,6 +140,7 @@ class PortalFeedReadAdapterIT {
               .id(SnowflakeIdGenerator.getId())
               .publicationId(publicationId)
               .authorId(a.getId())
+              .displayName(displayNames[i])
               .authorOrder(i + 1)
               .build();
       em.persist(link);
@@ -147,21 +148,21 @@ class PortalFeedReadAdapterIT {
   }
 
   @Test
-  @DisplayName("软删除的 author 不出现在作者列表")
-  void shouldExcludeSoftDeletedAuthor() {
+  @DisplayName("作者名来自行内快照：cat_author 软删/改名不影响展示")
+  void authorNames_fromInlineSnapshot_notAffectedBySoftDeletedAuthor() {
     Long venueId = saveVenue("Nature");
     Long pubId =
         savePublication(
             "Paper with deleted author", venueId, 10, Instant.parse("2026-04-01T00:00:00Z"));
-    saveAuthorWithDeletedFlag(pubId, "Alive A.", 1, false);
-    saveAuthorWithDeletedFlag(pubId, "Deleted D.", 2, true);
+    saveAuthorWithDeletedFlag(pubId, "Alive A.", "Alive A.", 1, false);
+    saveAuthorWithDeletedFlag(pubId, "Renamed D.", "Snapshot D.", 2, true);
     em.flush();
     em.clear();
 
     PageResult<PortalPaperReadModel> page =
         adapter.findFeedPage(PagingParams.of(1, 14), PortalFeedFilter.of(PortalFeedTab.RECENT));
 
-    assertThat(page.items().get(0).authors()).containsExactly("Alive A.");
+    assertThat(page.items().get(0).authors()).containsExactly("Alive A.", "Snapshot D.");
   }
 
   private void savePublicationType(Long publicationId, String typeValue, int order) {
@@ -175,23 +176,28 @@ class PortalFeedReadAdapterIT {
     em.persist(t);
   }
 
-  /// 保存作者并可选地将其软删除。
+  /// 保存作者主数据（可选软删除）与文献-作者关联行（携带行内快照名）。
   ///
   /// 由于 Hibernate `@SoftDelete` 会拦截所有 JPA 删除操作并自动过滤查询，
   /// 无法通过 `em.remove()` 或字段 setter 直接写入 `deleted_at`。
   /// 此处使用 native query 绕过 Hibernate 拦截，直接更新 `deleted_at` 列。
   ///
   /// @param publicationId 关联的文献 ID
-  /// @param displayName 作者展示名
+  /// @param authorDisplayName 作者主数据展示名（cat_author.display_name）
+  /// @param snapshotName 关联行的行内快照名（cat_publication_author.display_name）
   /// @param order 作者顺序
-  /// @param deleted 是否软删除
+  /// @param deleted 是否软删除作者主数据
   private void saveAuthorWithDeletedFlag(
-      Long publicationId, String displayName, int order, boolean deleted) {
+      Long publicationId,
+      String authorDisplayName,
+      String snapshotName,
+      int order,
+      boolean deleted) {
     AuthorEntity a =
         AuthorEntity.builder()
             .id(SnowflakeIdGenerator.getId())
             .normalizedKey("k" + SnowflakeIdGenerator.getId())
-            .displayName(displayName)
+            .displayName(authorDisplayName)
             .status("ACTIVE")
             .provenanceCode("PUBMED")
             .build();
@@ -208,6 +214,7 @@ class PortalFeedReadAdapterIT {
             .id(SnowflakeIdGenerator.getId())
             .publicationId(publicationId)
             .authorId(a.getId())
+            .displayName(snapshotName)
             .authorOrder(order)
             .build();
     em.persist(link);

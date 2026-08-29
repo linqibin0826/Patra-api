@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.linqibin.patra.catalog.domain.model.enums.DisambiguationStatus;
 import dev.linqibin.patra.catalog.domain.model.read.portal.PublicationDetailReadModel;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.EvidenceLevel;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
 import dev.linqibin.patra.catalog.infra.config.CatalogITPostgreSQLContainerInitializer;
 import dev.linqibin.patra.catalog.infra.persistence.entity.AuthorEntity;
 import dev.linqibin.patra.catalog.infra.persistence.entity.MeshDescriptorEntity;
@@ -20,11 +21,13 @@ import dev.linqibin.patra.catalog.infra.persistence.entity.VenueEntity;
 import dev.linqibin.patra.common.model.enums.PublicationIdentifierType;
 import dev.linqibin.starter.jpa.autoconfig.JpaAuditingConfig;
 import dev.linqibin.starter.jpa.id.SnowflakeIdGenerator;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 import org.springframework.context.annotation.Import;
@@ -34,7 +37,11 @@ import org.springframework.test.context.ContextConfiguration;
 @DataJpaTest
 @ContextConfiguration(initializers = CatalogITPostgreSQLContainerInitializer.class)
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({PublicationDetailReadAdapter.class, JpaAuditingConfig.class})
+@Import({
+  PublicationDetailReadAdapter.class,
+  JpaAuditingConfig.class,
+  JacksonAutoConfiguration.class
+})
 @ActiveProfiles("test")
 @DisplayName("PublicationDetailReadAdapter 文献详情查询集成测试")
 class PublicationDetailReadAdapterIT {
@@ -69,11 +76,12 @@ class PublicationDetailReadAdapterIT {
   void shouldDeserializeStructuredSectionsInOrder() {
     Long venueId = saveVenue("NEJM");
     Long pubId = savePublication(venueId, "RCT Study", "10.1000/rct", "11111111");
-    String sectionsJson =
-        "[{\"label\":\"BACKGROUND\",\"text\":\"Background text.\"},"
-            + "{\"label\":\"METHODS\",\"text\":\"Methods text.\"},"
-            + "{\"label\":\"RESULTS\",\"text\":\"Results text.\"}]";
-    saveAbstract(pubId, "structured", sectionsJson, null);
+    List<PublicationAbstractSection> sections =
+        List.of(
+            PublicationAbstractSection.of("BACKGROUND", "Background text."),
+            PublicationAbstractSection.of("METHODS", "Methods text."),
+            PublicationAbstractSection.of("RESULTS", "Results text."));
+    saveAbstract(pubId, "structured", sections, null);
     em.flush();
     em.clear();
 
@@ -108,9 +116,9 @@ class PublicationDetailReadAdapterIT {
     Long pubId = savePublication(venueId, "Author Order Study", "10.1000/bmj", "33333333");
     Long authorId1 = saveAuthor("John Smith");
     Long authorId2 = saveAuthor("Jane Doe");
-    Long pubAuthorId1 = savePublicationAuthor(pubId, authorId1, 1, true, false);
-    Long pubAuthorId2 = savePublicationAuthor(pubId, authorId2, 2, false, true);
-    saveAffiliation(pubAuthorId1, pubId, authorId1, 1, "Harvard University");
+    Long pubAuthorId1 = savePublicationAuthor(pubId, authorId1, "John Smith", 1, true, false);
+    Long pubAuthorId2 = savePublicationAuthor(pubId, authorId2, "Jane Doe", 2, false, true);
+    saveAffiliation(pubAuthorId1, pubId, 1, "Harvard University");
     em.flush();
     em.clear();
 
@@ -231,7 +239,10 @@ class PublicationDetailReadAdapterIT {
   }
 
   private void saveAbstract(
-      Long pubId, String abstractType, String structuredSections, String plainText) {
+      Long pubId,
+      String abstractType,
+      List<PublicationAbstractSection> structuredSections,
+      String plainText) {
     PublicationAbstractEntity a = new PublicationAbstractEntity();
     a.setId(SnowflakeIdGenerator.getId());
     a.setPublicationId(pubId);
@@ -259,11 +270,17 @@ class PublicationDetailReadAdapterIT {
   }
 
   private Long savePublicationAuthor(
-      Long pubId, Long authorId, int order, boolean first, boolean corresponding) {
+      Long pubId,
+      Long authorId,
+      String displayName,
+      int order,
+      boolean first,
+      boolean corresponding) {
     PublicationAuthorEntity pa = new PublicationAuthorEntity();
     pa.setId(SnowflakeIdGenerator.getId());
     pa.setPublicationId(pubId);
     pa.setAuthorId(authorId);
+    pa.setDisplayName(displayName);
     pa.setAuthorOrder(order);
     pa.setFirstAuthor(first);
     pa.setCorrespondingAuthor(corresponding);
@@ -272,13 +289,11 @@ class PublicationDetailReadAdapterIT {
     return pa.getId();
   }
 
-  private void saveAffiliation(
-      Long pubAuthorId, Long pubId, Long authorId, int order, String affiliationString) {
+  private void saveAffiliation(Long pubAuthorId, Long pubId, int order, String affiliationString) {
     PublicationAuthorAffiliationEntity aff = new PublicationAuthorAffiliationEntity();
     aff.setId(SnowflakeIdGenerator.getId());
     aff.setPubAuthorId(pubAuthorId);
     aff.setPublicationId(pubId);
-    aff.setAuthorId(authorId);
     aff.setAffiliationOrder(order);
     aff.setAffiliationString(affiliationString);
     aff.setDisambiguationStatus(DisambiguationStatus.PENDING);
@@ -332,5 +347,50 @@ class PublicationDetailReadAdapterIT {
 
     assertThat(model.provenanceCode()).isEqualTo("PUBMED");
     assertThat(model.fullTextUrl()).isEqualTo("https://publisher.example.com/article/oa");
+  }
+
+  @Test
+  @DisplayName("作者名来自行内快照：author_id 为 NULL（未消歧）时照常展示")
+  void authorName_fromInlineSnapshot_withoutLinkedAuthor() {
+    Long venueId = saveVenue("Snapshot Journal");
+    Long pubId = savePublication(venueId, "Snapshot Study", "10.1/x", "99999999");
+    // 重建后生产主形态：author_id 为 NULL（仅 ORCID 命中已消歧作者时才填充）。
+    savePublicationAuthor(pubId, null, "Snapshot Name", 1, true, false);
+    em.flush();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.authors()).hasSize(1);
+    assertThat(model.authors().getFirst().name()).isEqualTo("Snapshot Name");
+  }
+
+  @Test
+  @DisplayName("malformed structured_sections：降级空列表，plainText 照常返回")
+  void malformedSectionsJson_degradesGracefully() {
+    Long venueId = saveVenue("Malformed Journal");
+    Long pubId = savePublication(venueId, "Malformed Study", "10.1/y", "99999998");
+    saveAbstract(
+        pubId,
+        "STRUCTURED",
+        List.of(PublicationAbstractSection.of("BACKGROUND", "Background text.")),
+        "plain fallback");
+    em.flush();
+    // Entity 已类型化（List<PublicationAbstractSection>），无法直塞坏 JSON——用原生 SQL 注入坏形态。
+    em.getEntityManager()
+        .createNativeQuery(
+            """
+            UPDATE cat_publication_abstract
+               SET structured_sections = to_jsonb('not-a-json-array'::text)
+             WHERE publication_id = :id
+            """)
+        .setParameter("id", pubId)
+        .executeUpdate();
+    em.clear();
+
+    PublicationDetailReadModel model = adapter.findById(pubId).orElseThrow();
+
+    assertThat(model.abstractSections()).isEmpty();
+    assertThat(model.abstractPlainText()).isEqualTo("plain fallback");
   }
 }

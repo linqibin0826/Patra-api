@@ -8,6 +8,7 @@ import dev.linqibin.patra.catalog.domain.model.enums.PublicationMedium;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationStatus;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.LanguageInfo;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationId;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationIdentifier;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
@@ -112,6 +113,11 @@ public class PublicationAggregate extends AggregateRoot<PublicationId> {
   ///
   /// 存储在独立表 `cat_publication_abstract`，但属于聚合边界内。
   private PublicationAbstract publicationAbstract;
+
+  // ========== 作者快照（文献视角，独立表 cat_publication_author，属聚合边界内） ==========
+
+  /// 作者快照列表（唯一事实来源；空列表 = 无作者数据）。
+  private List<PublicationAuthorSnapshot> authors = List.of();
 
   // ========== 出版信息 ==========
 
@@ -535,6 +541,22 @@ public class PublicationAggregate extends AggregateRoot<PublicationId> {
   /// @param publicationAbstract 摘要
   void syncAbstract(PublicationAbstract publicationAbstract) {
     this.publicationAbstract = publicationAbstract;
+  }
+
+  // ========== 作者管理 ==========
+
+  /// 挂载作者快照（导入构建与 Repository 恢复共用；整体替换语义）。
+  ///
+  /// @param authors 作者快照列表（null 视为清空）
+  public void attachAuthors(List<PublicationAuthorSnapshot> authors) {
+    this.authors = authors != null ? List.copyOf(authors) : List.of();
+  }
+
+  /// 是否携带作者快照。
+  ///
+  /// @return true 如果作者列表非空
+  public boolean hasAuthors() {
+    return !authors.isEmpty();
   }
 
   // ========== 便捷访问器 ==========

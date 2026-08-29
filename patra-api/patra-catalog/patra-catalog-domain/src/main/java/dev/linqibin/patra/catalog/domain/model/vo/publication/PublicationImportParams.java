@@ -18,6 +18,7 @@ package dev.linqibin.patra.catalog.domain.model.vo.publication;
 ///
 /// - `baseUrl`：FTP 基础 URL（如 `https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/`）
 /// - `fileIndex`：文件索引（1-1334，对应 pubmed26n0001.xml.gz ~ pubmed26n1334.xml.gz）
+/// - `generation`：代次标识（可选，null 表示沿用现有 JobInstance 语义 / 断点续传）
 ///
 /// **URL 生成规则**：
 ///
@@ -27,7 +28,7 @@ package dev.linqibin.patra.catalog.domain.model.vo.publication;
 ///
 /// @author linqibin
 /// @since 0.1.0
-public record PublicationImportParams(String baseUrl, int fileIndex) {
+public record PublicationImportParams(String baseUrl, int fileIndex, String generation) {
 
   /// 2026 Baseline 文件总数。
   public static final int TOTAL_FILE_COUNT = 1334;
@@ -37,8 +38,11 @@ public record PublicationImportParams(String baseUrl, int fileIndex) {
 
   /// 创建导入参数。
   ///
+  /// `generation` 不做取值校验，仅将空白归一化为 null。
+  ///
   /// @param baseUrl FTP 基础 URL
   /// @param fileIndex 文件索引（1-1334）
+  /// @param generation 代次标识（可空）
   public PublicationImportParams {
     if (baseUrl == null || baseUrl.isBlank()) {
       throw new IllegalArgumentException("baseUrl 不能为空");
@@ -47,15 +51,29 @@ public record PublicationImportParams(String baseUrl, int fileIndex) {
       throw new IllegalArgumentException(
           "fileIndex 必须在 1 到 %d 之间，当前值：%d".formatted(TOTAL_FILE_COUNT, fileIndex));
     }
+    generation = (generation == null || generation.isBlank()) ? null : generation.trim();
+  }
+
+  /// 创建导入参数（默认代次：不指定 generation，维持断点续传语义）。
+  ///
+  /// 这是常规导入的默认入口：相同 `fileIndex` 复用同一 JobInstance，
+  /// Job 失败后重跑可从上次中断处继续。
+  ///
+  /// @param baseUrl FTP 基础 URL
+  /// @param fileIndex 文件索引
+  /// @return 导入参数
+  public static PublicationImportParams of(String baseUrl, int fileIndex) {
+    return new PublicationImportParams(baseUrl, fileIndex, null);
   }
 
   /// 创建导入参数。
   ///
   /// @param baseUrl FTP 基础 URL
   /// @param fileIndex 文件索引
+  /// @param generation 代次标识（可空）
   /// @return 导入参数
-  public static PublicationImportParams of(String baseUrl, int fileIndex) {
-    return new PublicationImportParams(baseUrl, fileIndex);
+  public static PublicationImportParams of(String baseUrl, int fileIndex, String generation) {
+    return new PublicationImportParams(baseUrl, fileIndex, generation);
   }
 
   /// 获取文件名。

@@ -8,8 +8,12 @@ import dev.linqibin.patra.catalog.domain.model.enums.IndexingStatus;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationDateType;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationMedium;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationStatus;
+import dev.linqibin.patra.catalog.domain.model.vo.author.Orcid;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.LanguageInfo;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstractSection;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorAffiliationSnapshot;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationIdentifier;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationMetadata;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
@@ -32,6 +36,8 @@ import dev.linqibin.patra.common.enums.ProvenanceCode;
 import dev.linqibin.patra.common.model.CanonicalPublication;
 import dev.linqibin.patra.common.model.CanonicalPublication.Abstract;
 import dev.linqibin.patra.common.model.CanonicalPublication.AbstractSection;
+import dev.linqibin.patra.common.model.CanonicalPublication.Affiliation;
+import dev.linqibin.patra.common.model.CanonicalPublication.Author;
 import dev.linqibin.patra.common.model.CanonicalPublication.DescriptorName;
 import dev.linqibin.patra.common.model.CanonicalPublication.FundingInfo;
 import dev.linqibin.patra.common.model.CanonicalPublication.Identifier;
@@ -49,12 +55,11 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.infrastructure.item.ItemProcessor;
@@ -83,6 +88,10 @@ import org.springframework.batch.infrastructure.item.ItemProcessor;
 @RequiredArgsConstructor
 public class PubmedArticleItemProcessor
     implements ItemProcessor<CanonicalPublication, PublicationImportResult> {
+
+  /// ORCID 官方 URL 前缀（已大写，匹配前先将原始值大写以实现忽略大小写剥离）。
+  private static final List<String> ORCID_URL_PREFIXES =
+      List.of("HTTPS://ORCID.ORG/", "HTTP://ORCID.ORG/");
 
   private final VenueLookupPort venueLookupPort;
   private final VenueInstanceGateway venueInstanceGateway;
@@ -322,6 +331,12 @@ public class PubmedArticleItemProcessor
       aggregate.attachAbstract(abstractContent);
     }
 
+    // 补充作者快照（唯一事实来源挂聚合；软关联 authorId 由 Repository 层填充）
+    List<PublicationAuthorSnapshot> authorSnapshots = buildAuthorSnapshots(publication);
+    if (!authorSnapshots.isEmpty()) {
+      aggregate.attachAuthors(authorSnapshots);
+    }
+
     // 补充扩展标识符（PMC、PII 等非主要标识符）
     List<PublicationIdentifier> extendedIdentifiers = extractExtendedIdentifiers(publication);
     if (!extendedIdentifiers.isEmpty()) {
@@ -347,45 +362,67 @@ public class PubmedArticleItemProcessor
     }
   }
 
-  /// 构建摘要信息。
+  /// 构建摘要信息（两形态一等公民）。
   ///
-  /// 支持纯文本摘要和结构化摘要两种形式。
+  /// 判型规则：
+  /// - 至少一个带 Label 的段落 → STRUCTURED（含混合形态，无 Label 段以 `label=null` 保位）
+  /// - 全部无 Label → UNSTRUCTURED（段落不入库，文本合并落 plainText）
+  /// - 无段落时退回 Canonical 层的 `text`（API 等其他来源可能只给整段文本）
+  ///
+  /// plainText 统一在此生成：带 Label 段拼为 `LABEL: text`，无 Label 段直接取 text，段间以 `\n` 连接。
   ///
   /// @param publication 规范化文献
-  /// @return 摘要值对象，如果无摘要返回 null
+  /// @return 摘要值对象，无摘要返回 null
   private PublicationAbstract buildPublicationAbstract(CanonicalPublication publication) {
     Abstract abstractContent = publication.getAbstractContent();
     if (abstractContent == null) {
       return null;
     }
 
-    String plainText = abstractContent.getText();
     String copyright = abstractContent.getCopyright();
-    List<AbstractSection> sections = abstractContent.getSections();
+    List<PublicationAbstractSection> sections = toAbstractSections(abstractContent.getSections());
 
-    // 结构化摘要
-    if (sections != null && !sections.isEmpty()) {
-      Map<String, String> structuredSections = new LinkedHashMap<>();
-      for (AbstractSection section : sections) {
-        if (section.getLabel() != null && section.getContent() != null) {
-          structuredSections.put(section.getLabel(), section.getContent());
-        }
+    if (sections.isEmpty()) {
+      String plainText = abstractContent.getText();
+      if (plainText != null && !plainText.isBlank()) {
+        return PublicationAbstract.ofPlainText(plainText, copyright);
       }
-      if (!structuredSections.isEmpty()) {
-        // 同时有纯文本和结构化段落
-        if (plainText != null && !plainText.isBlank()) {
-          return PublicationAbstract.ofBoth(plainText, structuredSections, copyright);
-        }
-        return PublicationAbstract.ofStructured(structuredSections, copyright);
-      }
+      return null;
     }
 
-    // 纯文本摘要
-    if (plainText != null && !plainText.isBlank()) {
-      return PublicationAbstract.ofPlainText(plainText, copyright);
+    String plainText = joinSectionsAsPlainText(sections);
+    boolean structured = sections.stream().anyMatch(PublicationAbstractSection::hasLabel);
+    if (structured) {
+      return PublicationAbstract.ofBoth(plainText, sections, copyright);
     }
+    // 全部无 Label：判为非结构化摘要，段落不入库
+    return PublicationAbstract.ofPlainText(plainText, copyright);
+  }
 
-    return null;
+  /// 将 Canonical 层段落转换为领域段落值对象（丢弃内容空白的段落）。
+  ///
+  /// @param rawSections Canonical 层段落列表（可能为 null）
+  /// @return 领域段落列表（可能为空，不会为 null）
+  private List<PublicationAbstractSection> toAbstractSections(List<AbstractSection> rawSections) {
+    if (rawSections == null || rawSections.isEmpty()) {
+      return List.of();
+    }
+    return rawSections.stream()
+        .filter(section -> section != null && !isBlank(section.getContent()))
+        .map(section -> PublicationAbstractSection.of(section.getLabel(), section.getContent()))
+        .toList();
+  }
+
+  /// 段落拼接为纯文本（读端 plainText 的唯一生成点）。
+  ///
+  /// @param sections 段落列表
+  /// @return 拼接后的纯文本
+  private String joinSectionsAsPlainText(List<PublicationAbstractSection> sections) {
+    return sections.stream()
+        .map(
+            section ->
+                section.hasLabel() ? section.label() + ": " + section.text() : section.text())
+        .collect(Collectors.joining("\n"));
   }
 
   /// 提取扩展标识符（PMC、PII 等非主要标识符）。
@@ -415,6 +452,109 @@ public class PubmedArticleItemProcessor
       }
     }
     return extendedIds;
+  }
+
+  // ========== 作者快照构建 ==========
+
+  /// 构建作者快照列表（姓名规则见 `PublicationAuthorSnapshot.deriveDisplayName`）。
+  ///
+  /// 全部姓名字段与集体名均空的作者跳过（不落库），跳过后顺序保持连续。
+  /// ORCID 在此仅归一化存档；软关联 `authorId` 由 Repository 层批查填充。
+  ///
+  /// @param publication 规范化文献
+  /// @return 作者快照列表（可能为空，不会为 null）
+  private List<PublicationAuthorSnapshot> buildAuthorSnapshots(CanonicalPublication publication) {
+    List<Author> authors = publication.getAuthors();
+    if (authors == null || authors.isEmpty()) {
+      return List.of();
+    }
+
+    List<PublicationAuthorSnapshot> snapshots = new ArrayList<>();
+    int order = 1;
+    for (Author author : authors) {
+      if (author == null) {
+        continue;
+      }
+      String lastName = trimToNull(author.getLastName());
+      String foreName = trimToNull(author.getForeName());
+      String initials = trimToNull(author.getInitials());
+      String collectiveName = trimToNull(author.getOrganizationName());
+      String displayName =
+          PublicationAuthorSnapshot.deriveDisplayName(lastName, foreName, initials, collectiveName);
+      if (displayName == null) {
+        log.debug("跳过无有效姓名的作者：importBatch={}", importBatch);
+        continue;
+      }
+
+      snapshots.add(
+          PublicationAuthorSnapshot.builder()
+              .order(order)
+              .lastName(lastName)
+              .foreName(foreName)
+              .initials(initials)
+              .suffix(trimToNull(author.getSuffix()))
+              .collectiveName(collectiveName)
+              .displayName(displayName)
+              .orcid(normalizeOrcid(extractOrcid(author.getIdentifiers())))
+              .firstAuthor(order == 1)
+              .equalContribution(Boolean.TRUE.equals(author.getEqualContribution()))
+              .affiliations(buildAffiliationSnapshots(author))
+              .build());
+      order++;
+    }
+    return snapshots;
+  }
+
+  /// 构建作者机构快照（保留文献侧顺序，1 起连续编号，空白机构原文跳过）。
+  ///
+  /// @param author 规范化作者
+  /// @return 机构快照列表（可能为空，不会为 null）
+  private List<PublicationAuthorAffiliationSnapshot> buildAffiliationSnapshots(Author author) {
+    List<Affiliation> affiliations = author.getAffiliations();
+    if (affiliations == null || affiliations.isEmpty()) {
+      return List.of();
+    }
+
+    List<PublicationAuthorAffiliationSnapshot> snapshots = new ArrayList<>();
+    int order = 1;
+    for (Affiliation affiliation : affiliations) {
+      String name = affiliation != null ? trimToNull(affiliation.getName()) : null;
+      if (name == null) {
+        continue;
+      }
+      snapshots.add(PublicationAuthorAffiliationSnapshot.of(order++, name));
+    }
+    return snapshots;
+  }
+
+  /// 归一化 ORCID：trim → 大写 → 剥离官方 URL 前缀（大写常量匹配）→ 格式与 ISO 7064 校验位校验。
+  ///
+  /// 任一校验不通过返回 null（脏数据不落库，而非抛异常中断整批导入）。
+  ///
+  /// @param raw ORCID 原始值（可能为 null）
+  /// @return 归一化后的 ORCID，非法时返回 null
+  private String normalizeOrcid(String raw) {
+    String value = trimToNull(raw);
+    if (value == null) {
+      return null;
+    }
+    value = value.toUpperCase(Locale.ROOT);
+    for (String prefix : ORCID_URL_PREFIXES) {
+      if (value.startsWith(prefix)) {
+        value = value.substring(prefix.length());
+        break;
+      }
+    }
+    if (!Orcid.isValid(value)) {
+      log.debug("丢弃格式非法的 ORCID：raw={}, importBatch={}", raw, importBatch);
+      return null;
+    }
+    Orcid orcid = Orcid.of(value);
+    if (!orcid.isChecksumValid()) {
+      log.debug("丢弃校验位非法的 ORCID：raw={}, importBatch={}", raw, importBatch);
+      return null;
+    }
+    return orcid.value();
   }
 
   /// 构建语言信息。
@@ -673,7 +813,14 @@ public class PubmedArticleItemProcessor
     int order = 1;
 
     for (CanonicalPublication.AlternativeAbstract altAbstract : alternativeAbstracts) {
-      if (altAbstract == null || altAbstract.getText() == null || altAbstract.getText().isBlank()) {
+      if (altAbstract == null) {
+        continue;
+      }
+
+      // sections 可能为 null（starter-provenance 路径不填充），必须判空
+      List<PublicationAbstractSection> sections = toAbstractSections(altAbstract.getSections());
+      // 文本与段落都为空才跳过
+      if (isBlank(altAbstract.getText()) && sections.isEmpty()) {
         continue;
       }
 
@@ -686,13 +833,19 @@ public class PubmedArticleItemProcessor
         }
       }
 
+      // plainText 与主摘要同源同形态：有段落时由段落统一拼接，无段落才退回 Canonical 层的 text
+      String plainText =
+          sections.isEmpty() ? altAbstract.getText() : joinSectionsAsPlainText(sections);
+
       result.add(
-          AlternativeAbstractData.of(
-              langCode,
-              altAbstract.getType(),
-              altAbstract.getText(),
-              altAbstract.getCopyright(),
-              order++));
+          AlternativeAbstractData.builder()
+              .languageCode(langCode)
+              .abstractType(altAbstract.getType())
+              .plainText(plainText)
+              .sections(sections)
+              .copyright(altAbstract.getCopyright())
+              .abstractOrder(order++)
+              .build());
     }
 
     return result;

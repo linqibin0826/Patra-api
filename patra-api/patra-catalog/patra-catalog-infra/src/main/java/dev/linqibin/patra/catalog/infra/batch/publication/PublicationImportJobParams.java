@@ -44,4 +44,10 @@ public class PublicationImportJobParams implements JobParams {
   ///
   /// 示例：`baseline-pubmed26n0001`
   private String importBatch;
+
+  /// 代次标识（identifying；null 时不进 JobParameters = 维持断点续传语义）。
+  ///
+  /// attempt 规则：同一库失败续跑沿用同值；回滚换库重来必须换新值
+  /// （如 v0.6-attempt2），否则从旧 checkpoint 续跑造成前半段缺失。
+  private String generation;
 }

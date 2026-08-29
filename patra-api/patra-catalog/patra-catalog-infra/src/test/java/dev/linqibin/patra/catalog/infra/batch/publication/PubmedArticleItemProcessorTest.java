@@ -11,8 +11,10 @@ import static org.mockito.Mockito.when;
 
 import dev.linqibin.patra.catalog.domain.model.aggregate.PublicationAggregate;
 import dev.linqibin.patra.catalog.domain.model.aggregate.VenueInstanceAggregate;
+import dev.linqibin.patra.catalog.domain.model.enums.AbstractType;
 import dev.linqibin.patra.catalog.domain.model.enums.PublicationMedium;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAbstract;
+import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationAuthorSnapshot;
 import dev.linqibin.patra.catalog.domain.model.vo.publication.PublicationIdentifier;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueId;
 import dev.linqibin.patra.catalog.domain.model.vo.venue.VenueInstanceId;
@@ -357,10 +359,17 @@ class PubmedArticleItemProcessorTest {
       assertThat(aggregate.hasAbstract()).isTrue();
       PublicationAbstract abstractContent = aggregate.getPublicationAbstract();
       assertThat(abstractContent.isStructured()).isTrue();
-      assertThat(abstractContent.getSection("BACKGROUND")).isPresent();
-      assertThat(abstractContent.getSection("METHODS")).isPresent();
-      assertThat(abstractContent.getSection("RESULTS")).isPresent();
-      assertThat(abstractContent.getSection("CONCLUSIONS")).isPresent();
+      assertThat(abstractContent.structuredSections()).hasSize(4);
+      assertThat(abstractContent.findSectionsByLabel("BACKGROUND")).hasSize(1);
+      assertThat(abstractContent.findSectionsByLabel("METHODS")).hasSize(1);
+      assertThat(abstractContent.findSectionsByLabel("RESULTS")).hasSize(1);
+      assertThat(abstractContent.findSectionsByLabel("CONCLUSIONS")).hasSize(1);
+      assertThat(abstractContent.plainText())
+          .isEqualTo(
+              "BACKGROUND: Background content.\n"
+                  + "METHODS: Methods content.\n"
+                  + "RESULTS: Results content.\n"
+                  + "CONCLUSIONS: Conclusions content.");
     }
 
     @Test
@@ -793,6 +802,100 @@ class PubmedArticleItemProcessorTest {
     }
 
     @Test
+    @DisplayName("仅有段落无 text 的翻译摘要应保留并映射段落")
+    void should_keep_alternative_abstract_with_sections_only() throws Exception {
+      // given
+      CanonicalPublication publication =
+          CanonicalPublication.builder()
+              .identifiers(
+                  List.of(
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.PMID)
+                          .value(PMID)
+                          .build()))
+              .title("Test Article")
+              .journal(Journal.builder().nlmUniqueId(NLM_ID).build())
+              .dates(PublicationDates.builder().published(LocalDate.of(2024, 1, 1)).build())
+              .alternativeAbstracts(
+                  List.of(
+                      AlternativeAbstract.builder()
+                          .type("Publisher")
+                          .language("chi")
+                          .sections(
+                              List.of(
+                                  abstractSection("目的", "评估疗效。"),
+                                  abstractSection(null, "补充说明。"),
+                                  abstractSection("方法", "  ")))
+                          .copyright("版权所有 2024")
+                          .build()))
+              .build();
+      when(venueLookupPort.findByPriority(eq(NLM_ID), any()))
+          .thenReturn(Optional.of(VenueId.of(VENUE_ID)));
+      when(venueInstanceGateway.findOrCreateJournalInstance(any(JournalInstanceParams.class)))
+          .thenReturn(createVenueInstance());
+      when(languageLookupPort.resolve("chi")).thenReturn("zh");
+
+      // when
+      PublicationImportResult result = processor.process(publication);
+
+      // then
+      assertThat(result).isNotNull();
+      assertThat(result.alternativeAbstracts()).hasSize(1);
+
+      var alt = result.alternativeAbstracts().getFirst();
+      assertThat(alt.languageCode()).isEqualTo("zh");
+      assertThat(alt.plainText()).isEqualTo("目的: 评估疗效。\n补充说明。");
+      assertThat(alt.sections()).hasSize(2);
+      assertThat(alt.sections().get(0).label()).isEqualTo("目的");
+      assertThat(alt.sections().get(1).label()).isNull();
+      assertThat(alt.copyright()).isEqualTo("版权所有 2024");
+    }
+
+    @Test
+    @DisplayName("text 与段落并存时 plainText 应取段落统一拼接形态")
+    void should_regenerate_alternative_abstract_plain_text_from_sections() throws Exception {
+      // given：PubMed parser 路径同时给出 text（空格拼接、丢 label）与 sections
+      CanonicalPublication publication =
+          CanonicalPublication.builder()
+              .identifiers(
+                  List.of(
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.PMID)
+                          .value(PMID)
+                          .build()))
+              .title("Test Article")
+              .journal(Journal.builder().nlmUniqueId(NLM_ID).build())
+              .dates(PublicationDates.builder().published(LocalDate.of(2024, 1, 1)).build())
+              .alternativeAbstracts(
+                  List.of(
+                      AlternativeAbstract.builder()
+                          .type("Publisher")
+                          .language("chi")
+                          .text("评估疗效。 得出结论。")
+                          .sections(
+                              List.of(
+                                  abstractSection("目的", "评估疗效。"), abstractSection("结论", "得出结论。")))
+                          .build()))
+              .build();
+      when(venueLookupPort.findByPriority(eq(NLM_ID), any()))
+          .thenReturn(Optional.of(VenueId.of(VENUE_ID)));
+      when(venueInstanceGateway.findOrCreateJournalInstance(any(JournalInstanceParams.class)))
+          .thenReturn(createVenueInstance());
+      when(languageLookupPort.resolve("chi")).thenReturn("zh");
+
+      // when
+      PublicationImportResult result = processor.process(publication);
+
+      // then
+      assertThat(result).isNotNull();
+      assertThat(result.alternativeAbstracts()).hasSize(1);
+
+      var alt = result.alternativeAbstracts().getFirst();
+      assertThat(alt.plainText()).isEqualTo("目的: 评估疗效。\n结论: 得出结论。");
+      assertThat(alt.sections()).hasSize(2);
+    }
+
+    @Test
     @DisplayName("应该正确处理文献日期数据")
     void should_process_publication_dates() throws Exception {
       // given
@@ -1177,6 +1280,389 @@ class PubmedArticleItemProcessorTest {
       // 去重键应该全部是小写十六进制字符
       assertThat(inv.dedupKey()).matches("[a-f0-9]{32}");
     }
+  }
+
+  @Nested
+  @DisplayName("摘要三态分流")
+  class AbstractTypingTest {
+
+    @BeforeEach
+    void stubVenueResolution() {
+      when(venueLookupPort.findByPriority(eq(NLM_ID), any()))
+          .thenReturn(Optional.of(VenueId.of(VENUE_ID)));
+      when(venueInstanceGateway.findOrCreateJournalInstance(any(JournalInstanceParams.class)))
+          .thenReturn(createVenueInstance());
+    }
+
+    @Test
+    @DisplayName("含带标签段应判为 STRUCTURED，无标签段以 label=null 保位，plainText 按段落拼接")
+    void should_type_as_structured_and_join_plain_text() throws Exception {
+      // given
+      Abstract abstractContent =
+          Abstract.builder()
+              .sections(
+                  List.of(
+                      abstractSection("BACKGROUND", "bg."),
+                      abstractSection("METHODS", "m."),
+                      abstractSection(null, "tail.")))
+              .copyright("© X")
+              .build();
+
+      // when
+      PublicationAbstract abs = processAbstract(abstractContent);
+
+      // then
+      assertThat(abs).isNotNull();
+      assertThat(abs.abstractType()).isEqualTo(AbstractType.STRUCTURED);
+      assertThat(abs.structuredSections()).hasSize(3);
+      assertThat(abs.structuredSections().get(2).label()).isNull();
+      assertThat(abs.plainText()).isEqualTo("BACKGROUND: bg.\nMETHODS: m.\ntail.");
+      assertThat(abs.copyright()).isEqualTo("© X");
+    }
+
+    @Test
+    @DisplayName("全部无标签段应判为 UNSTRUCTURED 且段落不入库")
+    void should_type_as_unstructured_when_all_sections_unlabeled() throws Exception {
+      // given
+      Abstract abstractContent =
+          Abstract.builder()
+              .sections(
+                  List.of(abstractSection(null, "para one."), abstractSection(null, "para two.")))
+              .build();
+
+      // when
+      PublicationAbstract abs = processAbstract(abstractContent);
+
+      // then
+      assertThat(abs).isNotNull();
+      assertThat(abs.abstractType()).isEqualTo(AbstractType.UNSTRUCTURED);
+      assertThat(abs.structuredSections()).isEmpty();
+      assertThat(abs.plainText()).isEqualTo("para one.\npara two.");
+    }
+
+    @Test
+    @DisplayName("空白 label 应先归一为 null 再判型")
+    void should_normalize_blank_label_before_typing() throws Exception {
+      // given
+      Abstract abstractContent =
+          Abstract.builder().sections(List.of(abstractSection("  ", "only."))).build();
+
+      // when
+      PublicationAbstract abs = processAbstract(abstractContent);
+
+      // then
+      assertThat(abs).isNotNull();
+      assertThat(abs.abstractType()).isEqualTo(AbstractType.UNSTRUCTURED);
+      assertThat(abs.plainText()).isEqualTo("only.");
+    }
+
+    @Test
+    @DisplayName("内容空白的段落应被丢弃")
+    void should_drop_sections_with_blank_content() throws Exception {
+      // given
+      Abstract abstractContent =
+          Abstract.builder()
+              .sections(
+                  List.of(
+                      abstractSection("BACKGROUND", "bg."),
+                      abstractSection("METHODS", "   "),
+                      abstractSection("RESULTS", null)))
+              .build();
+
+      // when
+      PublicationAbstract abs = processAbstract(abstractContent);
+
+      // then
+      assertThat(abs).isNotNull();
+      assertThat(abs.structuredSections()).hasSize(1);
+      assertThat(abs.plainText()).isEqualTo("BACKGROUND: bg.");
+    }
+
+    @Test
+    @DisplayName("无段落但有文本时应回退为纯文本摘要")
+    void should_fall_back_to_canonical_text_when_no_sections() throws Exception {
+      // given
+      Abstract abstractContent = Abstract.builder().text("plain only.").copyright("© Y").build();
+
+      // when
+      PublicationAbstract abs = processAbstract(abstractContent);
+
+      // then
+      assertThat(abs).isNotNull();
+      assertThat(abs.abstractType()).isEqualTo(AbstractType.UNSTRUCTURED);
+      assertThat(abs.plainText()).isEqualTo("plain only.");
+      assertThat(abs.copyright()).isEqualTo("© Y");
+    }
+
+    @Test
+    @DisplayName("既无段落也无文本应返回 null")
+    void should_return_null_when_no_sections_and_no_text() throws Exception {
+      // when
+      PublicationAbstract abs = processAbstract(Abstract.builder().build());
+
+      // then
+      assertThat(abs).isNull();
+    }
+
+    @Test
+    @DisplayName("段落全被过滤且无文本时应返回 null")
+    void should_return_null_when_all_sections_filtered_and_no_text() throws Exception {
+      // given
+      Abstract abstractContent =
+          Abstract.builder()
+              .sections(List.of(abstractSection("BACKGROUND", "   "), abstractSection(null, null)))
+              .build();
+
+      // when
+      PublicationAbstract abs = processAbstract(abstractContent);
+
+      // then
+      assertThat(abs).isNull();
+    }
+
+    /// 走完整 process() 链路取出主摘要值对象。
+    private PublicationAbstract processAbstract(Abstract abstractContent) throws Exception {
+      CanonicalPublication publication =
+          CanonicalPublication.builder()
+              .identifiers(
+                  List.of(
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.PMID)
+                          .value(PMID)
+                          .build()))
+              .title("Test Article")
+              .journal(Journal.builder().nlmUniqueId(NLM_ID).build())
+              .dates(PublicationDates.builder().published(LocalDate.of(2024, 1, 1)).build())
+              .abstractContent(abstractContent)
+              .build();
+      return processor.process(publication).publication().getPublicationAbstract();
+    }
+  }
+
+  @Nested
+  @DisplayName("作者快照构建")
+  class AuthorSnapshotTest {
+
+    @BeforeEach
+    void stubVenueResolution() {
+      when(venueLookupPort.findByPriority(eq(NLM_ID), any()))
+          .thenReturn(Optional.of(VenueId.of(VENUE_ID)));
+      when(venueInstanceGateway.findOrCreateJournalInstance(any(JournalInstanceParams.class)))
+          .thenReturn(createVenueInstance());
+    }
+
+    @Test
+    @DisplayName("按 XML 顺序 1 起编号，首位标记第一作者并透传同等贡献")
+    void should_number_authors_from_one_and_mark_first_author() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              personalAuthor("Smith", "John", null, true),
+              personalAuthor("Doe", "Jane", null, null));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots).hasSize(2);
+      assertThat(snapshots.get(0).order()).isEqualTo(1);
+      assertThat(snapshots.get(0).firstAuthor()).isTrue();
+      assertThat(snapshots.get(0).equalContribution()).isTrue();
+      assertThat(snapshots.get(1).order()).isEqualTo(2);
+      assertThat(snapshots.get(1).firstAuthor()).isFalse();
+      assertThat(snapshots.get(1).equalContribution()).isFalse();
+      assertThat(snapshots.get(1).displayName()).isEqualTo("Doe Jane");
+    }
+
+    @Test
+    @DisplayName("集体作者应以组织名成展示名且不落姓名字段")
+    void should_map_collective_author() throws Exception {
+      // given
+      CanonicalPublication.Author collective =
+          CanonicalPublication.Author.builder().organizationName("WHO Study Group").build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(collective));
+
+      // then
+      assertThat(snapshots).hasSize(1);
+      assertThat(snapshots.getFirst().isCollective()).isTrue();
+      assertThat(snapshots.getFirst().displayName()).isEqualTo("WHO Study Group");
+      assertThat(snapshots.getFirst().lastName()).isNull();
+      assertThat(snapshots.getFirst().orcid()).isNull();
+      assertThat(snapshots.getFirst().affiliations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("姓名全空的作者应跳过且不留顺序空洞")
+    void should_skip_blank_name_authors_keeping_order_continuous() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              personalAuthor("Smith", null, null, null),
+              personalAuthor("  ", "  ", null, null),
+              personalAuthor("Wang", null, null, null));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots).hasSize(2);
+      assertThat(snapshots.get(0).order()).isEqualTo(1);
+      assertThat(snapshots.get(1).order()).isEqualTo(2);
+      assertThat(snapshots.get(1).displayName()).isEqualTo("Wang");
+    }
+
+    @Test
+    @DisplayName("机构原文应保序并从 1 起连续编号")
+    void should_number_affiliations_from_one() throws Exception {
+      // given
+      CanonicalPublication.Author author =
+          CanonicalPublication.Author.builder()
+              .lastName("Smith")
+              .affiliations(
+                  List.of(
+                      CanonicalPublication.Affiliation.builder().name("Harvard").build(),
+                      CanonicalPublication.Affiliation.builder().name("  ").build(),
+                      CanonicalPublication.Affiliation.builder().name("MIT").build()))
+              .build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(author));
+
+      // then
+      var affiliations = snapshots.getFirst().affiliations();
+      assertThat(affiliations).hasSize(2);
+      assertThat(affiliations.get(0).order()).isEqualTo(1);
+      assertThat(affiliations.get(0).affiliationString()).isEqualTo("Harvard");
+      assertThat(affiliations.get(1).order()).isEqualTo(2);
+      assertThat(affiliations.get(1).affiliationString()).isEqualTo("MIT");
+    }
+
+    @Test
+    @DisplayName("ORCID 应剥离 URL 前缀并大写校验位")
+    void should_normalize_orcid_url_prefix_and_uppercase_check_digit() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              authorWithOrcid("Smith", "https://orcid.org/0000-0002-1825-0097"),
+              authorWithOrcid("Doe", "0000-0002-1694-233x"));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots.get(0).orcid()).isEqualTo("0000-0002-1825-0097");
+      assertThat(snapshots.get(1).orcid()).isEqualTo("0000-0002-1694-233X");
+    }
+
+    @Test
+    @DisplayName("格式或校验位非法的 ORCID 应丢弃为 null")
+    void should_drop_invalid_orcid() throws Exception {
+      // given
+      List<CanonicalPublication.Author> authors =
+          List.of(
+              authorWithOrcid("Smith", "0000-0002-1825-0098"),
+              authorWithOrcid("Doe", "not-an-orcid"));
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(authors);
+
+      // then
+      assertThat(snapshots.get(0).orcid()).isNull(); // 校验位错
+      assertThat(snapshots.get(1).orcid()).isNull(); // 格式错
+    }
+
+    @Test
+    @DisplayName("非 ORCID 类型的标识符不应被误取为 ORCID")
+    void should_ignore_non_orcid_identifiers() throws Exception {
+      // given
+      CanonicalPublication.Author author =
+          CanonicalPublication.Author.builder()
+              .lastName("Smith")
+              .identifiers(
+                  List.of(
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.DOI)
+                          .value("10.1234/example")
+                          .build(),
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.PMID)
+                          .value(PMID)
+                          .build()))
+              .build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(author));
+
+      // then
+      assertThat(snapshots.getFirst().orcid()).isNull();
+    }
+
+    @Test
+    @DisplayName("缩写与后缀应透传，且后缀不拼入展示名")
+    void should_pass_through_initials_and_suffix_without_suffix_in_display_name() throws Exception {
+      // given
+      CanonicalPublication.Author author =
+          CanonicalPublication.Author.builder()
+              .lastName("Smith")
+              .initials("J")
+              .suffix("Jr")
+              .build();
+
+      // when
+      List<PublicationAuthorSnapshot> snapshots = processAuthors(List.of(author));
+
+      // then
+      assertThat(snapshots.getFirst().initials()).isEqualTo("J");
+      assertThat(snapshots.getFirst().suffix()).isEqualTo("Jr");
+      assertThat(snapshots.getFirst().displayName()).isEqualTo("Smith J");
+    }
+
+    /// 构造个人作者。
+    private CanonicalPublication.Author personalAuthor(
+        String lastName, String foreName, String initials, Boolean equalContribution) {
+      return CanonicalPublication.Author.builder()
+          .lastName(lastName)
+          .foreName(foreName)
+          .initials(initials)
+          .equalContribution(equalContribution)
+          .build();
+    }
+
+    /// 构造带 ORCID 标识符的个人作者。
+    private CanonicalPublication.Author authorWithOrcid(String lastName, String orcid) {
+      return CanonicalPublication.Author.builder()
+          .lastName(lastName)
+          .identifiers(
+              List.of(
+                  Identifier.builder().type(PublicationIdentifierType.ORCID).value(orcid).build()))
+          .build();
+    }
+
+    /// 走完整 process() 链路取出聚合根上的作者快照列表。
+    private List<PublicationAuthorSnapshot> processAuthors(
+        List<CanonicalPublication.Author> authors) throws Exception {
+      CanonicalPublication publication =
+          CanonicalPublication.builder()
+              .identifiers(
+                  List.of(
+                      Identifier.builder()
+                          .type(PublicationIdentifierType.PMID)
+                          .value(PMID)
+                          .build()))
+              .title("Test Article")
+              .journal(Journal.builder().nlmUniqueId(NLM_ID).build())
+              .dates(PublicationDates.builder().published(LocalDate.of(2024, 1, 1)).build())
+              .authors(authors)
+              .build();
+      return processor.process(publication).publication().getAuthors();
+    }
+  }
+
+  /// 创建 Canonical 摘要段落。
+  private static AbstractSection abstractSection(String label, String content) {
+    return AbstractSection.builder().label(label).content(content).build();
   }
 
   /// 创建简单的测试文献。

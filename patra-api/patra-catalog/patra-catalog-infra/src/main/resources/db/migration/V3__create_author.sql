@@ -3,7 +3,7 @@
 -- 来源: V1.2.0 (author 3 表) + V1.2.1 (2 表) = 5 表
 -- 特别改动:
 --   - 删除 idx_publication (cat_publication_author) 冗余索引（§4.50）
---     被 uk_pub_author 首列覆盖
+--     被 uk_author_order 首列覆盖
 --   - 删除 idx_pub_author (cat_publication_author_affiliation) 冗余索引（§4.50）
 --     被 uk_pub_author_order 首列覆盖
 --   - 追加 2 个函数索引，支持 Spring Data IgnoreCase 派生方法（§4.53）
@@ -100,14 +100,24 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ============================================================
 -- 表 4: cat_publication_author (文献-作者关联表)
--- 冗余索引 idx_publication 已删除（§4.50），被 uk_pub_author 首列覆盖
+-- 行内存名（display_name/last_name/... /orcid）+ 可空 author_id 软关联：
+--   作者姓名以文献视角行内快照，不依赖 cat_author；
+--   author_id 仅在 ORCID 命中已消歧作者时填充，其余为 NULL
+-- 冗余索引 idx_publication 已删除（§4.50），被 uk_author_order 首列覆盖
 -- ============================================================
 
 CREATE TABLE cat_publication_author (
     id                       BIGINT          NOT NULL,
     publication_id           BIGINT          NOT NULL,
-    author_id                BIGINT          NOT NULL,
+    author_id                BIGINT          NULL,
     author_order             INTEGER         NOT NULL DEFAULT 1,
+    display_name             VARCHAR(200)    NOT NULL,
+    last_name                VARCHAR(200)    NULL,
+    fore_name                VARCHAR(200)    NULL,
+    initials                 VARCHAR(20)     NULL,
+    suffix                   VARCHAR(50)     NULL,
+    collective_name          VARCHAR(500)    NULL,
+    orcid                    VARCHAR(19)     NULL,
     is_first_author          BOOLEAN         NOT NULL DEFAULT false,
     is_corresponding_author  BOOLEAN         NOT NULL DEFAULT false,
     is_equal_contribution    BOOLEAN         NOT NULL DEFAULT false,
@@ -116,9 +126,12 @@ CREATE TABLE cat_publication_author (
 
     PRIMARY KEY (id),
 
-    CONSTRAINT uk_pub_author   UNIQUE (publication_id, author_id),
     CONSTRAINT uk_author_order UNIQUE (publication_id, author_order)
 );
+
+-- 软关联部分唯一索引：仅 author_id 非空时约束同篇不重复关联同一已消歧作者
+CREATE UNIQUE INDEX uk_pub_author ON cat_publication_author (publication_id, author_id)
+    WHERE author_id IS NOT NULL;
 
 CREATE INDEX idx_pub_author_author    ON cat_publication_author (author_id);
 CREATE INDEX idx_first_author         ON cat_publication_author (is_first_author);
@@ -134,7 +147,6 @@ CREATE TABLE cat_publication_author_affiliation (
     id                      BIGINT          NOT NULL,
     pub_author_id           BIGINT          NOT NULL,
     publication_id          BIGINT          NOT NULL,
-    author_id               BIGINT          NOT NULL,
     affiliation_order       INTEGER         NOT NULL DEFAULT 1,
     affiliation_string      VARCHAR(2000)   NOT NULL,
     ror_id                  VARCHAR(50)     NULL,
@@ -152,7 +164,6 @@ CREATE TABLE cat_publication_author_affiliation (
 );
 
 CREATE INDEX idx_affil_publication     ON cat_publication_author_affiliation (publication_id);
-CREATE INDEX idx_affil_author          ON cat_publication_author_affiliation (author_id);
 CREATE INDEX idx_affil_organization    ON cat_publication_author_affiliation (organization_id);
 CREATE INDEX idx_affil_ror_id          ON cat_publication_author_affiliation (ror_id);
 CREATE INDEX idx_affil_ringgold_id     ON cat_publication_author_affiliation (ringgold_id);

@@ -473,18 +473,34 @@ public final class CanonicalPublicationParsingStrategy
   }
 
   /// 解析 Abstract 元素。
+  ///
+  /// XML 结构：
+  /// ```xml
+  /// <Abstract>
+  ///   <AbstractText Label="BACKGROUND">背景</AbstractText>
+  ///   <CopyrightInformation>版权信息</CopyrightInformation>
+  /// </Abstract>
+  /// ```
   private void parseAbstract(XMLStreamReader reader, ParsedFields fields)
       throws XMLStreamException {
     while (reader.hasNext()) {
       int event = reader.next();
 
-      if (event == XMLStreamConstants.START_ELEMENT
-          && PubmedXmlElements.Article.ABSTRACT_TEXT.equals(reader.getLocalName())) {
-        ParsedAbstractSection section = new ParsedAbstractSection();
-        section.label = reader.getAttributeValue(null, PubmedXmlElements.Attribute.LABEL);
-        section.content = XmlParsingHelper.getElementTextWithMixedContent(reader).trim();
-        if (!section.content.isBlank()) {
-          fields.abstractSections.add(section);
+      if (event == XMLStreamConstants.START_ELEMENT) {
+        String localName = reader.getLocalName();
+        switch (localName) {
+          case PubmedXmlElements.Article.ABSTRACT_TEXT -> {
+            ParsedAbstractSection section = new ParsedAbstractSection();
+            section.label = reader.getAttributeValue(null, PubmedXmlElements.Attribute.LABEL);
+            section.content = XmlParsingHelper.getElementTextWithMixedContent(reader).trim();
+            if (!section.content.isBlank()) {
+              fields.abstractSections.add(section);
+            }
+          }
+          case PubmedXmlElements.Article.COPYRIGHT_INFORMATION ->
+              fields.abstractCopyright =
+                  XmlParsingHelper.getElementTextWithMixedContent(reader).trim();
+          default -> XmlParsingHelper.skipElement(reader, localName);
         }
       } else if (event == XMLStreamConstants.END_ELEMENT
           && PubmedXmlElements.Article.ABSTRACT.equals(reader.getLocalName())) {
@@ -923,7 +939,10 @@ public final class CanonicalPublicationParsingStrategy
                     AbstractSection.builder().label(parsed.label).content(parsed.content).build())
             .toList();
 
-    return Abstract.builder().sections(sections).build();
+    return Abstract.builder()
+        .sections(sections)
+        .copyright(blankToNull(fields.abstractCopyright))
+        .build();
   }
 
   /// 构建 MeSH 主题词列表。
@@ -1029,16 +1048,26 @@ public final class CanonicalPublicationParsingStrategy
   }
 
   /// 构建单个其他语言摘要。
+  ///
+  /// 同时保留结构化段落（含 label）与拼接后的完整文本。
   private CanonicalPublication.AlternativeAbstract buildAlternativeAbstract(
       ParsedOtherAbstract parsed) {
     // 拼接所有段落为完整文本
     String text = joinAbstractSections(parsed.sections);
 
+    List<AbstractSection> sections =
+        parsed.sections.stream()
+            .map(
+                section ->
+                    AbstractSection.builder().label(section.label).content(section.content).build())
+            .toList();
+
     return CanonicalPublication.AlternativeAbstract.builder()
         .language(parsed.language)
         .type(parsed.type)
         .text(text)
-        .copyright(parsed.copyright)
+        .sections(sections)
+        .copyright(blankToNull(parsed.copyright))
         .build();
   }
 
@@ -1060,6 +1089,14 @@ public final class CanonicalPublicationParsingStrategy
         .filter(content -> content != null && !content.isBlank())
         .reduce((a, b) -> a + " " + b)
         .orElse(null);
+  }
+
+  /// 将空白字符串归一为 `null`。
+  ///
+  /// PubMed XML 中 `CopyrightInformation` 可能为空元素或仅含空白，
+  /// 此时应视为「无版权信息」而非空串。
+  private String blankToNull(String value) {
+    return value == null || value.isBlank() ? null : value;
   }
 
   // ========== 内部类 ==========
@@ -1100,6 +1137,7 @@ public final class CanonicalPublicationParsingStrategy
 
     // 摘要
     List<ParsedAbstractSection> abstractSections = new ArrayList<>();
+    String abstractCopyright;
 
     // MeSH 主题词
     List<ParsedMeshHeading> meshHeadings = new ArrayList<>();
