@@ -1,6 +1,8 @@
 package dev.linqibin.patra.catalog.infra.batch.publication;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 
 import dev.linqibin.patra.catalog.domain.port.gateway.VenueInstanceGateway;
 import dev.linqibin.patra.catalog.domain.port.lookup.FunderLookupPort;
@@ -111,6 +113,33 @@ class PubmedBaselineJobConfigTest {
       // then
       assertThat(step).isNotNull();
       assertThat(step.getName()).isEqualTo("pubmedArticleProcessingStep");
+    }
+  }
+
+  @Nested
+  @DisplayName("Chunk size 校验")
+  class ChunkSizeTest {
+
+    @Test
+    @DisplayName("配置的 chunk size 超过上限时应该拒绝构建 Step")
+    void should_reject_chunk_size_above_upper_bound() {
+      // given - chunk 过大会让关联表清理的 IN 绑定参数超出 PostgreSQL 65535 上限
+      BatchProperties.ChunkProperties chunk = new BatchProperties.ChunkProperties();
+      chunk.setDefaultSize(10_001);
+      when(batchProperties.getChunk()).thenReturn(chunk);
+
+      PubmedArticleItemReader reader =
+          jobConfig.pubmedArticleItemReader("https://example.com/test.xml.gz");
+      PubmedArticleItemProcessor processor =
+          jobConfig.pubmedArticleItemProcessor(
+              venueLookupPort, languageLookupPort, funderLookupPort, "test-batch");
+      PublicationItemWriter writer = jobConfig.publicationItemWriter(resultMapper, "test-batch");
+
+      // when / then
+      assertThatThrownBy(() -> jobConfig.pubmedArticleProcessingStep(reader, processor, writer))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("chunk.default-size [10001]")
+          .hasMessageContaining("65535");
     }
   }
 

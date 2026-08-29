@@ -147,6 +147,22 @@ class PubmedBaselineImportScheduleJobTest {
     }
 
     @Test
+    @DisplayName("fileIndex 小于 1 时应该标记任务失败")
+    void should_fail_when_file_index_below_lower_bound() {
+      // given
+      XxlJobContext context = new XxlJobContext(1L, "fileIndex=0", "", 0, 0);
+      XxlJobContext.setXxlJobContext(context);
+
+      // when
+      scheduleJob.execute();
+
+      // then
+      assertThat(context.getHandleCode()).isEqualTo(XxlJobContext.HANDLE_CODE_FAIL);
+      assertThat(context.getHandleMsg()).contains("参数错误");
+      assertThat(context.getHandleMsg()).contains("fileIndex 必须 >= 1");
+    }
+
+    @Test
     @DisplayName("参数正确时应该成功执行导入")
     void should_succeed_when_parameter_valid() {
       // given

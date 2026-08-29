@@ -68,7 +68,8 @@ public class PubmedBaselineImportScheduleJob {
   ///
   /// **JobHandler 名称**: `pubmedBaselineImportJob`
   ///
-  /// **参数格式**: `fileIndex=N[,generation=STR]`，其中 N 为 1-1334 的整数
+  /// **参数格式**: `fileIndex=N[,generation=STR]`，其中 N 为 `>= 1` 的整数
+  /// （不校验上限——baseline 文件总数逐年变化，越界由下载 404 暴露）
   ///
   /// **示例**:
   /// - `fileIndex=1` - 导入第 1 个文件
@@ -148,27 +149,45 @@ public class PubmedBaselineImportScheduleJob {
     if (fileIndex == null) {
       throw new IllegalArgumentException("缺少 fileIndex 参数，格式：fileIndex=N[,generation=STR]");
     }
-    return new ParsedJobParam(fileIndex, generation);
+    return ParsedJobParam.of(fileIndex, generation);
   }
 
   /// 解析 fileIndex 取值。
   ///
+  /// 仅校验下限（`>= 1`）：baseline 文件总数逐年变化，写死上限会变成年度维护债，
+  /// 越界的 fileIndex 交由下载阶段的 404 暴露。
+  ///
   /// @param value fileIndex 的字符串取值
   /// @return 文件索引
-  /// @throws IllegalArgumentException 当取值不是整数时
+  /// @throws IllegalArgumentException 当取值不是整数或小于 1 时
   private static int parseFileIndex(String value) {
+    int fileIndex;
     try {
-      return Integer.parseInt(value);
+      fileIndex = Integer.parseInt(value);
     } catch (NumberFormatException e) {
       throw new IllegalArgumentException("fileIndex 必须是整数，实际：'" + value + "'", e);
     }
+    if (fileIndex < 1) {
+      throw new IllegalArgumentException("fileIndex 必须 >= 1，实际：'" + value + "'");
+    }
+    return fileIndex;
   }
 
   /// 调度参数解析结果。
   ///
   /// @param fileIndex 文件索引
   /// @param generation 代次标识（可空）
-  record ParsedJobParam(int fileIndex, String generation) {}
+  record ParsedJobParam(int fileIndex, String generation) {
+
+    /// 创建调度参数解析结果。
+    ///
+    /// @param fileIndex 文件索引
+    /// @param generation 代次标识（可空）
+    /// @return 解析结果
+    static ParsedJobParam of(int fileIndex, String generation) {
+      return new ParsedJobParam(fileIndex, generation);
+    }
+  }
 
   /// 处理参数错误。
   private void handleParameterError(IllegalArgumentException ex) {
