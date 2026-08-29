@@ -38,7 +38,7 @@
           <li data-task-status="done"><a href="#task-13">Task 13 — generation 参数全链</a></li>
           <li data-task-status="done"><a href="#task-14">Task 14 — Portal 混合摘要适配</a></li>
           <li data-task-status="done"><a href="#task-15">Task 15 — 换库重建 runbook 与脚本</a></li>
-          <li data-task-status="in-progress"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
+          <li data-task-status="done"><a href="#task-16">Task 16 — 全栈门控收尾</a></li>
         </ol>
       </li>
       <li><a href="#self-check">自检结果</a></li>
@@ -2067,7 +2067,7 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </ol>
       </article>
 
-      <article class="task" id="task-16" data-status="in-progress">
+      <article class="task" id="task-16" data-status="done">
         <header>
           <h2>任务 16：全栈门控收尾</h2>
           <dl class="files">
@@ -2076,24 +2076,24 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
 
         <ol class="steps">
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 1：后端全栈门控</strong>
             <p>运行：<code>cd patra-api &amp;&amp; ./gradlew check</code></p>
             <p>预期：BUILD SUCCESSFUL（含全部单测 + convention 架构约束；<strong>不含 IT</strong>）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 2：catalog IT 显式门控</strong>
             <p>运行：<code>./gradlew :patra-catalog:patra-catalog-infra:integrationTest</code></p>
             <p>预期：全部 IT 通过（含本 plan 新增三个 RoundTrip/投影 IT 与改写的读端/DAO IT）。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 3：portal 门控</strong>
             <p>运行：<code>cd patra-portal &amp;&amp; pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test</code>，预期全绿。</p>
           </li>
 
-          <li class="step" data-status="pending">
+          <li class="step" data-status="done">
             <strong>步骤 4：plan 状态终检</strong>
             <p>核对本 plan HTML：全部 article/step data-status=done、TOC 同步、notes-panel counter 与实际 entry 一致；spec Done 判定第 1 条（门控双命令）在本任务闭合，第 2-5 条（mini 重建验收）属合并后 runbook 实操，不阻塞本 plan 完成。随后按 <code>patra:finishing-a-development-branch</code> 走 PR 流程。</p>
           </li>
@@ -2632,14 +2632,30 @@ git commit -m "docs(catalog): v0.6 换库重建 runbook + allowlist/闭环统计
         </header>
         <p>SRE 审查两轮返修（3 Critical + 8 Important + 10 Minor + 6 复核项全落）。要点：① <strong>构建目录改 runner workspace</strong>——~/Projects/patra 是 sparse checkout 无 patra-api（照抄必炸），--dry-run 实证可行；连带发现第二必炸点：非交互 ssh 无 JAVA_HOME，须先 source runner .env（含代理）；② rename 窗口原子块（ALLOW_CONNECTIONS false + terminate + pg_sleep(2) + rename 单 psql 会话）+ 回滚 datallowconn 复位 + MacBook 不跑 catalog 硬前置；③ 兜底 dump 改宿主留存 + docker cp 回灌 + 双向 sha256；④ portal-cd 与手工构建抢 runner workspace——加 3.1.5 等待步；⑤ 对账口径改「可解释偏差内」（DUP_PMIDS 用 XML 解析同口径量出，grep 会把 CommentsCorrections 计入虚高）；⑥ 断点续做表（附录 B）、分期清理、psql 交互入口防 zsh 历史展开等。</p>
       </li>
+      <li class="note" data-type="other" data-time="2026-08-29T20:30">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T20:30">08-29 20:30</time>
+          <a href="#task-16">§ Task 16</a>
+        </header>
+        <p>三道门控结果：① ./gradlew check 用 --continue 证明全仓 487 task 仅 1 个 FAILED、失败面恰为 LetPub 外网豁免 2 条（shell 带 PROXY_AUTH_* 才执行；已另行 unset 环境变量复跑验证真全绿口径）；② catalog IT 351/0/0（4 skipped 为 LetPub 手动 IT），三个新 RoundTrip/投影 IT 均在册；③ portal lint/typecheck/283 tests 全绿。顺手修 2 处（响应 javadoc label 可空说明 + fixture abstractType 大写）。</p>
+      </li>
+      <li class="note" data-type="change" data-time="2026-08-29T21:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T21:40">08-29 21:40</time>
+          <a href="#task-16">§ Task 16</a>
+        </header>
+        <p>最终整体审查（门控独立复跑全过、跨任务契约零断层、无 Critical）判「修完再合」，唯一代码收口已落：PublicationAuthorSnapshot.collectiveName 补 500 列宽截断（本分支不变量的漏网字段——displayName 截 200、affiliationString 截 2000 而它没截；truncate 改带 maxLength 参数单一方法；独立 commit 7b8808d9d，15/15 测试绿）。unset PROXY_AUTH_* 后 ./gradlew check 真全绿（487 tasks BUILD SUCCESSFUL）确证 LetPub 豁免口径。终审的 Minor 全部归档为合并后事项（AbstractType 双套编码统一、作者深层字段读端暴露、作者侧 ORCID 归一化对齐、Canonical 第二套 plainText 公式等——均为既有或规格边界外）。</p>
+      </li>
     </ol>
 
     <footer class="notes-stats">
       总计:
       <span data-counter="decision">11</span> decisions /
-      <span data-counter="change">30</span> changes /
+      <span data-counter="change">31</span> changes /
       <span data-counter="tradeoff">1</span> tradeoffs /
-      <span data-counter="other">15</span> others
+      <span data-counter="other">16</span> others
     </footer>
   </aside>
 
