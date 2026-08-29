@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>内联标签白名单渲染 · 实现计划</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题（与 spec 共享 spec-theme.css）+ plan 专属 plan-extras.css。
+       相对路径 ../styles/ 从生成位置 docs/patra/plans/ 出发；
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 plan 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+  <link rel="stylesheet" href="../styles/plan-extras.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#scope-check">范围检查结果</a></li>
+      <li><a href="#file-structure">文件结构</a></li>
+      <li><a href="#tasks">任务列表</a>
+        <ol class="toc-tasks">
+          <!-- ENTRY TEMPLATE（注释保留供添加 task 时复制）:
+               每写一个 <article id="task-N">，在此处同步追加一条 li，初始 data-task-status="pending"。
+               实施期改 article 的 data-status 时，必须同步改此处 li 的 data-task-status，
+               否则 TOC 状态符号会与中栏卡片不一致。
+
+          <li data-task-status="pending"><a href="#task-N">Task N — [任务名]</a></li>
+          -->
+          <li data-task-status="done"><a href="#task-1">Task 1 — 解析器骨架：类型 + 实体解码</a></li>
+          <li data-task-status="done"><a href="#task-2">Task 2 — 排版标签解析主循环</a></li>
+          <li data-task-status="done"><a href="#task-3">Task 3 — 降级铁律与安全反例钉死</a></li>
+          <li data-task-status="done"><a href="#task-4">Task 4 — MathML 公式组</a></li>
+          <li data-task-status="done"><a href="#task-5">Task 5 — RichInlineText 组件</a></li>
+          <li data-task-status="done"><a href="#task-6">Task 6 — 接入 4 个渲染点</a></li>
+          <li data-task-status="done"><a href="#task-7">Task 7 — 浏览器真实数据实检</a></li>
+        </ol>
+      </li>
+      <li><a href="#self-check">自检结果</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>摘要/标题内联标签白名单渲染 · 实现计划</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-29</span>
+        <span>🌿 feat/inline-tag-rendering</span>
+        <span>📋 plan</span>
+        <span class="status-pill">done</span>
+      </div>
+
+      <aside class="for-ai-worker">
+        <strong>面向 AI 代理的工作者：</strong>
+        必需子技能：使用 <code>patra:subagent-driven-development</code>（推荐）
+        或 <code>patra:executing-plans</code> 逐任务实现。
+        通过修改任务卡片与步骤的 <code>data-status</code> 属性追踪进度
+        （pending / in-progress / done / blocked / skipped）。
+        每完成一个 task 立即 commit。
+        <br><strong>子代理模型分配</strong>（不要全部继承会话模型）：Task 2、Task 4（解析器核心，边界密集）用会话默认模型；Task 1、3、5、6（照抄计划代码 + 跑测试的机械执行）用 <code>sonnet</code>；Task 7 由主会话亲自执行（需 SSH / Playwright MCP / dev server 管理）。所有 reviewer 子代理用会话默认模型。
+        <br><strong>工作目录</strong>：所有 <code>pnpm</code> 命令在 <code>patra-portal/</code> 下执行。
+      </aside>
+
+      <dl class="meta">
+        <dt>目标</dt> <dd>PubMed 保真落库的内联标签（i/b/sub/sup/u + MathML）在 portal 安全渲染为真实格式，白名单外一律字面显示，全部渲染点复用同一组件</dd>
+        <dt>架构</dt> <dd>纯函数解析器 <code>parseInlineMarkup(text): InlineNode[]</code>（栈式单遍扫描，零依赖）+ RSC 兼容组件 <code>&lt;RichInlineText text={...} /&gt;</code>（节点树 → React 元素，禁 dangerouslySetInnerHTML）。解析与渲染分层，解析器全部边界行为用纯函数测试钉死。</dd>
+        <dt>技术栈</dt> <dd>TypeScript 5 strict（含 noUncheckedIndexedAccess）/ React 19 RSC / Vitest + Testing Library（jsdom, globals）/ Biome</dd>
+        <dt>关联 spec</dt> <dd><a href="../specs/2026-08-29-inline-tag-rendering-design.html">摘要/标题内联标签白名单渲染 · 设计</a></dd>
+      </dl>
+    </header>
+
+    <section id="scope-check">
+      <h2>范围检查结果</h2>
+      <aside class="callout success">
+        <span class="title">单 plan 覆盖</span>
+        <p>spec 只涉及 patra-portal 单个子系统（1 个解析器 + 1 个组件 + 4 个接入点 + 测试），无跨服务/跨库改动，单 plan 覆盖，无需拆分。BE / 数据链路零改动。</p>
+      </aside>
+    </section>
+
+    <section id="file-structure">
+      <h2>文件结构</h2>
+      <div class="file-tree">
+        <pre>patra-portal/
+├── src/lib/rich-inline-text.ts                          <span class="pill create">create</span> 解析器：InlineNode 类型 + decodeEntities + parseInlineMarkup
+├── src/components/portal/RichInlineText.tsx             <span class="pill create">create</span> 渲染组件：InlineNode[] → React 元素（RSC，无 "use client"）
+├── tests/lib/rich-inline-text.test.ts                   <span class="pill create">create</span> 解析器纯函数测试（主测试面，Task 1-4 逐轮累积）
+├── tests/components/portal/RichInlineText.test.tsx      <span class="pill create">create</span> 组件渲染测试（真实 sub 元素 + 安全反例 + MathML）
+├── src/components/portal/PaperCard.tsx                  <span class="pill modify">modify</span> Feed 卡片标题接入（1 处）
+├── src/components/portal/paper-detail/PaperHeader.tsx   <span class="pill modify">modify</span> 详情页主标题 + originalTitle 接入（2 处）
+└── src/components/portal/paper-detail/AbstractBlock.tsx <span class="pill modify">modify</span> 摘要纯文本态 + 结构化两分支接入（3 处）</pre>
+      </div>
+      <p><strong>与 spec 文件清单的偏差</strong>：spec 写的是 co-located 测试路径（<code>src/lib/*.test.ts</code>），但 portal 的 <code>vitest.config.ts</code> 的 include 只扫 <code>tests/**</code>，且现有测试全部在 <code>tests/</code> 镜像目录。遵循现有基建，测试放 <code>tests/lib/</code> 与 <code>tests/components/portal/</code>（已记右栏 note）。</p>
+    </section>
+
+    <section id="tasks">
+      <h2>任务列表</h2>
+
+      <!-- TASK TEMPLATE（注释保留供添加新 task 时复制）:
+
+      <article class="task" id="task-N" data-status="pending">
+        <header>
+          <h2>任务 N：[任务标题]</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>[exact/path/to/File.java]</code></dd>
+            <dt>修改</dt><dd><code>[exact/path/to/Existing.java:123-145]</code></dd>
+            <dt>测试</dt><dd><code>[tests/exact/path/to/Test.java]</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="pending">
+            <strong>步骤 1：[描述]</strong>
+            <pre><code class="lang-java">[完整代码块，禁止占位]</code></pre>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 2：运行测试验证</strong>
+            <p>运行：<code>[精确命令]</code></p>
+            <p>预期：[精确预期]</p>
+          </li>
+
+          <li class="step" data-status="pending">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add [files]
+git commit -m "feat: [description]"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      data-status 5 类：pending / in-progress / done / blocked / skipped
+      每开始任务/步骤改 in-progress，完成改 done。遇阻塞改 blocked，并在右栏 notes-panel 追加 data-type="other" entry 说明阻塞原因。
+      -->
+
+      <article class="task" id="task-1" data-status="done">
+        <header>
+          <h2>任务 1：解析器骨架——类型 + 实体解码 + 纯文本</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/lib/rich-inline-text.ts</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/rich-inline-text.test.ts</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：编写失败的测试（实体解码 + 纯文本三态）</strong>
+            <p>新建 <code>patra-portal/tests/lib/rich-inline-text.test.ts</code>，完整内容：</p>
+            <pre><code class="lang-ts">import { describe, expect, it } from "vitest";
+import { decodeEntities, type InlineNode, parseInlineMarkup } from "@/lib/rich-inline-text";
+
+/** 简写：文本节点。 */
+const text = (value: string): InlineNode =&gt; ({ kind: "text", value });
+/** 简写：元素节点。 */
+const el = (tag: string, ...children: InlineNode[]): InlineNode =&gt; ({
+  kind: "element",
+  tag,
+  children,
+});
+
+/** 递归收集节点树的纯文本内容。 */
+function textOf(nodes: InlineNode[]): string {
+  return nodes.map((n) =&gt; (n.kind === "text" ? n.value : textOf(n.children))).join("");
+}
+
+describe("decodeEntities", () =&gt; {
+  it("解码命名实体", () =&gt; {
+    expect(decodeEntities("A &amp;amp; B &amp;lt;= C &amp;gt; D &amp;quot;E&amp;quot; &amp;apos;F&amp;apos;&amp;nbsp;G")).toBe(
+      'A &amp; B &lt;= C &gt; D "E" \'F\' G',
+    );
+  });
+
+  it("解码十进制与十六进制数字实体", () =&gt; {
+    expect(decodeEntities("&amp;#8722;1 &amp;#x2212;2")).toBe("−1 −2");
+  });
+
+  it("未知实体与孤立 &amp; 原样保留", () =&gt; {
+    expect(decodeEntities("&amp;unknownx; a &amp; b &amp;#xZZ;")).toBe("&amp;unknownx; a &amp; b &amp;#xZZ;");
+  });
+});
+
+describe("parseInlineMarkup · 纯文本", () =&gt; {
+  it("无标签文本原样输出为单一文本节点", () =&gt; {
+    expect(parseInlineMarkup("Plain abstract text.")).toEqual([text("Plain abstract text.")]);
+  });
+
+  it("空字符串输出空数组", () =&gt; {
+    expect(parseInlineMarkup("")).toEqual([]);
+  });
+
+  it("文本中的实体被解码", () =&gt; {
+    expect(parseInlineMarkup("A &amp;amp; B")).toEqual([text("A &amp; B")]);
+  });
+});</code></pre>
+            <p>注意：<code>el</code> 与 <code>textOf</code> 本任务暂未被用到（Task 2/4 使用），Biome 对测试文件中未使用的顶层 const 若告警，可暂以 <code>void el; void textOf;</code> 两行压制并在 Task 2 删除——但 Biome 默认不检查未使用的模块级绑定被导出的场景，先直接跑，无告警就不处理。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行测试，确认因模块不存在而失败</strong>
+            <p>运行：<code>pnpm test tests/lib/rich-inline-text.test.ts</code></p>
+            <p>预期：失败，报错含 <code>Failed to resolve import "@/lib/rich-inline-text"</code>（模块尚不存在）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：实现最少代码</strong>
+            <p>新建 <code>patra-portal/src/lib/rich-inline-text.ts</code>，完整内容：</p>
+            <pre><code class="lang-ts">/** 内联标记节点：文本（实体已解码）或白名单元素（属性已剥）。 */
+export type InlineNode =
+  | { kind: "text"; value: string }
+  | { kind: "element"; tag: string; children: InlineNode[] };
+
+/** 常见命名实体 → 真字符。 */
+const NAMED_ENTITIES: Record&lt;string, string&gt; = {
+  amp: "&amp;",
+  lt: "&lt;",
+  gt: "&gt;",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+
+/**
+ * 解码常见 HTML 实体（命名 + 十进制 + 十六进制数字实体）。
+ * 未知实体与孤立 &amp; 原样保留。
+ */
+export function decodeEntities(text: string): string {
+  return text.replace(/&amp;(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z]+);/g, (match, body: string) =&gt; {
+    if (body.startsWith("#")) {
+      const isHex = body.charAt(1) === "x" || body.charAt(1) === "X";
+      const code = Number.parseInt(body.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+      if (Number.isNaN(code) || code &gt; 0x10ffff) {
+        return match;
+      }
+      return String.fromCodePoint(code);
+    }
+    return NAMED_ENTITIES[body.toLowerCase()] ?? match;
+  });
+}
+
+/**
+ * 把带内联标记的文本解析为节点树。
+ * 本阶段：纯文本 + 实体解码（标签解析在 Task 2 加入）。
+ */
+export function parseInlineMarkup(text: string): InlineNode[] {
+  if (text.length === 0) {
+    return [];
+  }
+  return [{ kind: "text", value: decodeEntities(text) }];
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：运行测试确认通过</strong>
+            <p>运行：<code>pnpm test tests/lib/rich-inline-text.test.ts</code></p>
+            <p>预期：6 个测试全部通过。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/lib/rich-inline-text.ts patra-portal/tests/lib/rich-inline-text.test.ts
+git commit -m "feat(portal): 内联标记解析器骨架——纯文本与实体解码"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-2" data-status="done">
+        <header>
+          <h2>任务 2：排版标签解析主循环（i/b/sub/sup/u + 嵌套 + 属性剥离 + 大小写）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/lib/rich-inline-text.ts</code>（替换 parseInlineMarkup，新增常量）</dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/rich-inline-text.test.ts</code>（追加 describe）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：编写失败的测试（排版标签五件套）</strong>
+            <p>在测试文件末尾追加：</p>
+            <pre><code class="lang-ts">describe("parseInlineMarkup · 排版标签", () =&gt; {
+  it("解析下标：CO&lt;sub&gt;2&lt;/sub&gt;", () =&gt; {
+    expect(parseInlineMarkup("CO&lt;sub&gt;2&lt;/sub&gt; fixation")).toEqual([
+      text("CO"),
+      el("sub", text("2")),
+      text(" fixation"),
+    ]);
+  });
+
+  it("解析上标 / 斜体 / 粗体 / 下划线", () =&gt; {
+    expect(parseInlineMarkup("h&lt;sup&gt;-1&lt;/sup&gt;")).toEqual([text("h"), el("sup", text("-1"))]);
+    expect(parseInlineMarkup("&lt;i&gt;E. coli&lt;/i&gt;")).toEqual([el("i", text("E. coli"))]);
+    expect(parseInlineMarkup("&lt;b&gt;P&lt;/b&gt;")).toEqual([el("b", text("P"))]);
+    expect(parseInlineMarkup("&lt;u&gt;x&lt;/u&gt;")).toEqual([el("u", text("x"))]);
+  });
+
+  it("支持嵌套", () =&gt; {
+    expect(parseInlineMarkup("&lt;i&gt;A&lt;sub&gt;n&lt;/sub&gt;&lt;/i&gt;")).toEqual([
+      el("i", text("A"), el("sub", text("n"))),
+    ]);
+  });
+
+  it("剥离全部属性", () =&gt; {
+    expect(parseInlineMarkup('&lt;i class="x" onclick="alert(1)"&gt;y&lt;/i&gt;')).toEqual([
+      el("i", text("y")),
+    ]);
+  });
+
+  it("标签名大小写不敏感，归一化小写", () =&gt; {
+    expect(parseInlineMarkup("&lt;SUP&gt;2&lt;/SUP&gt;")).toEqual([el("sup", text("2"))]);
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行测试，确认新增 5 个测试失败</strong>
+            <p>运行：<code>pnpm test tests/lib/rich-inline-text.test.ts</code></p>
+            <p>预期：Task 1 的 6 个通过，新增 5 个失败（当前实现把标签当纯文本输出）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：实现栈式单遍扫描主循环</strong>
+            <p>在 <code>src/lib/rich-inline-text.ts</code> 中，<code>decodeEntities</code> 之后、<code>parseInlineMarkup</code> 之前插入常量，并整体替换 <code>parseInlineMarkup</code>：</p>
+            <pre><code class="lang-ts">type ElementNode = Extract&lt;InlineNode, { kind: "element" }&gt;;
+
+/** 排版组白名单：任何位置放行。 */
+const FORMATTING_TAGS = new Set(["i", "b", "sub", "sup", "u"]);
+
+/** 标签形态：`&lt;`、可选 `/`、标签名、可选属性段（不含尖括号）、可选自闭合 `/`、`&gt;`。 */
+const TAG_RE = /^&lt;\s*(\/?)\s*([a-zA-Z][a-zA-Z0-9]*)(?:\s[^&lt;&gt;]*)?\s*\/?\s*&gt;/;
+
+/**
+ * 把带内联标记的文本解析为节点树（栈式单遍扫描）。
+ *
+ * 铁律：白名单外的一切（未知标签、裸 `&lt;`、孤儿闭合标签）按字面文本输出，
+ * 一个字符都不吞；未闭合标签自动闭合到段尾；属性全剥；标签名大小写不敏感。
+ */
+export function parseInlineMarkup(text: string): InlineNode[] {
+  const rootChildren: InlineNode[] = [];
+  const stack: ElementNode[] = [];
+  let buf = "";
+  let i = 0;
+
+  const currentChildren = (): InlineNode[] =&gt; stack.at(-1)?.children ?? rootChildren;
+
+  const flushText = (): void =&gt; {
+    if (buf.length &gt; 0) {
+      currentChildren().push({ kind: "text", value: decodeEntities(buf) });
+      buf = "";
+    }
+  };
+
+  const isAllowed = (tag: string): boolean =&gt; FORMATTING_TAGS.has(tag);
+
+  while (i &lt; text.length) {
+    const ch = text.charAt(i);
+    if (ch !== "&lt;") {
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    const m = TAG_RE.exec(text.slice(i));
+    if (m === null) {
+      // 裸 `&lt;`（接不出合法标签形态）→ 字面
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    const isClosing = m[1] === "/";
+    const tag = (m[2] ?? "").toLowerCase();
+    if (isClosing) {
+      let openIdx = -1;
+      for (let s = stack.length - 1; s &gt;= 0; s -= 1) {
+        if (stack[s]?.tag === tag) {
+          openIdx = s;
+          break;
+        }
+      }
+      if (openIdx === -1) {
+        // 孤儿闭合标签 → 字面（`&lt;` 进 buf，其余字符随后续扫描继续进 buf）
+        buf += ch;
+        i += 1;
+        continue;
+      }
+      flushText();
+      // 弹栈到匹配层：中间未闭合的标签自动闭合
+      stack.length = openIdx;
+      i += m[0].length;
+      continue;
+    }
+    if (!isAllowed(tag)) {
+      // 白名单外标签 → 字面
+      buf += ch;
+      i += 1;
+      continue;
+    }
+    flushText();
+    const element: ElementNode = { kind: "element", tag, children: [] };
+    currentChildren().push(element);
+    // 自闭合（如 &lt;mspace/&gt;）不进栈
+    if (!/\/\s*&gt;$/.test(m[0])) {
+      stack.push(element);
+    }
+    i += m[0].length;
+  }
+  flushText();
+  return rootChildren;
+}</code></pre>
+            <p>Task 1 的 JSDoc「本阶段：纯文本…」注释随替换消失，无需另行处理。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：运行测试确认全绿</strong>
+            <p>运行：<code>pnpm test tests/lib/rich-inline-text.test.ts</code></p>
+            <p>预期：11 个测试全部通过。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/lib/rich-inline-text.ts patra-portal/tests/lib/rich-inline-text.test.ts
+git commit -m "feat(portal): 排版标签白名单解析（i/b/sub/sup/u）"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-3" data-status="done">
+        <header>
+          <h2>任务 3：降级铁律与安全反例钉死</h2>
+          <dl class="files">
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/rich-inline-text.test.ts</code>（追加 describe）</dd>
+            <dt>修改</dt><dd><code>patra-portal/src/lib/rich-inline-text.ts</code>（仅当出现红测试时修复）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：编写降级与安全测试</strong>
+            <p>Task 2 主循环的「默认字面」设计已覆盖这些行为，本任务把它们钉死为契约：预期直接全绿；出现红即实现 bug，必须修复实现（禁改测试预期）后再 commit。在测试文件末尾追加：</p>
+            <pre><code class="lang-ts">describe("parseInlineMarkup · 降级铁律与安全", () =&gt; {
+  it("正文里的裸 &lt; 按字面保留", () =&gt; {
+    expect(parseInlineMarkup("P &lt;median vs &gt;0.05")).toEqual([text("P &lt;median vs &gt;0.05")]);
+    expect(parseInlineMarkup("CD4 &lt;0.05 cells")).toEqual([text("CD4 &lt;0.05 cells")]);
+  });
+
+  it("白名单外标签按字面保留", () =&gt; {
+    expect(parseInlineMarkup("&lt;fib-4&gt; index")).toEqual([text("&lt;fib-4&gt; index")]);
+    expect(parseInlineMarkup("&lt;script&gt;alert(1)&lt;/script&gt;")).toEqual([
+      text("&lt;script&gt;alert(1)&lt;/script&gt;"),
+    ]);
+  });
+
+  it("未闭合标签自动闭合到段尾", () =&gt; {
+    expect(parseInlineMarkup("&lt;i&gt;abc")).toEqual([el("i", text("abc"))]);
+  });
+
+  it("孤儿闭合标签按字面保留", () =&gt; {
+    expect(parseInlineMarkup("abc&lt;/i&gt;def")).toEqual([text("abc&lt;/i&gt;def")]);
+  });
+
+  it("交叉嵌套：闭合外层时内层自动闭合", () =&gt; {
+    expect(parseInlineMarkup("&lt;i&gt;a&lt;b&gt;c&lt;/i&gt;d")).toEqual([
+      el("i", text("a"), el("b", text("c"))),
+      text("d"),
+    ]);
+  });
+
+  it("恶意元素按字面保留", () =&gt; {
+    expect(parseInlineMarkup("&lt;img src=x onerror=alert(1)&gt;")).toEqual([
+      text("&lt;img src=x onerror=alert(1)&gt;"),
+    ]);
+    expect(parseInlineMarkup('&lt;a href="javascript:alert(1)"&gt;x&lt;/a&gt;')).toEqual([
+      text('&lt;a href="javascript:alert(1)"&gt;x&lt;/a&gt;'),
+    ]);
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行测试</strong>
+            <p>运行：<code>pnpm test tests/lib/rich-inline-text.test.ts</code></p>
+            <p>预期：17 个测试全部通过。若有红：定位主循环缺陷修复（例如孤儿闭合误弹栈、TAG_RE 误匹配），在右栏 notes 记 change entry，修到全绿。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/tests/lib/rich-inline-text.test.ts patra-portal/src/lib/rich-inline-text.ts
+git commit -m "test(portal): 解析器降级铁律与安全反例钉死"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-4" data-status="done">
+        <header>
+          <h2>任务 4：MathML 公式组（仅 math 子树内放行 + annotation 丢弃）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/lib/rich-inline-text.ts</code>（新增 MATH_TAGS、inMath、stripAnnotations，替换 isAllowed 与返回语句）</dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/lib/rich-inline-text.test.ts</code>（追加 describe）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：编写失败的测试（MathML 五case）</strong>
+            <p>在测试文件末尾追加：</p>
+            <pre><code class="lang-ts">describe("parseInlineMarkup · MathML 公式组", () =&gt; {
+  it("math 子树内放行 MathML Core 标签", () =&gt; {
+    expect(parseInlineMarkup("x&lt;math&gt;&lt;msub&gt;&lt;mi&gt;T&lt;/mi&gt;&lt;mn&gt;2&lt;/mn&gt;&lt;/msub&gt;&lt;/math&gt;y")).toEqual([
+      text("x"),
+      el("math", el("msub", el("mi", text("T")), el("mn", text("2")))),
+      text("y"),
+    ]);
+  });
+
+  it("annotation 内容整体丢弃（避免公式显示两遍）", () =&gt; {
+    expect(
+      parseInlineMarkup(
+        '&lt;math&gt;&lt;semantics&gt;&lt;mrow&gt;&lt;mi&gt;T&lt;/mi&gt;&lt;/mrow&gt;&lt;annotation encoding="application/x-tex"&gt;$$T$$&lt;/annotation&gt;&lt;/semantics&gt;&lt;/math&gt;',
+      ),
+    ).toEqual([el("math", el("semantics", el("mrow", el("mi", text("T")))))]);
+  });
+
+  it("游离在 math 外的 MathML 标签按字面保留", () =&gt; {
+    expect(parseInlineMarkup("&lt;mi&gt;x&lt;/mi&gt;")).toEqual([text("&lt;mi&gt;x&lt;/mi&gt;")]);
+  });
+
+  it("生产库真实样本：解析出 math 元素且文本内容不丢", () =&gt; {
+    const sample =
+      "growth with &lt;math&gt;&lt;msub&gt;&lt;mi&gt;μ&lt;/mi&gt; &lt;mrow&gt;&lt;mi&gt;max&lt;/mi&gt;&lt;/mrow&gt; &lt;/msub&gt; &lt;/math&gt; values of 0.37 h&lt;sup&gt;-1&lt;/sup&gt;";
+    const nodes = parseInlineMarkup(sample);
+    const math = nodes.find((n) =&gt; n.kind === "element" &amp;&amp; n.tag === "math");
+    expect(math).toBeDefined();
+    // 元素间空白成为文本节点：msub 内尾随 1 空格 + math 内尾随 1 空格 + " values" 前导 1 空格
+    expect(textOf(nodes)).toBe("growth with μ max   values of 0.37 h-1");
+  });
+
+  it("自闭合 mspace 不吞后续内容", () =&gt; {
+    expect(parseInlineMarkup("&lt;math&gt;&lt;mi&gt;a&lt;/mi&gt;&lt;mspace/&gt;&lt;mi&gt;b&lt;/mi&gt;&lt;/math&gt;")).toEqual([
+      el("math", el("mi", text("a")), el("mspace"), el("mi", text("b"))),
+    ]);
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行测试，确认新增 5 个测试失败</strong>
+            <p>运行：<code>pnpm test tests/lib/rich-inline-text.test.ts</code></p>
+            <p>预期：前 17 个通过；新增 5 个中「游离 math 外按字面」可能已绿（mi 本就不在白名单），其余 4 个失败（math 标签当前被字面化）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：实现 MathML 组</strong>
+            <p>三处修改。<strong>（a）</strong>在 <code>FORMATTING_TAGS</code> 之后新增：</p>
+            <pre><code class="lang-ts">/** 公式组白名单：仅在 &lt;math&gt; 子树内放行（MathML Core 子集）。 */
+const MATH_TAGS = new Set([
+  "math", "mrow", "mi", "mo", "mn", "msub", "msup", "msubsup",
+  "mtext", "mspace", "mstyle", "mover", "munder", "munderover",
+  "mfrac", "msqrt", "semantics", "annotation",
+]);</code></pre>
+            <p><strong>（b）</strong>在 <code>parseInlineMarkup</code> 内，将 <code>const isAllowed = ...</code> 一行替换为：</p>
+            <pre><code class="lang-ts">  const inMath = (): boolean =&gt; stack.some((element) =&gt; element.tag === "math");
+
+  const isAllowed = (tag: string): boolean =&gt; {
+    if (FORMATTING_TAGS.has(tag)) {
+      return true;
+    }
+    if (tag === "math") {
+      return true;
+    }
+    return MATH_TAGS.has(tag) &amp;&amp; inMath();
+  };</code></pre>
+            <p><strong>（c）</strong>将 <code>parseInlineMarkup</code> 末尾的 <code>return rootChildren;</code> 替换为 <code>return stripAnnotations(rootChildren);</code>，并在文件末尾新增：</p>
+            <pre><code class="lang-ts">/** 移除 annotation 元素——它是同一公式的 LaTeX 重复表述，渲染会使公式显示两遍。 */
+function stripAnnotations(nodes: InlineNode[]): InlineNode[] {
+  const out: InlineNode[] = [];
+  for (const node of nodes) {
+    if (node.kind === "element") {
+      if (node.tag === "annotation") {
+        continue;
+      }
+      out.push({ ...node, children: stripAnnotations(node.children) });
+    } else {
+      out.push(node);
+    }
+  }
+  return out;
+}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：运行测试确认全绿</strong>
+            <p>运行：<code>pnpm test tests/lib/rich-inline-text.test.ts</code></p>
+            <p>预期：22 个测试全部通过。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/lib/rich-inline-text.ts patra-portal/tests/lib/rich-inline-text.test.ts
+git commit -m "feat(portal): MathML 公式组白名单与 annotation 丢弃"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-5" data-status="done">
+        <header>
+          <h2>任务 5：RichInlineText 渲染组件</h2>
+          <dl class="files">
+            <dt>创建</dt><dd><code>patra-portal/src/components/portal/RichInlineText.tsx</code></dd>
+            <dt>测试</dt><dd><code>patra-portal/tests/components/portal/RichInlineText.test.tsx</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：编写失败的组件测试</strong>
+            <p>新建 <code>patra-portal/tests/components/portal/RichInlineText.test.tsx</code>，完整内容：</p>
+            <pre><code class="lang-tsx">import { render } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { RichInlineText } from "@/components/portal/RichInlineText";
+
+describe("RichInlineText", () =&gt; {
+  it("渲染出真实的 sub 元素", () =&gt; {
+    const { container } = render(&lt;RichInlineText text="CO&lt;sub&gt;2&lt;/sub&gt; fixation" /&gt;);
+    // sub/sup 无 landmark role 且 aria-query 的 subscript 映射不稳定，querySelector 是此处最后手段
+    const sub = container.querySelector("sub");
+    expect(sub).not.toBeNull();
+    expect(sub?.textContent).toBe("2");
+    expect(container.textContent).toBe("CO2 fixation");
+  });
+
+  it("恶意输入不产生可执行元素，文本字面保留", () =&gt; {
+    const { container } = render(
+      &lt;RichInlineText text={'&lt;img src=x onerror=alert(1)&gt;&lt;i onclick="x"&gt;ok&lt;/i&gt;'} /&gt;,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    const i = container.querySelector("i");
+    expect(i?.getAttribute("onclick")).toBeNull();
+    expect(i?.textContent).toBe("ok");
+    expect(container.textContent).toContain("&lt;img src=x onerror=alert(1)&gt;");
+  });
+
+  it("MathML 结构渲染为对应元素树", () =&gt; {
+    const { container } = render(
+      &lt;RichInlineText text="&lt;math&gt;&lt;msub&gt;&lt;mi&gt;T&lt;/mi&gt;&lt;mn&gt;2&lt;/mn&gt;&lt;/msub&gt;&lt;/math&gt;" /&gt;,
+    );
+    expect(container.querySelector("math msub mi")?.textContent).toBe("T");
+  });
+});</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：运行测试，确认因组件不存在而失败</strong>
+            <p>运行：<code>pnpm test tests/components/portal/RichInlineText.test.tsx</code></p>
+            <p>预期：失败，报错含 <code>Failed to resolve import "@/components/portal/RichInlineText"</code>。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：实现组件</strong>
+            <p>新建 <code>patra-portal/src/components/portal/RichInlineText.tsx</code>，完整内容（RSC，无 <code>"use client"</code>）：</p>
+            <pre><code class="lang-tsx">import { createElement, type ReactNode } from "react";
+import { type InlineNode, parseInlineMarkup } from "@/lib/rich-inline-text";
+
+/** InlineNode 树 → React 元素：文本节点由 React 自动转义，元素零属性。 */
+function renderNodes(nodes: InlineNode[]): ReactNode[] {
+  return nodes.map((node, index) =&gt;
+    node.kind === "text"
+      ? node.value
+      : createElement(node.tag, { key: index }, renderNodes(node.children)),
+  );
+}
+
+/**
+ * 白名单内联富文本：安全渲染 PubMed 标题/摘要中的排版标签（i/b/sub/sup/u）
+ * 与 MathML 公式；白名单外内容显示为字面文本。零布局样式，嵌入现有排版即插即用。
+ */
+export function RichInlineText({ text }: { text: string }) {
+  return &lt;&gt;{renderNodes(parseInlineMarkup(text))}&lt;/&gt;;
+}</code></pre>
+            <p>说明：key 用数组下标——内容静态无重排，安全。<code>createElement</code> 的 string 重载不受 <code>JSX.IntrinsicElements</code> 约束，MathML 标签名可直接传入；React DOM 对 <code>math</code> 子树自动使用 MathML 命名空间。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：运行测试确认通过</strong>
+            <p>运行：<code>pnpm test tests/components/portal/RichInlineText.test.tsx</code></p>
+            <p>预期：3 个测试全部通过。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/RichInlineText.tsx patra-portal/tests/components/portal/RichInlineText.test.tsx
+git commit -m "feat(portal): RichInlineText 白名单富文本组件"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-6" data-status="done">
+        <header>
+          <h2>任务 6：接入 4 个渲染点 + 全量验证</h2>
+          <dl class="files">
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/PaperCard.tsx:36</code></dd>
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/paper-detail/PaperHeader.tsx:32,36</code></dd>
+            <dt>修改</dt><dd><code>patra-portal/src/components/portal/paper-detail/AbstractBlock.tsx:14,24,36</code></dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：PaperCard 标题接入</strong>
+            <p>加 import：<code>import { RichInlineText } from "@/components/portal/RichInlineText";</code>（Biome 会自动排序）。h3 内：</p>
+            <pre><code class="lang-tsx">      &lt;h3 className="font-serif text-lg font-medium leading-snug tracking-tight text-ink-900"&gt;
+        &lt;RichInlineText text={paper.title} /&gt;
+      &lt;/h3&gt;</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：PaperHeader 主标题 + originalTitle 接入</strong>
+            <p>加相同 import。两处替换：</p>
+            <pre><code class="lang-tsx">      &lt;h1 className="m-0 mb-1.5 text-pretty font-serif text-[clamp(26px,3.4vw,36px)] font-medium leading-[1.16] tracking-[-0.02em] text-(--fg-1)"&gt;
+        &lt;RichInlineText text={paper.title} /&gt;
+      &lt;/h1&gt;
+      {paper.originalTitle &amp;&amp; (
+        &lt;p className="m-0 mb-4 font-serif text-lg italic leading-snug text-(--fg-3)"&gt;
+          &lt;RichInlineText text={paper.originalTitle} /&gt;
+        &lt;/p&gt;
+      )}</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：AbstractBlock 三处接入</strong>
+            <p>加相同 import。纯文本态（原 14 行）：</p>
+            <pre><code class="lang-tsx">  if (abstract.kind === "plain") {
+    return (
+      &lt;p className="m-0 font-serif text-lg leading-relaxed text-ink-800"&gt;
+        &lt;RichInlineText text={abstract.text} /&gt;
+      &lt;/p&gt;
+    );
+  }</code></pre>
+            <p>结构化两分支（原 24 行与 36 行的 <code>&lt;p&gt;</code>，className 原样保留）：</p>
+            <pre><code class="lang-tsx">              &lt;p className="m-0 font-serif text-lg leading-relaxed text-ink-800"&gt;
+                &lt;RichInlineText text={s.text} /&gt;
+              &lt;/p&gt;</code></pre>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 4：全量验证</strong>
+            <p>运行：<code>pnpm typecheck &amp;&amp; pnpm test &amp;&amp; pnpm lint</code></p>
+            <p>预期：三者全部通过。现有 PaperCard / paper-detail 测试用的是无标签样本文本，RichInlineText 输出与纯文本一致，应保持绿色；若有测试因文本节点被拆分而红（如 <code>getByText</code> 精确匹配整段），改用 <code>textContent</code> 断言或 regex matcher 修测试（这是断言方式适配，不是行为回归），并记右栏 note。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 5：Commit</strong>
+            <pre><code class="lang-bash">git add patra-portal/src/components/portal/PaperCard.tsx patra-portal/src/components/portal/paper-detail/PaperHeader.tsx patra-portal/src/components/portal/paper-detail/AbstractBlock.tsx
+git commit -m "feat(portal): 标题/摘要渲染点接入 RichInlineText"</code></pre>
+          </li>
+        </ol>
+      </article>
+
+      <article class="task" id="task-7" data-status="done">
+        <header>
+          <h2>任务 7：浏览器真实数据实检（主会话执行）</h2>
+          <dl class="files">
+            <dt>修改</dt><dd>无代码改动——验证任务，样本 ID 取自 mini 生产库（2026-08-29 实查）</dd>
+          </dl>
+        </header>
+
+        <ol class="steps">
+          <li class="step" data-status="done">
+            <strong>步骤 1：启动指向真实数据的 dev server</strong>
+            <p>在 <code>patra-portal/</code> 后台运行：<code>PATRA_GATEWAY_BASE_URL=http://100.103.73.27:9528 pnpm dev</code>（端口 4000）。注意：dev 运行期间禁止跑 <code>pnpm build</code>（会炸 .next）。</p>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 2：Playwright 逐页核验</strong>
+            <p>用 Playwright MCP 依次打开并断言（快照中不得出现字面 <code>&lt;sub&gt;</code>/<code>&lt;math&gt;</code> 标签文本）：</p>
+            <table>
+              <thead><tr><th>URL</th><th>验证点</th></tr></thead>
+              <tbody>
+                <tr><td><code>/papers/351955666667642924</code></td><td>标题 {Ge<sub>4</sub>}<sup>2+</sup>：下标 4 与上标 2+ 真实渲染</td></tr>
+                <tr><td><code>/papers/351955666667642944</code></td><td>标题 CO<sub>2</sub> + 斜体 <i>O</i>,<i>N</i> 真实渲染</td></tr>
+                <tr><td><code>/papers/351955666671837412</code></td><td>摘要 MathML 公式原生显示、无 $$LaTeX$$ 重复</td></tr>
+                <tr><td><code>/papers/351955666680226160</code></td><td>摘要残留实体已解码（无字面 &amp;amp; 等）</td></tr>
+                <tr><td><code>/papers/351955666667642883</code></td><td>摘要正文裸 &lt; 一字不丢</td></tr>
+                <tr><td><code>/</code>（Feed 首页）</td><td>卡片标题无裸露标签文本</td></tr>
+              </tbody>
+            </table>
+          </li>
+
+          <li class="step" data-status="done">
+            <strong>步骤 3：收尾</strong>
+            <p>停掉 dev server；核验结论（含截图要点）记入右栏 notes；plan 状态推进为 done。</p>
+          </li>
+        </ol>
+      </article>
+
+    </section>
+
+    <section id="self-check" class="self-check">
+      <h2>自检结果</h2>
+
+      <aside class="callout success">
+        <span class="title">1. 规格覆盖度</span>
+        <p>spec §3 组件结构 → Task 1/5；§4.1 白名单两组 → Task 2/4；§4.2 铁律 1-3/6-7 → Task 2+3、铁律 4（annotation）→ Task 4、铁律 5（实体）→ Task 1；§4.3 嵌套 → Task 2/3；§5 渲染点接入 → Task 6；§6 测试策略 → Task 1-5（纯函数+组件）与 Task 6 步骤 4（存量绿）、Task 7（浏览器实检）；spec Done 判定 4 条 → Task 6 步骤 4 + Task 7。无遗漏。唯一偏差（测试路径 tests/ 镜像目录）已在文件结构节说明并记 note。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">2. 占位符扫描</span>
+        <p>全部步骤含完整可执行代码/命令/预期输出；无「待定 / TODO / 类似任务 N / 后续补充」占位；模板 FILL 注释已全部替换（保留的两处 HTML 注释是模板规定的 task/entry 复制模板，非占位符）。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">3. 类型一致性</span>
+        <p><code>InlineNode</code> / <code>decodeEntities</code> / <code>parseInlineMarkup</code> / <code>RichInlineText</code> 的签名在 Task 1→5 与测试代码中一致；测试 helper <code>text()/el()/textOf()</code> 定义于 Task 1、使用于 Task 2-4；Task 4 对 <code>isAllowed</code>/<code>return</code> 的替换与 Task 2 展示的代码逐字对应；import 路径统一 <code>@/lib/rich-inline-text</code> 与 <code>@/components/portal/RichInlineText</code>。代码全部按 <code>noUncheckedIndexedAccess</code> 写（charAt / at() / ?. 访问）。</p>
+      </aside>
+
+      <aside class="callout success">
+        <span class="title">4. HTML 结构完整性</span>
+        <p>7 个 task 卡片均有唯一 <code>id="task-N"</code> 与 <code>data-status="pending"</code>；全部 31 个 step 均有 <code>data-status="pending"</code>；TOC toc-tasks 7 条与中栏 article 一一对应且初始状态一致；meta dl 含目标/架构/技术栈/关联 spec 四项；head 引用 spec-theme.css + plan-extras.css 两个 link，无内嵌 style。</p>
+      </aside>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：Implementation Notes（实施期由 Claude Code 维护）
+       ============================================================ -->
+  <aside class="notes-panel" id="notes">
+    <header>
+      <h2>Implementation Notes</h2>
+      <p class="hint">实施期由 Claude Code 即时追加。规则：遇到 plan 未规定的<strong>决定</strong>、必要<strong>更改</strong>、不可避免的<strong>权衡</strong>、其他用户应知事项，立即用 Edit 追加 entry，不要等任务结束。</p>
+    </header>
+
+    <ol class="notes-log">
+      <!-- ENTRY TEMPLATE（注释保留供实施期 AI 复制）:
+
+      <li class="note" data-type="decision" data-time="YYYY-MM-DDTHH:MM">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="YYYY-MM-DDTHH:MM">MM-DD HH:MM</time>
+          <a href="#task-N">§ Task N</a>
+        </header>
+        <p>描述：plan 未规定 X，实施时选择 Y。理由：...</p>
+      </li>
+
+      data-type 4 类：decision / change / tradeoff / other
+      追加 entry 时同步更新下方 notes-stats footer 的对应 counter 数字。
+      -->
+
+      <li class="note" data-type="change" data-time="2026-08-29T15:30">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T15:30">08-29 15:30</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>测试路径偏离 spec：spec 文件清单写 co-located（src/lib/*.test.ts），但 vitest.config.ts include 只扫 tests/**，现有测试全在 tests/ 镜像目录。计划遵循现有基建，测试放 tests/lib/ 与 tests/components/portal/。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T16:00">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T16:00">08-29 16:00</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>Biome pre-commit 对测试文件字符串做了引号规范化（自动格式化，语义与测试内容不变）。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T16:00">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T16:00">08-29 16:00</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>el/textOf helper 在 Task 1 未被使用触发 Biome noUnusedVariables，按 plan 预案加 void el; void textOf; 压制，Task 2 引入使用后删除。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T16:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T16:20">08-29 16:20</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>规格审查抓到 nbsp 实体被解码为普通空格 0x20（plan 代码块里的字面 U+00A0 不可见字符在多层转录中被规范化，测试期望被同步写错形成假绿）。修复：源码与测试改用显式转义序列（反斜杠 u00a0）而非字面字符，红绿真实验证后 amend 入原 commit（后续质量修复再次 amend，最终为 d0cda982c）。教训：不可见字符一律走显式转义。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T16:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T16:45">08-29 16:45</time>
+          <a href="#task-1">§ Task 1</a>
+        </header>
+        <p>质量审查发现三处地基缺陷，实现偏离 plan 代码修复（amend 入 d0cda982c）：① NAMED_ENTITIES 对象字面量→Map（外部文本 &amp;constructor; 会命中 Object.prototype 注入构造函数源码）；② 删 toLowerCase()，命名实体按 HTML 规范大小写敏感（防 &amp;LT;i&amp;GT; 在后续标签解析阶段绕白名单）；③ 数字实体守卫精确化：删不可达 NaN 分支，加 0/代理区/越界码点原样保留。配套补 5 个测试（越界与畸形码点、双重编码单层解码、原型链、缺分号、大写实体），共 11 测。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T17:10">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T17:10">08-29 17:10</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>按质量审查交接建议，Task 2 在 plan 的 5 个测试外追加第 6 个安全钉子：parseInlineMarkup("&amp;lt;i&amp;gt;x&amp;lt;/i&amp;gt;") 必须输出单个文本节点（实体解码在文本片段层、晚于标签识别，解码产物不可能再被识别为标签）。同时删除 void el 压制（el 启用），保留 void textOf 至 Task 4。Task 2 后实际测试数 17（plan 预期 11 + Task 1 质量修复补 5 + 本钉子 1）。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T17:45">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T17:45">08-29 17:45</time>
+          <a href="#task-2">§ Task 2</a>
+        </header>
+        <p>质量审查探针抓到 Critical：plan 给的 TAG_RE 里 &lt;\s* 前导空白宽容会把散文 "a &lt; b and c &gt; d" 吞成 &lt;b&gt; 标签（吞 11 字符 + 错误加粗），医学摘要裸 &lt; 高发、真实可触发。修复：TAG_RE 删前导两处 \s*（&lt; 与 &lt;/ 后跟空白按 HTML 规范视为文本），补钉死测试 3 断言，amend 入 5e53572b0（18 测）。Minor 遗留（属性值尾斜杠误判自闭合、引号属性内 &gt; 截断、void textOf 过渡态）记录在案，Task 4 顺手处理。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T18:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T18:30">08-29 18:30</time>
+          <a href="#task-3">§ Task 3</a>
+        </header>
+        <p>Task 3 质量审查用 6 个变异做了击杀验证：5/6 被击杀，证明新测试是真护栏（其中孤儿闭合与白名单拒绝两条铁律在本 commit 前无任何测试看守）。存活的 M6（自闭合不进栈分支零覆盖）与审查建议（同名嵌套用例）并入 Task 4 测试清单；&lt;i class=a/&gt; 误判自闭合与引号属性内 &gt; 截断两个形态裁定为接受的已知行为（真实数据中排版标签几乎不带属性），不改实现，Task 4 补引号属性自闭合的钉死测试。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T19:00">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T19:00">08-29 19:00</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>Task 4 commit subject 由 plan 的「feat(portal): MathML 公式组白名单与 annotation 丢弃」改为「feat(portal): 公式组 MathML 白名单与 annotation 丢弃」——commitlint subject-case 规则拒绝 subject 首词为 PascalCase（MathML 开头被判违规），移到句中后通过，语义不变。同 commit 还包含审查遗留的 3 个护栏测试（自闭合不吞后文、同名嵌套、带引号属性的自闭合 mspace），Task 4 后实际测试数 31（plan 预期 22）。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T19:40">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T19:40">08-29 19:40</time>
+          <a href="#task-4">§ Task 4</a>
+        </header>
+        <p>质量审查探针实锤两个运行时缺陷，偏离 plan 代码修复（amend 入 94f806178，34 测）：① 新增 MAX_DEPTH=64 解析深度上限——1 万层嵌套 math（约 60KB 畸形输入）会让 stripAnnotations 递归 RangeError 崩渲染，超深开标签改按字面输出，同时为 Task 5 渲染递归封顶；② stripAnnotations 增加 unclosed 集合——math 与 annotation 双未闭合时（上游截断形态）段尾正文会被连带吞掉，未闭合 annotation 改为只展开子节点不删除，铁律"一个字符不吞"恢复成立。附带：MATH_TAGS 删死数据 "math"（余 17 个，isAllowed 分支已单独放行）；TAG_RE 注释补"不支持连字符标签名（annotation-xml，生产库实查无）"。护栏测试 +3。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T20:10">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T20:10">08-29 20:10</time>
+          <a href="#task-5">§ Task 5</a>
+        </header>
+        <p>Task 5 commit subject 由 plan 的「feat(portal): RichInlineText 白名单富文本组件」改为「feat(portal): 白名单富文本组件 RichInlineText」——同 Task 4 的 commitlint subject-case 规则（subject 首词不得为 PascalCase），语义不变。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T20:50">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T20:50">08-29 20:50</time>
+          <a href="#task-6">§ Task 6</a>
+        </header>
+        <p>Task 5 质量审查探针发现 MathML 组件测试的 querySelector 断言 namespace-blind（React 若没切 MathML 命名空间测试照样绿，浏览器里公式却会平铺退化）——组件用 createElement(string) 的全部理由就是命名空间。裁定三个小项并入 Task 6：① MathML 测试补 namespaceURI 断言；② 补空字符串与 mspace 空 children 两个组件层护栏；③ 组件 JSDoc 补两条调用方约束（返回 Fragment 由调用方包裹样式；返回 ReactNode 不能用于 title=/aria-label/metadata 等纯字符串位置）。</p>
+      </li>
+
+      <li class="note" data-type="decision" data-time="2026-08-29T21:30">
+        <header>
+          <span class="note-type">DECISION</span>
+          <time datetime="2026-08-29T21:30">08-29 21:30</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>Task 6 质量审查结论并入实检与 PR 前收尾：① sub/sup 不会撑行高（Tailwind v4 preflight 显式 line-height:0 + position:relative，三处 leading 全零风险，实检不必纠结）；② 实检真正要盯 math 公式在 h1 紧行高下的行距均匀性与 originalTitle 斜体段内嵌 &lt;i&gt; 的强调丢失；③ PR 前收尾批：补 AbstractBlock 带 label 段与 PaperHeader originalTitle 两条接入回归测试、AbstractBlock 三份重复 &lt;p&gt; 字面量抽局部组件、RichInlineText key=index 补安全性注释。</p>
+      </li>
+
+      <li class="note" data-type="other" data-time="2026-08-29T21:45">
+        <header>
+          <span class="note-type">OTHER</span>
+          <time datetime="2026-08-29T21:45">08-29 21:45</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>浏览器实检（mini 真实数据）全部通过：① /papers/…2924 标题 {Ge₄}²⁺ 与摘要十余处 sub/sup 全为真实元素，行距均匀（preflight 结论成立）；② /papers/…7412 六个真 MathML 元素（MathML 命名空间），μₘₐₓ/Y_X/S/h⁻¹ 原生渲染、无 $$LaTeX 重复、数学字体无违和；③ /papers/…6160 实体已解码无字面 &amp;amp;；④ /papers/…2883 结构化摘要 "p&lt;0.001 )" 一字不丢（前两次加载失败为 dev server RSC 冷启动瞬时超时，第三次正常，与本功能无关）；⑤ Feed 首页 14 卡无裸标签（首页恰无带标签标题，PaperCard 路径由规格审查的带标签 mock 探针另行证实）。控制台无本功能相关错误。</p>
+      </li>
+
+      <li class="note" data-type="change" data-time="2026-08-29T22:20">
+        <header>
+          <span class="note-type">CHANGE</span>
+          <time datetime="2026-08-29T22:20">08-29 22:20</time>
+          <a href="#task-7">§ Task 7</a>
+        </header>
+        <p>PR 前收尾批（74dc0bd9b）：AbstractBlock 带 label 段与 PaperHeader originalTitle 各补 1 条接入回归测试（防"改回纯文本插值"的回归，接入点此前零测试覆盖）；AbstractBlock 三份重复摘要段 &lt;p&gt; 抽局部组件 BodyText；RichInlineText 的 index key 补安全性注释。全量 324 测绿。</p>
+      </li>
+    </ol>
+
+    <footer class="notes-stats">
+      总计:
+      <span data-counter="decision">5</span> decisions /
+      <span data-counter="change">8</span> changes /
+      <span data-counter="tradeoff">0</span> tradeoffs /
+      <span data-counter="other">2</span> others
+    </footer>
+  </aside>
+
+</div>
+</body>
+</html>

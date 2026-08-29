@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>摘要/标题内联标签白名单渲染 · 设计</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- CSS 外置：「工程简报」主题。相对路径 ../styles/ 从生成位置 docs/patra/specs/ 出发；
+       放进子目录的 spec（如 docs/patra/specs/<feature>/）改成 ../../styles/。
+       模板本身在 .claude/skills/ 下打开时此 link 会 404（接受：以生成后的 spec 为准） -->
+  <link rel="stylesheet" href="../styles/spec-theme.css">
+</head>
+<body>
+<div class="layout layout-with-notes">
+
+  <!-- ============================================================
+       左栏：目录（TOC）
+       ============================================================ -->
+  <nav class="toc">
+    <h3>目录</h3>
+    <ol>
+      <li><a href="#background">背景与现状</a></li>
+      <li><a href="#scope">范围边界</a></li>
+      <li><a href="#architecture">组件结构</a></li>
+      <li><a href="#parser-spec">解析器行为规格</a></li>
+      <li><a href="#integration">渲染点接入</a></li>
+      <li><a href="#testing">测试策略</a></li>
+      <li><a href="#decisions">关键决策与备选</a></li>
+      <li><a href="#risks">风险与缓解</a></li>
+      <li><a href="#changes">改造文件清单</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============================================================
+       中栏：内容
+       ============================================================ -->
+  <main class="content">
+
+    <header class="doc-header">
+      <h1>摘要/标题内联标签白名单渲染</h1>
+      <div class="meta-bar">
+        <span>📅 2026-08-29</span>
+        <span>🌿 feat/inline-tag-rendering</span>
+        <span>👤 linqibin</span>
+        <span>🎯 spec</span>
+        <span class="status-pill">draft</span>
+      </div>
+    </header>
+
+    <aside class="callout summary">
+      <span class="title">关键决策摘要</span>
+      <p>PubMed 保真落库的内联标签（<code>&lt;sub&gt;/&lt;sup&gt;/&lt;i&gt;/&lt;b&gt;/&lt;u&gt;</code> 及 MathML 公式）目前在 portal 被当纯文本渲染，标签裸露在页面上。本设计新建零依赖的白名单渲染器：纯函数解析器 <code>parseInlineMarkup</code> + RSC 兼容组件 <code>RichInlineText</code>，排版 5 标签任意位置放行，MathML Core 标签集仅在 <code>&lt;math&gt;</code> 子树内放行（浏览器原生渲染），属性全剥、实体顺手解码、白名单外一律按字面文本显示，禁 <code>dangerouslySetInnerHTML</code>。现有 4 个渲染点全部接入，日后新页面复用同一组件。</p>
+    </aside>
+
+    <section id="background">
+      <h2>1. 背景与现状</h2>
+      <p>v0.6 作者与摘要数据链路修复时，PubMed 标题/摘要中的内联排版标签被<strong>刻意保真落库</strong>（下标、上标、斜体物种名等信息有语义价值，不是数据 bug）。但 portal 侧所有标题与摘要均以 <code>{text}</code> 纯文本渲染，React 自动转义使标签原样露出，用户看到 <code>CO&lt;sub&gt;2&lt;/sub&gt;</code> 而非 CO<sub>2</sub>。</p>
+      <p>2026-08-29 对 mini 生产库（<code>patra_catalog</code>）实测的数据分布：</p>
+      <table>
+        <thead>
+          <tr><th>情况</th><th>规模</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>排版标签（i/b/sub/sup/u）</td><td>1,132/18,807 标题（6%）；4,481/15,653 摘要（29%）</td><td>标题只出现 i/sub/sup/b 四种，非常干净；摘要另有 34 处 <code>&lt;u&gt;</code></td></tr>
+          <tr><td>MathML 公式</td><td>21 个摘要（存量）</td><td><code>&lt;math&gt;&lt;msub&gt;&lt;mi&gt;μ&lt;/mi&gt;…</code>，部分带 <code>&lt;semantics&gt;/&lt;annotation&gt;$$LaTeX$$&lt;/annotation&gt;</code>；采集持续进行，绝对数量随数据增长</td></tr>
+          <tr><td>正文中的裸 <code>&lt;</code></td><td>散在各处（几十处）</td><td>如 "P &lt;median"、"&lt;0.05"、"&lt;fib-4"——不是标签，是小于号，渲染时必须字面保留</td></tr>
+          <tr><td>残留 HTML 实体</td><td>10 个摘要</td><td>如文本里存的是 <code>&amp;amp;</code>，页面显示成字面 <code>&amp;amp;</code></td></tr>
+        </tbody>
+      </table>
+      <p>aiSummary 全链路恒为 null（BE 无 LLM 摘要数据源），页面 <code>&lt;title&gt;</code> metadata 不从文献标题生成，两者均不在本次范围内。</p>
+    </section>
+
+    <section id="scope">
+      <h2>2. 范围边界</h2>
+      <div class="two-col">
+        <aside class="callout success">
+          <span class="title">In Scope</span>
+          <ul>
+            <li>纯函数解析器 <code>parseInlineMarkup(text): InlineNode[]</code>（零第三方依赖）</li>
+            <li>RSC 兼容渲染组件 <code>&lt;RichInlineText text={...} /&gt;</code></li>
+            <li>排版标签白名单：i / b / sub / sup / u</li>
+            <li>MathML Core 标签集白名单（仅 <code>&lt;math&gt;</code> 子树内），浏览器原生渲染</li>
+            <li>常见 HTML 实体解码（命名 + 十进制 + 十六进制）</li>
+            <li>接入现有 4 个渲染点：PaperCard 标题、PaperHeader 标题+原文标题、AbstractBlock 纯文本态与结构化段落态</li>
+            <li>解析器纯函数测试 + 组件渲染测试（TDD）</li>
+          </ul>
+        </aside>
+        <aside class="callout warning">
+          <span class="title">Out of Scope</span>
+          <ul>
+            <li>BE / 数据链路改动——数据保真落库是既定正确行为，本次只改渲染端</li>
+            <li>aiSummary（恒 null，无数据源）、页面 <code>&lt;title&gt;</code> metadata（不存在）</li>
+            <li>LaTeX 渲染引擎（KaTeX/MathJax 等）——浏览器原生 MathML 已足够，annotation 里的 LaTeX 重复表述直接丢弃</li>
+            <li>venue / 期刊侧字段（实测无标签）、COI 字段（实测无标签）、keywords、MeSH</li>
+            <li>sub/sup 行高微调等视觉打磨——浏览器默认样式先行，实检有问题再说</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2>3. 组件结构</h2>
+      <pre><code>patra-portal/src/
+├── lib/rich-inline-text.ts               ← 纯解析器：parseInlineMarkup(text) → InlineNode[]
+│                                            纯 TS 函数，无 React 依赖，可独立测试
+└── components/portal/RichInlineText.tsx  ← 渲染组件：&lt;RichInlineText text={...} /&gt;
+                                             InlineNode[] → React 元素树，RSC 兼容（无 "use client"）</code></pre>
+      <p>解析与渲染分两层：解析器输出轻量节点树（文本节点 + 元素节点，元素节点含标签名与子节点），组件递归把树变成 React 元素。解析器的全部边界行为用纯函数测试钉死，不需要起 DOM。</p>
+      <p><code>InlineNode</code> 形态（示意）：</p>
+      <pre><code>type InlineNode =
+  | { kind: "text"; value: string }                          // 文本（实体已解码）
+  | { kind: "element"; tag: string; children: InlineNode[] } // 白名单元素（属性已剥）</code></pre>
+      <p>组件只输出内联元素、不带任何布局样式，外围字体/字号/行高/颜色由调用处现有 class 控制，嵌入现有排版即插即用。</p>
+    </section>
+
+    <section id="parser-spec">
+      <h2>4. 解析器行为规格</h2>
+      <h3>4.1 白名单（两组）</h3>
+      <table>
+        <thead>
+          <tr><th>组</th><th>标签</th><th>放行条件</th><th>渲染</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>排版组</td>
+            <td><code>i</code> <code>b</code> <code>sub</code> <code>sup</code> <code>u</code></td>
+            <td>任何位置</td>
+            <td>同名 HTML 元素</td>
+          </tr>
+          <tr>
+            <td>公式组</td>
+            <td><code>math</code> <code>mrow</code> <code>mi</code> <code>mo</code> <code>mn</code> <code>msub</code> <code>msup</code> <code>msubsup</code> <code>mtext</code> <code>mspace</code> <code>mstyle</code> <code>mover</code> <code>munder</code> <code>munderover</code> <code>mfrac</code> <code>msqrt</code> <code>semantics</code> <code>annotation</code></td>
+            <td><strong>仅在 <code>&lt;math&gt;</code> 子树内</strong>；游离在公式外按字面文本</td>
+            <td>浏览器原生 MathML Core</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>4.2 铁律与降级规则</h3>
+      <ol>
+        <li><strong>属性全剥</strong>：<code>&lt;i class="x" onclick="…"&gt;</code> 认标签、丢全部属性，渲染成干净 <code>&lt;i&gt;</code>——不存在任何属性攻击面（含 MathML 的 <code>display</code>，公式强制随文内联）</li>
+        <li><strong>不认识 = 字面文本</strong>：<code>&lt;0.05</code>、<code>P &lt;median</code>、<code>&lt;fib-4&gt;</code>、<code>&lt;script&gt;</code> 等一切白名单外内容原样当文字显示，一个字符都不吞</li>
+        <li><strong>未闭合标签</strong>：开了没关（<code>&lt;i&gt;abc</code> 到结尾）→ 格式生效到段尾自动闭合；孤儿闭合标签（<code>&lt;/i&gt;</code> 前面没开）→ 按字面文本显示</li>
+        <li><strong>semantics/annotation 特判</strong>：已闭合的 <code>&lt;annotation&gt;</code> 内容<strong>整体丢弃</strong>（它是同一公式的 LaTeX 重复表述，渲染会导致公式显示两遍）；未闭合的 <code>&lt;annotation&gt;</code>（上游截断形态）只<strong>展开子节点</strong>不删除，保证正文一个字符不丢；<code>&lt;semantics&gt;</code> 渲染其余子节点</li>
+        <li><strong>实体解码</strong>：文本段里 <code>&amp;amp;</code> <code>&amp;lt;</code> <code>&amp;gt;</code> <code>&amp;quot;</code> <code>&amp;apos;</code> 及数字/十六进制实体（<code>&amp;#8722;</code> / <code>&amp;#x2212;</code>）解码回真字符；解码出的 <code>&lt;</code> 是文本节点，天然安全</li>
+        <li><strong>大小写不敏感</strong>：<code>&lt;SUP&gt;</code> 也认，标签名归一化为小写</li>
+        <li><strong>禁 <code>dangerouslySetInnerHTML</code></strong>：输出 React 元素树，文本内容由 React 自动转义——这是方案不可能 XSS 的根本保证</li>
+      </ol>
+      <h3>4.3 嵌套</h3>
+      <p>白名单标签任意嵌套（如 <code>&lt;i&gt;&lt;sub&gt;…&lt;/sub&gt;&lt;/i&gt;</code>）以栈式解析支持；闭合标签与栈顶不匹配时，弹栈直到匹配（中间未闭合的自动闭合），栈内无匹配则该闭合标签按字面文本处理。</p>
+    </section>
+
+    <section id="integration">
+      <h2>5. 渲染点接入</h2>
+      <table>
+        <thead>
+          <tr><th>文件</th><th>现状</th><th>改为</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>PaperCard.tsx</code>（Feed 卡片标题）</td><td><code>{paper.title}</code></td><td><code>&lt;RichInlineText text={paper.title} /&gt;</code></td></tr>
+          <tr><td><code>PaperHeader.tsx</code>（详情页主标题 + 原文标题）</td><td><code>{paper.title}</code> / <code>{paper.originalTitle}</code></td><td>同上，两处</td></tr>
+          <tr><td><code>AbstractBlock.tsx</code>（纯文本摘要态）</td><td><code>{abstract.text}</code></td><td><code>&lt;RichInlineText text={abstract.text} /&gt;</code></td></tr>
+          <tr><td><code>AbstractBlock.tsx</code>（结构化段落态）</td><td><code>{s.text}</code></td><td>同上（有 label / 无 label 两分支各一处）</td></tr>
+        </tbody>
+      </table>
+      <p>段落 label（BACKGROUND/METHODS 等）是自有枚举值，不含标签，不接。日后任何新页面显示标题/摘要，直接复用 <code>RichInlineText</code>。</p>
+    </section>
+
+    <section id="testing">
+      <h2>6. 测试策略（TDD）</h2>
+      <h3>6.1 解析器纯函数测试（主战场，Vitest，不起 DOM）</h3>
+      <ul>
+        <li>无标签文本原样通过；每个排版标签单测；嵌套 <code>&lt;i&gt;&lt;sub&gt;…&lt;/sub&gt;&lt;/i&gt;</code></li>
+        <li>降级铁律逐条钉死：裸 <code>&lt;</code>（<code>P &lt;median</code>、<code>&lt;0.05</code>）字面保留；白名单外标签（<code>&lt;script&gt;</code>、<code>&lt;fib-4&gt;</code>）字面保留；未闭合自动闭合；孤儿闭合按字面</li>
+        <li>属性剥离：<code>&lt;i class="x" onclick="…"&gt;</code> → 干净 <code>&lt;i&gt;</code></li>
+        <li>实体解码：命名 + 十进制 + 十六进制；<code>&amp;lt;</code> 解出的 <code>&lt;</code> 是文本节点</li>
+        <li>MathML 金样本：生产库真实样本（<code>&lt;math&gt;&lt;msub&gt;&lt;mi&gt;μ&lt;/mi&gt;…</code> 与带 <code>semantics/annotation</code> 的样本）；annotation 内容被丢弃；游离在 <code>&lt;math&gt;</code> 外的 <code>&lt;mi&gt;</code> 按字面</li>
+        <li>安全反例：<code>&lt;img src=x onerror=…&gt;</code>、<code>&lt;a href="javascript:…"&gt;</code> 必须字面显示</li>
+      </ul>
+      <h3>6.2 组件渲染测试（Testing Library，少量）</h3>
+      <ul>
+        <li><code>CO&lt;sub&gt;2&lt;/sub&gt;</code> 渲染出真实 <code>&lt;sub&gt;</code> 元素</li>
+        <li>恶意输入渲染后 DOM 里不存在 <code>script</code>/<code>img</code> 元素</li>
+      </ul>
+      <h3>6.3 改造点验证</h3>
+      <ul>
+        <li>现有测试保持绿色</li>
+        <li>浏览器实检：mini 真实数据（带标签的 4,481 篇摘要 / 1,132 个标题中挑样本，含 MathML 摘要）</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>7. 关键决策与备选</h2>
+
+      <div class="decision">
+        <h3>决策 1：自写零依赖白名单解析器，输出 React 元素</h3>
+        <p>约 150–200 行栈式解析器：识别白名单标签、递归嵌套、其余按字面文本输出。零第三方依赖、RSC 天然兼容、坏数据降级行为 100% 可控（"不认识就当文字"是默认行为而非补丁）。</p>
+        <p class="alternatives"><strong>备选 A：</strong>DOMPurify + dangerouslySetInnerHTML — 否决：违反既定安全铁律（禁裸注入），且 DOMPurify 面向浏览器 DOM，RSC 侧需额外适配。<br>
+        <strong>备选 B：</strong>html-react-parser + 白名单配置 — 否决：依赖链重（htmlparser2 等）却只用其 5% 能力；按"宽容 HTML"语义解析，正文里大量裸 <code>&lt;</code> 的降级行为不受控（可能吞字符），反而要打补丁对抗库行为。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 2：MathML 原生渲染而非剥标签降级</h3>
+        <p>MathML Core 标签集入白名单（仅 <code>&lt;math&gt;</code> 子树内），交给现代浏览器（Chrome/Safari/Firefox 均原生支持）渲染，属性全剥。21 篇是当前存量，采集持续进行，绝对数量会一直涨；质量优先原则下一次做对，老浏览器不认识时天然降级为平铺文本，无更坏结果。</p>
+        <p class="alternatives"><strong>备选 A：</strong>剥标签保内容（μ<sub>max</sub> 平铺成 μmax）— 否决：丢失公式结构，且数据增长后需返工。<br>
+        <strong>备选 B：</strong>整段公式占位降级（标灰等宽显示）— 否决：引入特判逻辑，体验不如原生渲染。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 3：MathML 标签仅在 math 子树内放行</h3>
+        <p>游离在 <code>&lt;math&gt;</code> 外的 <code>&lt;mi&gt;</code> 等按字面文本处理。白名单语义更紧：排版组是通用内联标签，公式组只有在公式上下文中才有意义，脱离上下文放行只会造出无意义的未知元素。</p>
+        <p class="alternatives"><strong>备选：</strong>单一扁平白名单（mi 任意位置放行）— 否决：实现略简但语义松，脏数据里孤立 <code>&lt;mi&gt;</code> 会被静默转成 DOM 元素而非可见文本，违背"不认识就当文字"的直觉。</p>
+      </div>
+
+      <div class="decision">
+        <h3>决策 4：顺手解码 HTML 实体</h3>
+        <p>解析器在文本段解码常见命名实体与数字/十六进制实体，10 篇残留实体的摘要一并修复。成本极小，解码结果进文本节点，安全性不受影响。</p>
+        <p class="alternatives"><strong>备选：</strong>只管标签不管实体 — 否决：留字面 <code>&amp;amp;</code> 的小瘤，修复成本与顺手做几乎相同。</p>
+      </div>
+    </section>
+
+    <section id="risks">
+      <h2>8. 风险与缓解</h2>
+      <table>
+        <thead>
+          <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>自写解析器边界情况遗漏（诡异嵌套、深度嵌套、超长文本）</td>
+            <td><span class="pill mid">mid</span></td>
+            <td>TDD 先行 + 生产库真实脏样本做金样本测试；默认行为是"不认识就当文字"，漏网结果最多是显示原文（等同现状），不会更坏</td>
+          </tr>
+          <tr>
+            <td>XSS：脏数据经渲染器变成可执行内容</td>
+            <td><span class="pill low">low</span></td>
+            <td>输出 React 元素树 + 属性全剥 + 白名单封闭集合，无 dangerouslySetInnerHTML；安全反例入测试固定</td>
+          </tr>
+          <tr>
+            <td>MathML 在旧浏览器/爬虫渲染异常</td>
+            <td><span class="pill low">low</span></td>
+            <td>未知元素的浏览器默认行为即平铺内联文本，天然降级等同"剥标签保内容"方案</td>
+          </tr>
+          <tr>
+            <td>sub/sup 撑坏现有行高排版</td>
+            <td><span class="pill low">low</span></td>
+            <td>浏览器默认 sub/sup 样式先行，接入后浏览器实检，有问题再局部微调（明确列为后续可选项而非本次范围）</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="changes">
+      <h2>9. 改造文件清单</h2>
+      <table>
+        <thead>
+          <tr><th>#</th><th>文件</th><th>操作</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td><code>patra-portal/src/lib/rich-inline-text.ts</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>纯函数解析器 parseInlineMarkup + InlineNode 类型 + 实体解码</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><code>patra-portal/tests/lib/rich-inline-text.test.ts</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>解析器纯函数测试（主测试面）</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><code>patra-portal/src/components/portal/RichInlineText.tsx</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>渲染组件：InlineNode[] → React 元素，RSC 兼容</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><code>patra-portal/tests/components/portal/RichInlineText.test.tsx</code></td>
+            <td><span class="pill create">create</span></td>
+            <td>组件渲染测试（sub 真实元素 + 恶意输入反例）</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><code>patra-portal/src/components/portal/PaperCard.tsx</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>Feed 卡片标题接入 RichInlineText</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><code>patra-portal/src/components/portal/paper-detail/PaperHeader.tsx</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>详情页主标题 + originalTitle 两处接入</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><code>patra-portal/src/components/portal/paper-detail/AbstractBlock.tsx</code></td>
+            <td><span class="pill modify">modify</span></td>
+            <td>纯文本态 + 结构化段落态（两分支）接入</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <aside class="callout info">
+      <span class="title">Done 判定</span>
+      <ol>
+        <li>解析器与组件测试全绿（含降级铁律、安全反例、MathML 金样本）</li>
+        <li>portal 现有测试保持绿色，Biome 检查通过</li>
+        <li>浏览器实检 mini 真实数据：带 sub/sup/i 的标题与摘要正确渲染格式；MathML 摘要公式原生显示且不重复；含裸 <code>&lt;</code> 的正文一字不丢</li>
+        <li>页面上不再出现裸露的 <code>&lt;sub&gt;</code> 等标签文本</li>
+      </ol>
+    </aside>
+
+  </main>
+
+  <!-- ============================================================
+       右栏：我的备注（设计 / 评审时随手记，存浏览器 localStorage）
+       由 ../styles/user-notes.js 驱动，仅本机本浏览器、不进 git；
+       放子目录的 spec 把下方 <script src> 同改成 ../../styles/
+       ============================================================ -->
+  <aside class="notes-panel" id="user-notes-panel">
+    <header>
+      <h2>📝 我的备注</h2>
+      <p class="hint">边读边记，存到浏览器 <strong>localStorage</strong>（仅本机本浏览器，不进 git）。Ctrl/Cmd+Enter 快速提交。</p>
+    </header>
+
+    <form id="user-note-form" class="user-note-form">
+      <textarea id="user-note-input" placeholder="加一条备注（Ctrl/Cmd+Enter 提交）…" rows="3"></textarea>
+      <button type="submit">添加</button>
+    </form>
+
+    <ol class="notes-log" id="user-notes-list"></ol>
+
+    <p class="empty-state" id="user-notes-empty">no notes yet</p>
+
+    <div class="notes-stats">
+      <span id="user-notes-count">0</span> 条备注 · localStorage
+    </div>
+
+    <footer class="user-notes-actions">
+      <button type="button" id="user-notes-clear">🗑️ 清空全部</button>
+    </footer>
+  </aside>
+
+</div>
+<script src="../styles/user-notes.js" defer></script>
+</body>
+</html>

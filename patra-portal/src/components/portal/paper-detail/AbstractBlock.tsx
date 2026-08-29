@@ -1,5 +1,15 @@
+import { RichInlineText } from "@/components/portal/RichInlineText";
 import { deriveAbstract } from "@/lib/portal-api/publication-derive";
 import type { PaperDetail } from "@/types/portal";
+
+/** 摘要正文段：统一排版 + 白名单富文本渲染（三处共用）。 */
+function BodyText({ text }: { text: string }) {
+  return (
+    <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">
+      <RichInlineText text={text} />
+    </p>
+  );
+}
 
 export function AbstractBlock({ paper }: { paper: PaperDetail }) {
   const abstract = deriveAbstract(paper);
@@ -11,7 +21,7 @@ export function AbstractBlock({ paper }: { paper: PaperDetail }) {
     );
   }
   if (abstract.kind === "plain") {
-    return <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">{abstract.text}</p>;
+    return <BodyText text={abstract.text} />;
   }
   return (
     <div>
@@ -21,7 +31,7 @@ export function AbstractBlock({ paper }: { paper: PaperDetail }) {
         if (s.label === null) {
           return (
             <div key={key} className="border-t border-(--border-subtle) py-3.5 first:border-t-0">
-              <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">{s.text}</p>
+              <BodyText text={s.text} />
             </div>
           );
         }
@@ -33,7 +43,7 @@ export function AbstractBlock({ paper }: { paper: PaperDetail }) {
             <div className="pt-1 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-clay-700">
               {s.label}
             </div>
-            <p className="m-0 font-serif text-lg leading-relaxed text-ink-800">{s.text}</p>
+            <BodyText text={s.text} />
           </div>
         );
       })}
