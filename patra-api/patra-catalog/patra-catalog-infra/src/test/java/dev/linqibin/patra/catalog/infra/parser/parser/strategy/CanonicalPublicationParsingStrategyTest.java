@@ -667,6 +667,8 @@ class CanonicalPublicationParsingStrategyTest {
       assertTrue(result.getAuthorsComplete());
     }
 
+    /// `MedlineCitation@Status`（如 `In-Process`）应原样落到 `metadata.status`，
+    /// 且 metadata 块本身不再为 null。
     @Test
     @DisplayName("应解析 MedlineCitation Status 属性到 metadata.status")
     void shouldParseMedlineCitationStatus() throws Exception {
@@ -692,6 +694,8 @@ class CanonicalPublicationParsingStrategyTest {
       assertEquals("In-Process", result.getMetadata().getStatus());
     }
 
+    /// 同一 `MedlineCitation` 起始标签上的 `@Owner` 与 `@IndexingMethod`
+    /// 应分别落到 `metadata.owner` / `metadata.indexingMethod`。
     @Test
     @DisplayName("应解析 MedlineCitation Owner 与 IndexingMethod 属性到 metadata")
     void shouldParseMedlineCitationOwnerAndIndexingMethod() throws Exception {
@@ -717,6 +721,7 @@ class CanonicalPublicationParsingStrategyTest {
       assertEquals("Automated", result.getMetadata().getIndexingMethod());
     }
 
+    /// `MedlineCitation` 下的 `<CitationSubset>` 子元素文本应落到 `metadata.citationSubset`。
     @Test
     @DisplayName("应解析 CitationSubset 元素到 metadata.citationSubset")
     void shouldParseCitationSubset() throws Exception {
