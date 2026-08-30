@@ -161,6 +161,11 @@ public final class CanonicalPublicationParsingStrategy
   /// 解析 MedlineCitation 元素。
   private void parseMedlineCitation(XMLStreamReader reader, ParsedFields fields)
       throws XMLStreamException {
+    fields.citationStatus = reader.getAttributeValue(null, PubmedXmlElements.Attribute.STATUS);
+    fields.citationOwner = reader.getAttributeValue(null, PubmedXmlElements.Attribute.OWNER);
+    fields.indexingMethod =
+        reader.getAttributeValue(null, PubmedXmlElements.Attribute.INDEXING_METHOD);
+
     while (reader.hasNext()) {
       int event = reader.next();
 
@@ -176,6 +181,8 @@ public final class CanonicalPublicationParsingStrategy
           case PubmedXmlElements.SupplMesh.SUPPL_MESH_LIST -> parseSupplMeshList(reader, fields);
           case PubmedXmlElements.Keyword.KEYWORD_LIST -> parseKeywordList(reader, fields);
           case PubmedXmlElements.OtherAbstract.OTHER_ABSTRACT -> parseOtherAbstract(reader, fields);
+          case PubmedXmlElements.Container.CITATION_SUBSET ->
+              fields.citationSubset = reader.getElementText().trim();
           default -> XmlParsingHelper.skipElement(reader, localName);
         }
       } else if (event == XMLStreamConstants.END_ELEMENT
@@ -795,6 +802,17 @@ public final class CanonicalPublicationParsingStrategy
         .pagination(buildPagination(fields))
         .journal(buildJournal(fields))
         .dates(buildDates(fields))
+        .metadata(buildMetadata(fields))
+        .build();
+  }
+
+  /// 构建出版物元数据（MedlineCitation 属性）。
+  private CanonicalPublication.PublicationMetadata buildMetadata(ParsedFields fields) {
+    return CanonicalPublication.PublicationMetadata.builder()
+        .status(fields.citationStatus)
+        .owner(fields.citationOwner)
+        .indexingMethod(fields.indexingMethod)
+        .citationSubset(fields.citationSubset)
         .build();
   }
 
@@ -1131,6 +1149,10 @@ public final class CanonicalPublicationParsingStrategy
     List<String> languages = new ArrayList<>();
     String publicationStatus;
     Boolean authorsComplete;
+    String citationStatus;
+    String citationOwner;
+    String indexingMethod;
+    String citationSubset;
 
     // 作者信息
     List<ParsedAuthor> authors = new ArrayList<>();

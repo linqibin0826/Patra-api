@@ -60,6 +60,7 @@ public final class PubmedXmlElements {
     public static final String ARTICLE_SET = "PubmedArticleSet";
     public static final String PUBMED_ARTICLE = "PubmedArticle";
     public static final String MEDLINE_CITATION = "MedlineCitation";
+    public static final String CITATION_SUBSET = "CitationSubset";
     public static final String ARTICLE = "Article";
     public static final String PUBMED_DATA = "PubmedData";
 
@@ -182,6 +183,8 @@ public final class PubmedXmlElements {
     public static final String OWNER = "Owner";
     public static final String LABEL = "Label";
     public static final String LANGUAGE = "Language";
+    public static final String STATUS = "Status";
+    public static final String INDEXING_METHOD = "IndexingMethod";
 
     // ISSN Type 属性值
     public static final String ISSN_TYPE_PRINT = "Print";

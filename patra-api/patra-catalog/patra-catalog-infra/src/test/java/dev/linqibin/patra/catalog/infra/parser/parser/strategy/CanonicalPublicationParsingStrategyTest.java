@@ -666,6 +666,86 @@ class CanonicalPublicationParsingStrategyTest {
 
       assertTrue(result.getAuthorsComplete());
     }
+
+    /// `MedlineCitation@Status`（如 `In-Process`）应原样落到 `metadata.status`，
+    /// 且 metadata 块本身不再为 null。
+    @Test
+    @DisplayName("应解析 MedlineCitation Status 属性到 metadata.status")
+    void shouldParseMedlineCitationStatus() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation Status="In-Process">
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      assertNotNull(result.getMetadata());
+      assertEquals("In-Process", result.getMetadata().getStatus());
+    }
+
+    /// 同一 `MedlineCitation` 起始标签上的 `@Owner` 与 `@IndexingMethod`
+    /// 应分别落到 `metadata.owner` / `metadata.indexingMethod`。
+    @Test
+    @DisplayName("应解析 MedlineCitation Owner 与 IndexingMethod 属性到 metadata")
+    void shouldParseMedlineCitationOwnerAndIndexingMethod() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation Status="MEDLINE" Owner="NLM" IndexingMethod="Automated">
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      assertEquals("NLM", result.getMetadata().getOwner());
+      assertEquals("Automated", result.getMetadata().getIndexingMethod());
+    }
+
+    /// `MedlineCitation` 下的 `<CitationSubset>` 子元素文本应落到 `metadata.citationSubset`。
+    @Test
+    @DisplayName("应解析 CitationSubset 元素到 metadata.citationSubset")
+    void shouldParseCitationSubset() throws Exception {
+      var xml =
+          """
+          <PubmedArticle>
+            <MedlineCitation Status="MEDLINE">
+              <PMID>1</PMID>
+              <Article>
+                <ArticleTitle>T</ArticleTitle>
+              </Article>
+              <MedlineJournalInfo>
+                <NlmUniqueID>N</NlmUniqueID>
+              </MedlineJournalInfo>
+              <CitationSubset>IM</CitationSubset>
+            </MedlineCitation>
+          </PubmedArticle>
+          """;
+      var reader = createReaderAtStartElement(xml);
+
+      CanonicalPublication result = strategy.parseRecord(reader, XmlParsingContext.empty());
+
+      assertEquals("IM", result.getMetadata().getCitationSubset());
+    }
   }
 
   // ========== 作者解析测试 ==========
